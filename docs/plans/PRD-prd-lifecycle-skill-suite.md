@@ -15,7 +15,7 @@ Close the gaps in our PRD lifecycle so every spec is born testable and dies docu
 
 1. **NEW `prd-interview`** — a "grill me" front-end: research-first, batched judgment-call questions, running snapshot, stops at a concrete problem statement + success criteria. Feeds `prd-authoring`.
 2. **NEW `prd-authoring`** — writes a good PRD that *always* bakes in thorough testing + evals **per step/phase**, with measurable requirements (no "fast/easy"), in a shape that drops cleanly into `prd-swarm-planner`.
-3. **NEW `prd-docs`** — documentation-only updates to project docs + Obsidian, **without** adding tests/build work. The lightweight "keep the docs current" tool, distinct from full closeout.
+3. **NEW `prd-document`** — documentation-only updates to project docs + Obsidian, **without** adding tests/build work. The lightweight "keep the docs current" tool, distinct from full closeout.
 4. **PATCH `prd-swarm-planner` → PRD→Kanban-graph compiler** — `plan`/`load`/`run` modes: slice an approved PRD into a small-task **DAG written to a reviewable file**, load it onto the **native Hermes Kanban board** (`kanban create`+`link`), and let the **native dispatcher** run N dependency-aware workers. We wire into native Kanban; we don't rebuild the executor.
 5. **NEW `prd-swarm-plan-review`** — a mechanical Kanban-viability linter for the swarm-plan file (slice size, disjoint write scopes, acyclic DAG, acceptance-criteria-in-body, routing). Runs between plan and load.
 6. **NEW `prd-closeout`** — the full "we're done" ritual: tests pass + docs + Obsidian + commit/push + memory/mem0.
@@ -35,7 +35,7 @@ interview (prd-interview: grill to a concrete problem + success criteria)
             → run (prd-swarm-planner RUN: kanban dispatch --max N / daemon → N workers, Daedalus codes)
               → close out (prd-closeout: tests green + docs + Obsidian + commit + memory)
 
-orthogonal: prd-docs (docs-only refresh, any time)   ·   /handoff (compact session → handoff doc, any time)
+orthogonal: prd-document (docs-only refresh, any time)   ·   /handoff (compact session → handoff doc, any time)
 ```
 
 ### 1.1 Disposition of the third-party references Ace surfaced
@@ -64,7 +64,7 @@ orthogonal: prd-docs (docs-only refresh, any time)   ·   /handoff (compact sess
 
 | # | Decision | Value |
 |---|---|---|
-| L1 | Eight artifacts | 1 patch (`prd-swarm-planner` → PRD→Kanban-graph compiler), 5 new skills (`prd-interview`, `prd-authoring`, `prd-docs`, `prd-closeout`, `prd-swarm-plan-review`), 1 slash command (`/handoff`), 1 new agent profile (`Daedalus`, GPT-5.5 xhigh coder). |
+| L1 | Eight artifacts | 1 patch (`prd-swarm-planner` → PRD→Kanban-graph compiler), 5 new skills (`prd-interview`, `prd-authoring`, `prd-document`, `prd-closeout`, `prd-swarm-plan-review`), 1 slash command (`/handoff`), 1 new agent profile (`Daedalus`, GPT-5.5 xhigh coder). |
 | L12 | Wire into native Kanban, don't rebuild | Verified live (Hermes v0.15.1): `hermes kanban` already provides `create`/`link`(deps)/`claim`(atomic)/`dispatch --max N`/`daemon`/`swarm`/`decompose`/`specify`/`--max-runtime`/`--max-retries`/`--goal`/workspace isolation. `prd-swarm-planner` becomes a **PRD→Kanban task-DAG compiler** that emits a plan file then loads it via `kanban create`+`link`; the **native dispatcher** runs N dependency-aware workers. We wire, we do not rebuild the executor. |
 | L13 | Plan is a written artifact | `prd-swarm-planner` PLAN mode writes a reviewable/editable **swarm-plan file** (the task DAG) and STOPS. LOAD mode ingests it → board. RUN mode = `kanban dispatch/daemon`. Default chains plan→review→load→run on Ace's go; each step gateable. |
 | L14 | Model routing = profile = assignee | Verified: `kanban create/assign` have NO `--model`; a worker runs **as its assignee profile**, which carries the model (default→opus, aegis→claude-proxy). "Use codex gpt-5.5 coding agents" = assign coding tasks to a GPT-5.5 profile (**Daedalus**). |
@@ -74,7 +74,7 @@ orthogonal: prd-docs (docs-only refresh, any time)   ·   /handoff (compact sess
 | L18 | subagent-router seam | Optional, not load-bearing. Router (v0.1, harness-axis only) lives *inside* a dispatched worker as a per-task harness chooser (codex vs claude-code vs hermes-native) for cost arbitrage — NOT a peer of the dispatcher. `kanban-codex-lane` already covers the main codex case. Note in spec; don't build. |
 | L19 | Daedalus = new GPT-5.5 xhigh coder agent | A new Hermes profile cloned from Apollo's config EXCEPT: model = `openai-codex/gpt-5.5` reasoning `xhigh`; its OWN gateway tokens (NOT Apollo's telegram/discord); a coding-specialist SOUL. Used as the `coder` assignee for Kanban coding tasks. **Authored via Opus-4-8 high (Ace's instruction).** Config creation is gatekept — show diff, get approval, apply, verify. |
 | L8 | `prd-interview` exists | A research-first "grill me" skill (adapted from grill-me) that converges on a concrete problem statement + measurable success criteria and STOPS before drafting. Feeds `prd-authoring`. |
-| L9 | `prd-docs` is docs-only | A skill that updates project docs + Obsidian to match reality, explicitly WITHOUT adding tests or build work. It is NOT a slimmed closeout — it skips the test/commit-gate semantics; it's for "the docs drifted, fix them." |
+| L9 | `prd-document` is docs-only | A skill that updates project docs + Obsidian to match reality, explicitly WITHOUT adding tests or build work. It is NOT a slimmed closeout — it skips the test/commit-gate semantics; it's for "the docs drifted, fix them." |
 | L10 | `/handoff` is a slash command | Compact the current session into a handoff doc in the OS temp dir, referencing existing artifacts by path (not duplicating), with a suggested-skills section, secrets redacted. Distinct from Hermes's own context-compaction. |
 | L11 | Measurable requirements | `prd-authoring` bans subjective adjectives ("fast/easy/intuitive") in requirements/acceptance criteria — each must carry a threshold/metric/date (borrowed from awesome-copilot). |
 | L2 | Per-step testing in PRDs | `prd-authoring` mandates each phase carry: ≥1 unit/script check, an e2e/integration check when the phase touches a real boundary, ≥1 negative/adversarial case for trust boundaries, and a named verification command. (Mirrors swarm §2.6 so they compose.) |
@@ -168,9 +168,9 @@ Targeted edits (it already has a strong §2.6 eval bar — keep the diff surgica
 
 **Why a skill:** it makes "done" mean the same thing every time and prevents the exact gaps we just hit (built but untested/undocumented). It's the dual of the review gate — review guards the *entry* to build, closeout guards the *exit*.
 
-### 4.4 NEW skill: `prd-docs`
+### 4.4 NEW skill: `prd-document`
 
-**Path:** `~/.hermes/skills/software-development/prd-docs/SKILL.md`
+**Path:** `~/.hermes/skills/software-development/prd-document/SKILL.md`
 
 **Triggers:** "update the docs", "document this", "the docs are out of date", "refresh the project docs / Obsidian", "write up what we built" — when the ask is *documentation only*, not a full finish.
 
@@ -178,7 +178,7 @@ Targeted edits (it already has a strong §2.6 eval bar — keep the diff surgica
 
 **Steps:** (1) identify what changed vs what the docs say; (2) update project docs to match; (3) update/create the Obsidian overview doc and link it; (4) report what was updated. Commit is offered but not a gate (docs-only changes can be committed by the caller or folded into the next commit).
 
-**Boundary with `prd-closeout` (this is the whole reason it's separate, per L9):** `prd-closeout` is the full exit-gate (tests + docs + commit + memory, evidence-required, can BLOCK). `prd-docs` is *just the docs slice*, no gating, no test/commit requirement. **Single source of truth for docs mechanics (RC1):** `prd-docs` OWNS the documentation procedure (how to reconcile project docs + Obsidian + linking + the Obsidian Portability Rule). `prd-closeout`'s checklist items 3–4 (project docs current / Obsidian overview current) **invoke `prd-docs`'s procedure** rather than re-encoding it — so the doc-update logic lives in exactly one place and can't drift between the two skills. Each names the other in one sentence: `prd-docs` says "if you're finishing a whole build, use `prd-closeout` instead — it includes docs plus tests/commit/memory"; `prd-closeout` says "for the docs slice I run `prd-docs`'s procedure; for a docs-only refresh with no build to verify, use `prd-docs` directly."
+**Boundary with `prd-closeout` (this is the whole reason it's separate, per L9):** `prd-closeout` is the full exit-gate (tests + docs + commit + memory, evidence-required, can BLOCK). `prd-document` is *just the docs slice*, no gating, no test/commit requirement. **Single source of truth for docs mechanics (RC1):** `prd-document` OWNS the documentation procedure (how to reconcile project docs + Obsidian + linking + the Obsidian Portability Rule). `prd-closeout`'s checklist items 3–4 (project docs current / Obsidian overview current) **invoke `prd-document`'s procedure** rather than re-encoding it — so the doc-update logic lives in exactly one place and can't drift between the two skills. Each names the other in one sentence: `prd-document` says "if you're finishing a whole build, use `prd-closeout` instead — it includes docs plus tests/commit/memory"; `prd-closeout` says "for the docs slice I run `prd-document`'s procedure; for a docs-only refresh with no build to verify, use `prd-document` directly."
 
 **Why a skill:** documentation updates have a recurring shape (project docs + Obsidian + linking + portability per the Obsidian Portability Rule) that's worth encoding once; and the explicit "no testing/gating" scope is what Ace asked for — a doc refresh that doesn't drag in the whole closeout ceremony.
 
@@ -294,10 +294,10 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
   - *Unit:* skill loads; frontmatter valid.
   - *E2E check:* **dogfood — run the closeout on parakeet-transcribe itself.** parakeet's 11-test e2e suite **already exists and passes** (written before this PRD), so this dogfood cleanly proves *closeout* in isolation — it verifies tests green (✓ 11), Obsidian doc exists (✓), committed/pushed (✓), mem0 updated (✓) — it is NOT also a test-authoring task. Produce the closeout report with evidence per item.
   - *Verify with:* a real closeout report for parakeet with evidence per item, and a FAIL correctly raised if any item lacked evidence.
-- **Phase 3.5 — `prd-docs` skill.** Write SKILL.md (docs-only scope, project-docs + Obsidian, no test/commit gating; names `prd-closeout` as the heavier alternative).
+- **Phase 3.5 — `prd-document` skill.** Write SKILL.md (docs-only scope, project-docs + Obsidian, no test/commit gating; names `prd-closeout` as the heavier alternative).
   - *Unit:* skill loads; frontmatter valid.
-  - *E2E/dogfood:* run `prd-docs` on a small real doc-drift (e.g. confirm/refresh the parakeet Obsidian overview) and confirm it updated docs WITHOUT running tests or gating on a suite.
-  - *Negative:* confirm `prd-docs` does NOT claim closeout semantics (no FAIL-gate on missing tests). **Combined-phrasing case (Pass-1 Triggering):** dogfood "we built X, document and wrap it up" — confirm it **deterministically** resolves to `prd-closeout` (the superset that includes the gate), NOT `prd-docs` (the subset that would skip it); the neighbor-naming self-correct must make closeout win reliably, not by luck.
+  - *E2E/dogfood:* run `prd-document` on a small real doc-drift (e.g. confirm/refresh the parakeet Obsidian overview) and confirm it updated docs WITHOUT running tests or gating on a suite.
+  - *Negative:* confirm `prd-document` does NOT claim closeout semantics (no FAIL-gate on missing tests). **Combined-phrasing case (Pass-1 Triggering):** dogfood "we built X, document and wrap it up" — confirm it **deterministically** resolves to `prd-closeout` (the superset that includes the gate), NOT `prd-document` (the subset that would skip it); the neighbor-naming self-correct must make closeout win reliably, not by luck.
   - *Verify with:* skill loads + a docs-only update report; grep both skills for the cross-pointer.
 - **Phase 3.6 — `/handoff` slash command.** First **verify the live Hermes command-registration mechanism** (grep the running build / docs); then implement accordingly (native command-def if it exists, else tightly-triggered skill). Writes handoff doc to OS temp dir, references-not-duplicates, suggested-skills, redaction.
   - *Unit:* command/skill registers and is invocable as `/handoff`.
@@ -307,13 +307,13 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 - **Phase 4 — cross-link + Obsidian overview.** Each skill names the next/adjacent in the lifecycle; update any index. Patch `writing-plans/SKILL.md` to add the upstream seam sentence: "If you do not have an authored PRD yet, start with `prd-authoring`; `writing-plans` expands an approved PRD phase into bite-sized TDD implementation steps." This completes the two-way seam from §4.1.
   - **Authored deliverable — Obsidian overview doc** (Ace explicitly requested this): create **`AI/PRD Skills & Kanban Orchestration — System Overview.html`** in the vault (`/Users/alexgierczyk/Obsidian/Ace Place/`), dark-mode HTML matching the house style of the existing `Ace X Knowledge Base — System Overview.html` and `Parakeet Transcription — Fleet Architecture.html`. It MUST cover, for a future-me/Ace reader who has never seen this system:
     1. **What & why** — the PRD lifecycle suite exists to take an idea → reviewed spec → parallel build → verified close-out, repeatably, without re-deriving the workflow each time.
-    2. **The eight artifacts** — one row each (`prd-interview`, `prd-authoring`, `prd-docs`, `prd-swarm-planner`, `prd-swarm-plan-review`, `prd-closeout`, `/handoff`, `Daedalus`): what it does, when it fires, what it hands to next.
-    3. **The lifecycle diagram** — interview → author → (review) → plan → plan-review → load → run → closeout; with `prd-docs` and `/handoff` as cross-cutting tools.
+    2. **The eight artifacts** — one row each (`prd-interview`, `prd-authoring`, `prd-document`, `prd-swarm-planner`, `prd-swarm-plan-review`, `prd-closeout`, `/handoff`, `Daedalus`): what it does, when it fires, what it hands to next.
+    3. **The lifecycle diagram** — interview → author → (review) → plan → plan-review → load → run → closeout; with `prd-document` and `/handoff` as cross-cutting tools.
     4. **Kanban orchestration** — plain-language explainer: native Hermes Kanban owns the board/DAG/scheduling (`create`/`link`/`dispatch`/`daemon`/`claim`/retries/isolation); `prd-swarm-planner` is a **PRD→DAG compiler**, not a re-implemented executor (cite the L12 "wire don't rebuild" decision). Explain DAG, leaf→verifier→synthesizer shape, and per-task isolation in one paragraph each.
     5. **Model routing** — profile = model axis (no `--model` flag, verified `config.py`); `default`→Opus drives review/dispatch, **Daedalus**→gpt-5.5 xhigh runs coding tasks (`--assignee daedalus`); `dispatch_in_gateway: false` on all non-Apollo profiles so only one dispatcher touches the board.
     6. **How to use it** — the 3 common entry points: "I have a vague idea" (`prd-interview`), "I have an approved PRD, build it in parallel" (`prd-swarm-planner` plan→review→load→run), "we're done" (`prd-closeout`).
     7. **Pointers** — link the PRD (`~/Projects/siftly-ace/docs/plans/PRD-prd-lifecycle-skill-suite.md`), the skills dir, the multi-gateway doc, and the Daedalus SOUL once authored. Per the Obsidian Portability Rule, this overview is the canonical human-readable home; skills stay the source of mechanics.
-  - *Build via `prd-docs`* (dogfoods the docs skill on this very suite) once the skills exist; until then it's an authored HTML doc.
+  - *Build via `prd-document`* (dogfoods the docs skill on this very suite) once the skills exist; until then it's an authored HTML doc.
   - *Verify with:* grep each skill for the handoff pointer to its neighbor(s), grep `writing-plans` for the upstream seam sentence, and confirm the Obsidian overview file exists, renders, names all eight artifacts, and links the PRD + skills dir.
 
 **Build approach:** these are skill-authoring tasks (judgment-heavy prose, not parallelizable code) → **author directly**, not via swarm. (Per swarm §1.2: don't dispatch workers when there's no parallel code to slice.)
@@ -330,7 +330,7 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 | Triggering: `prd-closeout` under-fires (skills under-trigger) | closeout skipped | "Pushy" description per skill-creator; proactive-trigger language ("when acceptance criteria met and next action is finish"). |
 | Swarm patch breaks existing structure | a working skill regresses | Phase 2 negative check; targeted edits only, verify sections intact. |
 | `prd-interview` over-asks (asks discoverable facts) — the grill-me failure mode | annoys user, wastes turns | Research-first is the #1 rule; "never ask what you can read." Dogfood checks it researched before asking. |
-| `prd-docs` mistaken for a closeout shortcut | gaps slip the real gate | L9 explicit boundary + cross-pointer; `prd-docs` states it is docs-only and points to `prd-closeout` for finishing a build. |
+| `prd-document` mistaken for a closeout shortcut | gaps slip the real gate | L9 explicit boundary + cross-pointer; `prd-document` states it is docs-only and points to `prd-closeout` for finishing a build. |
 | `/handoff` writes to workspace / leaks secrets | repo clutter, secret exposure | Hard rule: temp dir only, references-not-duplicates, redaction; Phase 3.6 negative test plants a fake secret + checks location. |
 | Five new triggering surfaces collide (interview vs authoring vs docs vs closeout) | wrong skill fires | Distinct trigger phrasings + the lifecycle diagram; each skill names its neighbor so a mis-fire self-corrects to the right one. |
 | Rebuilding what native Kanban already does | wasted effort, divergent/buggy executor | L12: verified the native board does dispatch/deps/claims/retries/isolation. `prd-swarm-planner` only *compiles* a PRD→DAG and *loads* it; native runs it. |
@@ -359,8 +359,8 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 - [ ] Daedalus dogfood: a trivial Kanban coding task assigned to `daedalus` is dispatched, runs as Daedalus on gpt-5.5 in isolation, and hands back via `kanban_complete`/review-required.
 - [ ] `prd-closeout` skill loads; its checklist requires **evidence per item**.
 - [ ] `prd-closeout` dogfooded: a real closeout report produced for parakeet-transcribe with evidence (tests 11-green, Obsidian doc, commits, mem0).
-- [ ] `prd-docs` skill loads; docs-only scope verified (updates docs WITHOUT running/gating tests); cross-pointer to `prd-closeout` present in both.
+- [ ] `prd-document` skill loads; docs-only scope verified (updates docs WITHOUT running/gating tests); cross-pointer to `prd-closeout` present in both.
 - [ ] `/handoff` is invocable; dogfood produces a temp-dir handoff doc that references artifacts by path, has a suggested-skills section, lives outside the workspace, and redacts secrets.
-- [ ] All skills cross-link the lifecycle (interview → author → review → plan → plan-review → load → run → closeout; prd-docs and /handoff cross-referenced).
+- [ ] All skills cross-link the lifecycle (interview → author → review → plan → plan-review → load → run → closeout; prd-document and /handoff cross-referenced).
 - [ ] `writing-plans` carries the upstream seam sentence pointing to `prd-authoring`.
 - [ ] Obsidian overview doc **`AI/PRD Skills & Kanban Orchestration — System Overview.html`** exists, renders in dark mode, and covers all seven required sections (what/why, the eight artifacts, lifecycle diagram, Kanban orchestration explainer, model routing, how-to-use, pointers); names all eight artifacts and links the PRD + skills dir + multi-gateway doc.
