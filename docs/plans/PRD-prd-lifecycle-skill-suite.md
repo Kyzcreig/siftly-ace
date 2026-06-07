@@ -1,6 +1,6 @@
 # PRD — PRD Lifecycle Skill Suite (authoring · swarm evals · closeout)
 
-**Version:** v9 (Pass-2 APPROVE — folded the one remaining fix: plan-review assignee-exists degrades to WARNING for known-pending profiles like daedalus)
+**Version:** v10 (added Phase-4 Obsidian overview deliverable: `AI/PRD Skills & Kanban Orchestration — System Overview.html`, per Ace request)
 **Date:** 2026-06-07
 **Author:** Apollo
 **Owner:** Apollo
@@ -304,8 +304,17 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
   - *E2E/dogfood:* run `/handoff "resume Siftly Phase 0"` and confirm it produced a temp-dir doc that references existing artifacts by path, has a suggested-skills section, and contains no secrets.
   - *Negative:* confirm the doc is in the temp dir, NOT the workspace, and that a planted fake secret would be redacted.
   - *Verify with:* the generated handoff doc + a redaction check.
-- **Phase 4 — cross-link + docs.** Each skill names the next/adjacent in the lifecycle; update any index. Brief Obsidian note on the PRD lifecycle suite. Patch `writing-plans/SKILL.md` to add the upstream seam sentence: "If you do not have an authored PRD yet, start with `prd-authoring`; `writing-plans` expands an approved PRD phase into bite-sized TDD implementation steps." This completes the two-way seam from §4.1.
-  - *Verify with:* grep each skill for the handoff pointer to its neighbor(s), and grep `writing-plans` for the upstream seam sentence.
+- **Phase 4 — cross-link + Obsidian overview.** Each skill names the next/adjacent in the lifecycle; update any index. Patch `writing-plans/SKILL.md` to add the upstream seam sentence: "If you do not have an authored PRD yet, start with `prd-authoring`; `writing-plans` expands an approved PRD phase into bite-sized TDD implementation steps." This completes the two-way seam from §4.1.
+  - **Authored deliverable — Obsidian overview doc** (Ace explicitly requested this): create **`AI/PRD Skills & Kanban Orchestration — System Overview.html`** in the vault (`/Users/alexgierczyk/Obsidian/Ace Place/`), dark-mode HTML matching the house style of the existing `Ace X Knowledge Base — System Overview.html` and `Parakeet Transcription — Fleet Architecture.html`. It MUST cover, for a future-me/Ace reader who has never seen this system:
+    1. **What & why** — the PRD lifecycle suite exists to take an idea → reviewed spec → parallel build → verified close-out, repeatably, without re-deriving the workflow each time.
+    2. **The eight artifacts** — one row each (`prd-interview`, `prd-authoring`, `prd-docs`, `prd-swarm-planner`, `prd-swarm-plan-review`, `prd-closeout`, `/handoff`, `Daedalus`): what it does, when it fires, what it hands to next.
+    3. **The lifecycle diagram** — interview → author → (review) → plan → plan-review → load → run → closeout; with `prd-docs` and `/handoff` as cross-cutting tools.
+    4. **Kanban orchestration** — plain-language explainer: native Hermes Kanban owns the board/DAG/scheduling (`create`/`link`/`dispatch`/`daemon`/`claim`/retries/isolation); `prd-swarm-planner` is a **PRD→DAG compiler**, not a re-implemented executor (cite the L12 "wire don't rebuild" decision). Explain DAG, leaf→verifier→synthesizer shape, and per-task isolation in one paragraph each.
+    5. **Model routing** — profile = model axis (no `--model` flag, verified `config.py`); `default`→Opus drives review/dispatch, **Daedalus**→gpt-5.5 xhigh runs coding tasks (`--assignee daedalus`); `dispatch_in_gateway: false` on all non-Apollo profiles so only one dispatcher touches the board.
+    6. **How to use it** — the 3 common entry points: "I have a vague idea" (`prd-interview`), "I have an approved PRD, build it in parallel" (`prd-swarm-planner` plan→review→load→run), "we're done" (`prd-closeout`).
+    7. **Pointers** — link the PRD (`~/Projects/siftly-ace/docs/plans/PRD-prd-lifecycle-skill-suite.md`), the skills dir, the multi-gateway doc, and the Daedalus SOUL once authored. Per the Obsidian Portability Rule, this overview is the canonical human-readable home; skills stay the source of mechanics.
+  - *Build via `prd-docs`* (dogfoods the docs skill on this very suite) once the skills exist; until then it's an authored HTML doc.
+  - *Verify with:* grep each skill for the handoff pointer to its neighbor(s), grep `writing-plans` for the upstream seam sentence, and confirm the Obsidian overview file exists, renders, names all eight artifacts, and links the PRD + skills dir.
 
 **Build approach:** these are skill-authoring tasks (judgment-heavy prose, not parallelizable code) → **author directly**, not via swarm. (Per swarm §1.2: don't dispatch workers when there's no parallel code to slice.)
 
@@ -354,4 +363,4 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 - [ ] `/handoff` is invocable; dogfood produces a temp-dir handoff doc that references artifacts by path, has a suggested-skills section, lives outside the workspace, and redacts secrets.
 - [ ] All skills cross-link the lifecycle (interview → author → review → plan → plan-review → load → run → closeout; prd-docs and /handoff cross-referenced).
 - [ ] `writing-plans` carries the upstream seam sentence pointing to `prd-authoring`.
-- [ ] Obsidian note documents the PRD lifecycle suite (all eight artifacts incl. Kanban integration + Daedalus).
+- [ ] Obsidian overview doc **`AI/PRD Skills & Kanban Orchestration — System Overview.html`** exists, renders in dark mode, and covers all seven required sections (what/why, the eight artifacts, lifecycle diagram, Kanban orchestration explainer, model routing, how-to-use, pointers); names all eight artifacts and links the PRD + skills dir + multi-gateway doc.
