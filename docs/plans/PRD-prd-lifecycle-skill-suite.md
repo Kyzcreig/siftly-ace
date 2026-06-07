@@ -1,11 +1,11 @@
 # PRD — PRD Lifecycle Skill Suite (authoring · swarm evals · closeout)
 
-**Version:** v6 (Pass-2 of re-review: APPROVE — folded the two test-coverage notes: round-cap/early-exit dogfood + deterministic combined-phrasing resolution)
+**Version:** v9 (Pass-2 APPROVE — folded the one remaining fix: plan-review assignee-exists degrades to WARNING for known-pending profiles like daedalus)
 **Date:** 2026-06-07
 **Author:** Apollo
 **Owner:** Apollo
-**Type:** Six coordinated changes to the `software-development` PRD skill family (4 new skills, 1 patch, 1 slash command)
-**Status:** APPROVED to build (2-pass re-review of v4→v6: APPROVE WITH CHANGES → APPROVE)
+**Type:** Eight coordinated artifacts in the `software-development` PRD skill family + fleet (5 new skills, 1 reframed-patch, 1 slash command, 1 new agent profile)
+**Status:** APPROVED to build (Kanban/Daedalus expansion: 2-pass re-review APPROVE WITH CHANGES → APPROVE; live-verified)
 
 ---
 
@@ -16,19 +16,24 @@ Close the gaps in our PRD lifecycle so every spec is born testable and dies docu
 1. **NEW `prd-interview`** — a "grill me" front-end: research-first, batched judgment-call questions, running snapshot, stops at a concrete problem statement + success criteria. Feeds `prd-authoring`.
 2. **NEW `prd-authoring`** — writes a good PRD that *always* bakes in thorough testing + evals **per step/phase**, with measurable requirements (no "fast/easy"), in a shape that drops cleanly into `prd-swarm-planner`.
 3. **NEW `prd-docs`** — documentation-only updates to project docs + Obsidian, **without** adding tests/build work. The lightweight "keep the docs current" tool, distinct from full closeout.
-4. **PATCH `prd-swarm-planner`** — make thorough **e2e testing + evals a hard, explicit part of the review/integration gates**.
-5. **NEW `prd-closeout`** — the full "we're done" ritual: tests pass + docs + Obsidian + commit/push + memory/mem0.
-6. **NEW `/handoff` slash command** — compact the current session into a handoff doc for a fresh agent (temp dir, references-not-duplicates, suggested-skills, redacted).
+4. **PATCH `prd-swarm-planner` → PRD→Kanban-graph compiler** — `plan`/`load`/`run` modes: slice an approved PRD into a small-task **DAG written to a reviewable file**, load it onto the **native Hermes Kanban board** (`kanban create`+`link`), and let the **native dispatcher** run N dependency-aware workers. We wire into native Kanban; we don't rebuild the executor.
+5. **NEW `prd-swarm-plan-review`** — a mechanical Kanban-viability linter for the swarm-plan file (slice size, disjoint write scopes, acyclic DAG, acceptance-criteria-in-body, routing). Runs between plan and load.
+6. **NEW `prd-closeout`** — the full "we're done" ritual: tests pass + docs + Obsidian + commit/push + memory/mem0.
+7. **NEW `/handoff` slash command** — compact the current session into a handoff doc for a fresh agent (temp dir, references-not-duplicates, suggested-skills, redacted).
+8. **NEW agent `Daedalus`** — a GPT-5.5 xhigh coding-specialist profile (own identity, not Apollo's) used as the `coder` assignee for Kanban coding tasks. SOUL authored via Opus-4-8 high.
 
-**Why now:** We hit the testing/docs/closeout gaps live on parakeet-transcribe ("fully built" but untested + undocumented until asked). Encode the whole lifecycle so it's automatic, not prompted.
+**Why now:** We hit the testing/docs/closeout gaps live on parakeet-transcribe ("fully built" but untested + undocumented until asked), and the planning convo surfaced that native Hermes Kanban already provides the parallel-worker orchestration. Encode the whole lifecycle so it's automatic, not prompted; wire the planner into native Kanban rather than rebuilding it.
 
 **The lifecycle:**
 ```
 interview (prd-interview: grill to a concrete problem + success criteria)
   → author (prd-authoring: measurable, testable PRD)
     → review (prd-review-pipeline: N passes = review+fix)
-      → plan/build (prd-swarm-planner: e2e evals enforced)
-        → close out (prd-closeout: tests green + docs + Obsidian + commit + memory)
+      → plan (prd-swarm-planner PLAN: slice PRD → swarm-plan FILE = task DAG)
+        → plan-review (prd-swarm-plan-review: Kanban-viability lint)
+          → load (prd-swarm-planner LOAD: kanban create+link → native board)
+            → run (prd-swarm-planner RUN: kanban dispatch --max N / daemon → N workers, Daedalus codes)
+              → close out (prd-closeout: tests green + docs + Obsidian + commit + memory)
 
 orthogonal: prd-docs (docs-only refresh, any time)   ·   /handoff (compact session → handoff doc, any time)
 ```
@@ -59,7 +64,15 @@ orthogonal: prd-docs (docs-only refresh, any time)   ·   /handoff (compact sess
 
 | # | Decision | Value |
 |---|---|---|
-| L1 | Six artifacts | 1 patch (`prd-swarm-planner`), 4 new skills (`prd-interview`, `prd-authoring`, `prd-docs`, `prd-closeout`), 1 slash command (`/handoff`), all under `software-development/` (handoff is a command def). |
+| L1 | Eight artifacts | 1 patch (`prd-swarm-planner` → PRD→Kanban-graph compiler), 5 new skills (`prd-interview`, `prd-authoring`, `prd-docs`, `prd-closeout`, `prd-swarm-plan-review`), 1 slash command (`/handoff`), 1 new agent profile (`Daedalus`, GPT-5.5 xhigh coder). |
+| L12 | Wire into native Kanban, don't rebuild | Verified live (Hermes v0.15.1): `hermes kanban` already provides `create`/`link`(deps)/`claim`(atomic)/`dispatch --max N`/`daemon`/`swarm`/`decompose`/`specify`/`--max-runtime`/`--max-retries`/`--goal`/workspace isolation. `prd-swarm-planner` becomes a **PRD→Kanban task-DAG compiler** that emits a plan file then loads it via `kanban create`+`link`; the **native dispatcher** runs N dependency-aware workers. We wire, we do not rebuild the executor. |
+| L13 | Plan is a written artifact | `prd-swarm-planner` PLAN mode writes a reviewable/editable **swarm-plan file** (the task DAG) and STOPS. LOAD mode ingests it → board. RUN mode = `kanban dispatch/daemon`. Default chains plan→review→load→run on Ace's go; each step gateable. |
+| L14 | Model routing = profile = assignee | Verified: `kanban create/assign` have NO `--model`; a worker runs **as its assignee profile**, which carries the model (default→opus, aegis→claude-proxy). "Use codex gpt-5.5 coding agents" = assign coding tasks to a GPT-5.5 profile (**Daedalus**). |
+| L15 | `prd-swarm-plan-review` (named per Ace) | A narrow, mechanical **Kanban-viability linter** for the swarm-plan file — distinct from `prd-review-pipeline` (which reviews prose specs). Checks: slices worker-sized; write scopes disjoint; DAG acyclic (no deadlock); each task body carries concrete acceptance-criteria checklist + verify command; assignee/model routing sane; leaf→verifier→synthesizer shape holds. Runs between PLAN and LOAD. |
+| L16 | Acceptance criteria live in the task BODY | Verified: Kanban has no separate "eval" column — `specify`/`decompose` flesh out "goal, approach, **acceptance criteria** (checklist of concrete, verifiable conditions)" in the task body. So `prd-swarm-plan-review` lints the body, not a field. |
+| L17 | `kanban swarm` vs `create+link` | LOAD prefers **`create`+`link`** (arbitrary multi-layer DAG — real PRDs have layered deps). Offer `kanban swarm` as a fast-path **only when the DAG is flat fan-out → verifier → synthesizer AND workers get isolated workspaces** (verified: `swarm` applies one `workspace_kind` to all workers; pass `scratch`/`worktree`, never a shared `dir:`, or parallel coders collide — the exact §2.8 failure plan-review guards). |
+| L18 | subagent-router seam | Optional, not load-bearing. Router (v0.1, harness-axis only) lives *inside* a dispatched worker as a per-task harness chooser (codex vs claude-code vs hermes-native) for cost arbitrage — NOT a peer of the dispatcher. `kanban-codex-lane` already covers the main codex case. Note in spec; don't build. |
+| L19 | Daedalus = new GPT-5.5 xhigh coder agent | A new Hermes profile cloned from Apollo's config EXCEPT: model = `openai-codex/gpt-5.5` reasoning `xhigh`; its OWN gateway tokens (NOT Apollo's telegram/discord); a coding-specialist SOUL. Used as the `coder` assignee for Kanban coding tasks. **Authored via Opus-4-8 high (Ace's instruction).** Config creation is gatekept — show diff, get approval, apply, verify. |
 | L8 | `prd-interview` exists | A research-first "grill me" skill (adapted from grill-me) that converges on a concrete problem statement + measurable success criteria and STOPS before drafting. Feeds `prd-authoring`. |
 | L9 | `prd-docs` is docs-only | A skill that updates project docs + Obsidian to match reality, explicitly WITHOUT adding tests or build work. It is NOT a slimmed closeout — it skips the test/commit-gate semantics; it's for "the docs drifted, fix them." |
 | L10 | `/handoff` is a slash command | Compact the current session into a handoff doc in the OS temp dir, referencing existing artifacts by path (not duplicating), with a suggested-skills section, secrets redacted. Distinct from Hermes's own context-compaction. |
@@ -184,6 +197,71 @@ Targeted edits (it already has a strong §2.6 eval bar — keep the diff surgica
 
 **Note on Hermes slash-command mechanics:** verify the actual command-registration path in the live build before implementing (per the standing "verify the live system" rule) — if a native command-def surface exists, use it; otherwise implement as a skill whose description triggers tightly on "/handoff" and document the invocation.
 
+### 4.6 PATCH: `prd-swarm-planner` → PRD→Kanban-graph compiler (plan/load/run)
+
+**Live ground truth (verified, Hermes v0.15.1):** the native `hermes kanban` board already does the orchestration we were about to spec from scratch:
+- `create` (task; `--assignee` profile, `--workspace scratch|worktree|dir`, `--skill`, `--max-runtime`, `--max-retries`, `--goal`/`--goal-max-turns`, `--parent`, `--triage`)
+- `link`/`unlink` (parent→child **dependency** edges → a DAG)
+- `claim` (atomic — only returns *ready* tasks whose parents are done; no double-grab)
+- `dispatch --max N` (spawn up to N workers this pass; `--failure-limit` auto-blocks flaky tasks)
+- `daemon --interval` (continuous dispatch loop — work tasks as they free up)
+- `swarm` (built-in fan-out: N parallel workers → verifier → synthesizer)
+- `decompose` / `specify` (auto-slice a triage task; flesh out body + acceptance criteria)
+- workspace isolation (scratch tmp / git worktree / shared dir), `--max-runtime` SIGTERM+requeue
+
+So `prd-swarm-planner` **stops being an executor** and becomes a **PRD→Kanban task-DAG compiler** with three explicit modes (this is the patch):
+
+1. **`plan`** — read approved PRD → slice into many **small, worker-sized** tasks → write a **swarm-plan file** (the reviewable artifact, schema below) → **STOP**. Does NOT touch the board.
+2. **`load`** — ingest a swarm-plan file → populate the native board via `kanban create` + `link` (or `kanban swarm` fast-path per L17). Prints the created task ids. → STOP.
+3. **`run`** — `kanban dispatch --max N` (one pass) or `kanban daemon` (continuous). The **native dispatcher** does concurrency, dependency-ordering, claims, retries, isolation, runtime caps. **Within-run review gate (RC1 — how it's actually enforced):** the dispatcher does NOT pause for human approval; it works ready tasks until the DAG drains. The "review gate" is modeled *in the graph* — code tasks `kanban_block(reason="review-required: …")` instead of auto-completing (per the `kanban-worker` skill), and the verifier task gates the synthesizer (`metadata {"gate":"pass"}` or block). So "stop at the gate" = review-required tasks sit blocked for `hermes kanban unblock` + the human reads `kanban list` after the pass. The plan→load→run *transitions* are separately gated on Ace's go (L13); that is distinct from the within-run review gate.
+
+**Cycle safety (RC2 — verified live):** `kanban link` **does reject cycles** — `_would_cycle()` raises "linking X → Y would create a cycle" at link time (verified in `kanban_db.py`). So `load` genuinely refuses to build a deadlocked board, and `prd-swarm-plan-review` catches cycles *earlier* (before any board writes) as defense-in-depth. Two real guards, not one.
+
+Default (no mode) = `plan → prd-swarm-plan-review → load → run`, **each step gated on Ace's go** (matches the "slice it, let me look, then launch with N" model from the planning convo).
+
+**Swarm-plan file schema** (extends the existing `references/swarm-plan-template.md`): per task — `id`, `title`, `body` (full spec + **acceptance-criteria checklist** + **verify command**, per L16), `deps: [ids]`, `assignee` (profile = model routing, per L14), `workspace` (scratch/worktree/dir), `skills: []`, `max_runtime`, `goal: bool`. Plus a top-level `dispatch: {max_concurrency, failure_limit}` and the verifier/synthesizer assignment.
+
+The existing swarm-planner wisdom is **retained, not discarded**: §1.1/1.2 premise-verification gate, §2.6 eval bar (now fed into each task body), §2.7 file-size-vs-budget (now drives slice sizing), §2.8 mock-trap + §2.8.1 senior-diff-review (now the verifier task). The patch reframes "how do I spawn workers" (delete — native) into "how do I compile a PRD into a board DAG" (keep all the slicing judgment).
+
+### 4.7 NEW skill: `prd-swarm-plan-review`
+
+**Path:** `~/.hermes/skills/software-development/prd-swarm-plan-review/SKILL.md`
+
+**Triggers:** "review the swarm plan", "is this plan ready to dispatch", "check the kanban slicing", and proactively between `prd-swarm-planner plan` and `load`.
+
+**What it is (per L15):** a narrow, **mechanical Kanban-viability linter** for a swarm-plan file — NOT a prose critique (that's `prd-review-pipeline`'s job on the PRD upstream). Checks:
+- **Slice size:** each task is one worker-sized outcome (§2.7) — not a 5-file mega-task that will time out.
+- **Disjoint write scopes:** no two tasks that can run in parallel (no dep edge between them) write the same file → prevents the integration smashes §2.8 warns about.
+- **DAG is acyclic:** the `deps` graph has no cycle (no deadlock). Mechanically checkable (topological sort succeeds).
+- **Acceptance criteria present:** every task body has a concrete, verifiable checklist + a `verify` command (L16) — no "make it work" tasks.
+- **Routing sanity:** coding tasks → a coding profile (Daedalus); review/verify → an Opus profile; assignees exist on disk. **Pending-profile degrade (Pass-2 RC4):** the "assignee exists on disk" check is a **WARNING (not FIX-THESE/block) when the assignee is a known-pending fleet profile** (e.g. `daedalus` before its Phase 2.6 provisioning), and **hardens to a blocking check once that profile is provisioned**. This prevents the bootstrap ordering bug where plan-review (Phase 2.5) runs before Daedalus exists (Phase 2.6).
+- **Shape:** there's a verifier + synthesizer (or a documented reason there isn't).
+- **Output:** PASS / FIX-THESE list with the specific offending task ids. FIX-THESE blocks `load`.
+
+**Why separate from `prd-review-pipeline`:** different artifact (a structured DAG file vs a prose spec), different failure modes (deadlock/write-collision/oversized-slice vs vague-requirements/missing-risk), different check (a linter vs an adversarial reviewer). Sequential, not redundant: review the PRD → compile to plan → **lint the plan** → load.
+
+### 4.8 NEW agent: `Daedalus` (GPT-5.5 xhigh coding specialist)
+
+**What:** a new Hermes **profile** that serves as the dedicated **`coder` assignee** for Kanban coding tasks (L14/L19). Cloned from Apollo's config EXCEPT:
+- **Model:** `openai-codex/gpt-5.5`, reasoning effort **`xhigh`** (Ace's spec).
+- **Own gateway identity:** its OWN Discord/Telegram bot tokens (or none) — **NOT** Apollo's. Distinct profile dir `~/.hermes/profiles/daedalus/`.
+- **`dispatch_in_gateway: false`** (Apollo's `default` gateway owns the single dispatcher, per the multi-gateway doc) — Daedalus is a worker identity, not a second dispatcher.
+- **A coding-specialist SOUL** (authored fresh — see below).
+
+**Authoring method (Ace's instruction):** the Daedalus SOUL/AGENTS content is **authored via Opus-4-8 on `high` reasoning**, synthesizing the research below + Apollo's coding-policy sections + best-practice agent files.
+
+**Research-backed SOUL design (sources: ETH Zurich AGENTS.md study, Raschka "Components of a Coding Agent", OpenAI GPT-5.5 guidance, Verdent GPT-5.5 coding guide, r/codex reasoning-level findings):**
+- **GPT-5.5 is built for messy, long-horizon, multi-file agentic coding** with internal self-verification and tool-error recovery — lean into autonomy ("give it a messy multi-part task and trust it to plan, use tools, check its work"). `xhigh` produced the best review/equivalence scores in independent testing (more expensive, worth it for hard tasks; the Kanban `--max-runtime`/`--max-retries` bound the cost). **Model route verified resolvable today:** `openai-codex/gpt-5.5` is already a configured provider/model in Apollo's config (not aspirational), so Daedalus's model resolves.
+- **Cost routing (RC5 — make it a real check, not an assertion):** "route only hard tasks to xhigh" is enforced by a **`prd-swarm-plan-review` lint**: flag any task assigned to `daedalus` (xhigh) whose body looks trivial (e.g. a one-line/doc/config change) and suggest a cheaper profile. v1 honestly accepts "most coding → Daedalus xhigh"; the *only* hard cost bounds are `--max-runtime` × `dispatch --max N` (parallel burn) — there is **no aggregate ceiling** across a many-task PRD, so a big all-xhigh PRD is unbounded in total. Accepted for v1; a task-count sanity flag in plan-review is the mitigation if it bites.
+- **Caveat to encode:** GPT-5.5 is strong but **not best at every benchmark** (Opus 4.7 leads SWE-Bench Pro) and **Artificial Analysis flagged notable hallucination** — so the SOUL must hard-enforce *verify-before-claim* and *instrument-before-fix* (Apollo already has these; inherit them).
+- **AGENTS.md discipline (ETH study):** human-curated, **non-inferable** content only — exact build/test/lint commands with flags, counterintuitive conventions, hard constraints (never touch `vendor/`, which package manager). **Skip architecture overviews** (agents find those independently; they add cost, not accuracy). Structure for machine parsing, not prose. **Worker-context caveat (Pass-1 Q5):** the ETH "agents find architecture independently" finding assumes a full repo + a real session. A Kanban worker has *minutes* and possibly a *worktree/scratch* slice, not session continuity — so for Daedalus, the **task body** must carry the non-inferable per-task context (which files, the acceptance criteria, the verify command), since the worker can't always go discover it. This is exactly why `prd-swarm-planner` puts a full spec in each task body (L16).
+- **Harness > model (Raschka):** Daedalus's strength is the *harness* — live repo context, cached stable prompt prefix, structured/validated tools, bounded subagents, transcript/memory. It inherits Apollo's harness; the SOUL tunes behavior, not plumbing.
+- **Coding-loop rigor (inherit + sharpen Apollo's):** smallest viable diff; reproduce/instrument before fixing; narrow verification first; no unrelated refactors; every changed line traces to the task; tests before "done"; honest blocker-reporting over fabricated success.
+
+**SOUL skeleton (final text written by Opus-4-8 high at build):** Identity (Daedalus, the fleet's coding specialist; Kanban worker, not user-facing) · Core coding truths (autonomy + verify-before-claim + smallest-diff + boil-the-ocean-but-scoped) · GPT-5.5 operating notes (use xhigh's planning; recover from tool errors; guard against hallucination via empirical checks) · Kanban-worker lifecycle (orient→work→heartbeat→block/complete; review-required for code) · Git discipline · Safety/secrets (inherit Apollo's). Voice: terse, technical, deadpan — but it's a worker, so its "voice" mostly lands in commit messages + task handoffs, not chat.
+
+**Config gatekeeping (Hard Config Rules):** creating the profile = a config mutation. Build step shows Ace the exact profile `config.yaml` diff + token plan, gets explicit approval, applies, verifies (`hermes -p daedalus doctor`), reports. Tokens → 1Password Engineering vault, never inline. **Token-absence, not shadowing (Pass-1):** cloning "from Apollo's config EXCEPT" risks *inheriting* Apollo's gateway-token references. The diff review must show Apollo's telegram/discord tokens are **removed/nulled** in Daedalus's config, not merely overridden — and Phase 2.6's negative test asserts Daedalus's config does NOT resolve Apollo's 1Password token entries. Also assert the *behavior* not just the flag: confirm a second profile cannot double-dispatch (not just that `dispatch_in_gateway: false` is set).
+
 ---
 
 ## 5. Implementation Phases
@@ -198,10 +276,20 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
   - *Unit/script check:* `skill_view(name='prd-authoring')` loads; frontmatter valid.
   - *E2E check:* **dogfood** — regenerate the *structure* (skeleton, not a rewrite of design content) of an existing good PRD (e.g. parakeet-transcribe) from the template; confirm every phase has a Verification block and no subjective-adjective requirements.
   - *Verify with:* skill loads + a sample PRD authored from it has per-phase verification on every phase.
-- **Phase 2 — patch `prd-swarm-planner`.** Apply the 3 edits (§2.6, §5/output, §6 handoff).
-  - *Unit:* skill still loads; edits present (grep for the new gate language).
-  - *Negative:* confirm the patch didn't break the existing §2.6/§2.8 structure (skill renders, sections intact).
-  - *Verify with:* `skill_view` + grep for "E2E + eval gate" and "prd-closeout".
+- **Phase 2 — patch `prd-swarm-planner` → plan/load/run compiler (§4.6).** Reframe the skill: add explicit `plan`/`load`/`run` modes; PLAN writes the swarm-plan file (extend `references/swarm-plan-template.md` with the §4.6 schema); LOAD emits `kanban create`+`link` (swarm fast-path per L17); RUN calls `kanban dispatch --max N`/`daemon`. Retain §1.1/1.2/2.6/2.7/2.8 wisdom (fed into task bodies + the verifier task). Name `prd-swarm-plan-review` (pre-load) and `prd-closeout` (post-run).
+  - *Unit:* skill loads; grep for `plan`/`load`/`run` mode language + the schema.
+  - *E2E/dogfood (real, on the live board):* take a tiny throwaway PRD → `plan` → swarm-plan file written; `load` → `hermes kanban create/link` actually creates the tasks on a scratch board (verify with `hermes kanban list`); `run --dry-run` (`kanban dispatch --dry-run`) shows the right spawn plan **without** spawning. Tear down the scratch board after.
+  - *Negative:* a plan with a dependency cycle is rejected at load (or by plan-review) — never creates a deadlocked board.
+  - *Verify with:* `hermes kanban list` showing the created DAG + a clean `dispatch --dry-run`.
+- **Phase 2.5 — `prd-swarm-plan-review` skill (§4.7).** Write SKILL.md: the Kanban-viability linter (slice size, disjoint write scopes, acyclic DAG, acceptance-criteria-in-body, routing sanity, verifier/synthesizer shape).
+  - *Unit:* skill loads; frontmatter valid.
+  - *E2E/dogfood:* run it on a **good** swarm-plan (PASS) and a **deliberately-broken** one (write-scope collision + a dependency cycle) → confirm it emits FIX-THESE with the exact offending task ids and blocks load.
+  - *Verify with:* both review reports (PASS + FIX-THESE); the cycle/collision are caught.
+- **Phase 2.6 — `Daedalus` agent profile (§4.8).** **CONFIG-GATEKEPT.** (1) Author the Daedalus SOUL via **Opus-4-8 high** from the §4.8 research. (2) Prepare the profile `config.yaml` diff (model `openai-codex/gpt-5.5` xhigh, own/no gateway tokens, `dispatch_in_gateway: false`) + token plan. (3) **Show Ace the exact diff + token plan, get explicit approval.** (4) Apply, store tokens in 1Password, verify `hermes -p daedalus doctor`, report.
+  - *Unit:* `hermes -p daedalus doctor` passes; profile resolves model = gpt-5.5 xhigh.
+  - *E2E/dogfood:* create one trivial Kanban coding task `--assignee daedalus`, `dispatch --max 1`, confirm the worker spawns **as Daedalus on gpt-5.5**, does the task in isolation, and hands back via `kanban_complete`/review-required. Confirm it used Daedalus's identity, not Apollo's.
+  - *Negative:* confirm Daedalus does NOT own the dispatcher (`dispatch_in_gateway: false`) and does NOT use Apollo's telegram/discord tokens.
+  - *Verify with:* doctor output + the completed task's event log showing the Daedalus worker.
 - **Phase 3 — `prd-closeout` skill.** Write SKILL.md + `references/closeout-checklist.md`.
   - *Unit:* skill loads; frontmatter valid.
   - *E2E check:* **dogfood — run the closeout on parakeet-transcribe itself.** parakeet's 11-test e2e suite **already exists and passes** (written before this PRD), so this dogfood cleanly proves *closeout* in isolation — it verifies tests green (✓ 11), Obsidian doc exists (✓), committed/pushed (✓), mem0 updated (✓) — it is NOT also a test-authoring task. Produce the closeout report with evidence per item.
@@ -236,6 +324,12 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 | `prd-docs` mistaken for a closeout shortcut | gaps slip the real gate | L9 explicit boundary + cross-pointer; `prd-docs` states it is docs-only and points to `prd-closeout` for finishing a build. |
 | `/handoff` writes to workspace / leaks secrets | repo clutter, secret exposure | Hard rule: temp dir only, references-not-duplicates, redaction; Phase 3.6 negative test plants a fake secret + checks location. |
 | Five new triggering surfaces collide (interview vs authoring vs docs vs closeout) | wrong skill fires | Distinct trigger phrasings + the lifecycle diagram; each skill names its neighbor so a mis-fire self-corrects to the right one. |
+| Rebuilding what native Kanban already does | wasted effort, divergent/buggy executor | L12: verified the native board does dispatch/deps/claims/retries/isolation. `prd-swarm-planner` only *compiles* a PRD→DAG and *loads* it; native runs it. |
+| Oversized/colliding slices deadlock or smash at integration | failed dispatch, lost work | `prd-swarm-plan-review` lints slice size + disjoint write scopes + acyclic DAG before load; native `--max-runtime`/`--failure-limit` bound the blast radius. |
+| Daedalus gpt-5.5 xhigh cost runs away | expensive | Per-task `--max-runtime` + `--max-retries`; xhigh reserved for genuinely hard coding tasks (route simple ones to a cheaper profile); Kanban dispatch `--max N` caps concurrency. |
+| Daedalus hallucination (Artificial Analysis flag) | confident-wrong code | SOUL hard-enforces verify-before-claim + instrument-before-fix + tests-before-done (inherited from Apollo); the verifier task + review-required gate catch it before merge. |
+| Daedalus mis-provisioned (uses Apollo's tokens / owns dispatcher) | identity bleed, double-dispatcher DB contention | Config-gatekept build: own/no tokens, `dispatch_in_gateway: false`, Phase 2.6 negative test asserts both. |
+| Two dispatchers on one board | SQLite WAL contention | Only Apollo's `default` gateway dispatches; Daedalus and all other profiles set `dispatch_in_gateway: false` (multi-gateway doc). |
 
 ---
 
@@ -250,11 +344,14 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 - [ ] `prd-interview` skill loads; dogfood shows research-first, judgment-calls-only (with recommended answers), force-concreteness, and a stop-with-success-criteria exit.
 - [ ] `prd-authoring` skill loads; produces a PRD where **every phase has a Verification block** (unit + e2e-when-boundary + negative-for-trust + evals-if-ML + verify-command), and **bans subjective-adjective requirements** (L11).
 - [ ] `prd-authoring` includes the template + testing-vs-evals reference, and points to `prd-interview` when the ask is vague.
-- [ ] `prd-swarm-planner` §2.6 now **requires real e2e** when the integrated output exercises a new or changed real path (not mock-only), with a named E2E+eval review gate in the output contract, and names `prd-closeout` as the handoff.
+- [ ] `prd-swarm-planner` reframed to **plan/load/run** modes: PLAN writes a swarm-plan file and stops; LOAD creates the DAG on the native board via `kanban create`+`link` (proven with `hermes kanban list`); RUN uses `kanban dispatch/daemon`. Retains §1.1/1.2/2.6/2.7/2.8 wisdom.
+- [ ] `prd-swarm-plan-review` skill loads; catches a write-scope collision AND a dependency cycle in a broken plan (FIX-THESE with task ids) and PASSes a good one.
+- [ ] `Daedalus` profile created (config-gatekept, Ace-approved diff): `hermes -p daedalus doctor` passes; model = gpt-5.5 xhigh; own/no gateway tokens (not Apollo's); `dispatch_in_gateway: false`. SOUL authored via Opus-4-8 high.
+- [ ] Daedalus dogfood: a trivial Kanban coding task assigned to `daedalus` is dispatched, runs as Daedalus on gpt-5.5 in isolation, and hands back via `kanban_complete`/review-required.
 - [ ] `prd-closeout` skill loads; its checklist requires **evidence per item**.
 - [ ] `prd-closeout` dogfooded: a real closeout report produced for parakeet-transcribe with evidence (tests 11-green, Obsidian doc, commits, mem0).
 - [ ] `prd-docs` skill loads; docs-only scope verified (updates docs WITHOUT running/gating tests); cross-pointer to `prd-closeout` present in both.
 - [ ] `/handoff` is invocable; dogfood produces a temp-dir handoff doc that references artifacts by path, has a suggested-skills section, lives outside the workspace, and redacts secrets.
-- [ ] All skills cross-link the lifecycle (interview → author → review → swarm → closeout; prd-docs and /handoff cross-referenced).
+- [ ] All skills cross-link the lifecycle (interview → author → review → plan → plan-review → load → run → closeout; prd-docs and /handoff cross-referenced).
 - [ ] `writing-plans` carries the upstream seam sentence pointing to `prd-authoring`.
-- [ ] Obsidian note documents the PRD lifecycle suite (all six artifacts).
+- [ ] Obsidian note documents the PRD lifecycle suite (all eight artifacts incl. Kanban integration + Daedalus).
