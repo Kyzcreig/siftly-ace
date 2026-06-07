@@ -1,6 +1,6 @@
 # PRD — Ace X Knowledge Base (Siftly-Ace)
 
-**Version:** v4 (added §5.3.1 video enrichment: yt-dlp + local Whisper transcripts, lazy/out-of-band)
+**Version:** v5 (video transcription → NVIDIA Parakeet on ACE-AI via composable `parakeet-transcribe` skill; Whisper demoted to last-resort)
 **Date:** 2026-06-07
 **Author:** Apollo
 **Owner:** Apollo (orchestrator)
@@ -228,15 +228,16 @@ X posts with video are a real gap: Siftly's vision step only sees the **thumbnai
 | Sub-tier | What | Tool | Cost | When |
 |---|---|---|---|---|
 | V0 — thumbnail | vision/OCR on cover frame | Siftly vision (Tier 2) | cheap | every video |
-| **V1 — transcript** | audio-only pull → speech-to-text | `yt-dlp -x` + **local Whisper** (`turbo` model, M3 Ultra) | **free** | every video with audio (the main win) |
+| **V1 — transcript** | audio-only pull → speech-to-text | `yt-dlp -x` + **`parakeet-transcribe` skill** (NVIDIA Parakeet on ACE-AI GPU, Mac `parakeet-mlx` fallback) | **free** (local GPU) | every video with audio (the main win) |
 | V2 — frame sampling | sample N frames, vision-analyze | `ffmpeg` + vision | medium | only when V1 transcript is empty/near-silent (silent memes, b-roll) |
 
 **Rules:**
-- **Local + free.** Whisper runs on the Mac Studio; a 2-min clip transcribes in seconds. Audio is **transient** — extract → transcribe → discard. We store only `videoTranscript` text (and it joins the embedding composite + FTS5).
+- **Transcription is a COMPOSABLE skill, not inline.** A standalone `parakeet-transcribe` skill (specced separately) owns "audio/video → transcript." Siftly's video tier is a thin caller. Primary backend: **NVIDIA Parakeet (`parakeet-tdt-0.6b-v3`) on ACE-AI** (`192.168.1.216`, RTX PRO 6000 96GB — ~10x faster + more accurate than Whisper). Fallback: **`parakeet-mlx` on the Mac Studio** when ACE-AI is unreachable; Whisper as last resort. Backend is provider-swappable.
+- **yt-dlp on X:** supports X/Twitter natively; rewrite `x.com`→`twitter.com` in the URL before download (known reliability quirk). Protected/age-gated → fall back to V0+V2.
+- **Local + free.** Audio is **transient** — extract → transcribe → discard. We store only `videoTranscript` text (joins the embedding composite + FTS5).
 - **Non-blocking.** Video transcription does **NOT** run inside the 5:30am daily cron's 20-min budget. New videos enter a **persistent transcription queue** (`scripts/video-queue.py`, backed by a `VideoQueue` table/JSONL so it survives reboot and is idempotent — never double-transcribes a `tweetId`). Drained by a **separate low-priority cron** (e.g. hourly, off-peak) that processes a bounded number of items per run; a podcast-length clip can never blow the brief window.
-- **Long-video cap + chunking.** Cap per-video duration (configurable, e.g. 20 min); longer clips are chunked and the transcript truncated/summarized so one 90-min video can't dominate the corpus.
-- **Graceful failure.** If `yt-dlp` can't fetch (protected/age-gated/removed), fall back to V0 thumbnail + V2 frames; never crash. Log skipped videos.
-- **Provider-swappable** like embeddings: local Whisper is the default; an API STT provider is a documented swap if ever needed.
+- **Long-video cap + chunking.** Parakeet v3 handles up to ~24 min full-attention / ~3 hr local-attention; cap per-video duration (configurable) and chunk longer clips so one 90-min video can't dominate the corpus.
+- **Graceful failure.** If `yt-dlp` can't fetch or both transcription backends are down, fall back to V0 thumbnail + V2 frames; never crash. Log skipped videos for retry.
 
 ### 5.4 Segmentation (D13)
 
