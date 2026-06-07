@@ -1,0 +1,20 @@
+[Unit]
+Description=parakeet-transcribe — batch ASR service (NVIDIA Parakeet TDT 0.6b v3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ace
+WorkingDirectory=/opt/parakeet-transcribe
+Environment=PARAKEET_IDLE_UNLOAD_S=600
+Environment=PARAKEET_MAX_DURATION_S=5400
+ExecStart=/opt/parakeet-transcribe/venv/bin/python -m uvicorn transcribe_server:app --host 192.168.1.216 --port 8923
+Restart=on-failure
+RestartSec=5
+# Don't restart-loop forever on a hard failure
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
