@@ -1,6 +1,6 @@
 # PRD — Ace X Knowledge Base (Siftly-Ace)
 
-**Version:** v3 (Pass-2 APPROVE WITH CHANGES — RC4 contradiction fixed, credit-readability caveat added)
+**Version:** v4 (added §5.3.1 video enrichment: yt-dlp + local Whisper transcripts, lazy/out-of-band)
 **Date:** 2026-06-07
 **Author:** Apollo
 **Owner:** Apollo (orchestrator)
@@ -195,7 +195,8 @@ model Bookmark {
   savedAt       DateTime?  // bookmark saved_at if exposed; else null
   likedAt       DateTime?  // like timestamp if exposed; else null
   segment       String?    // "brief-relevant" | "everything-else" (computed)
-  formatFlags   String?    // JSON: {is_thread,has_code,has_link,is_launch,is_benchmark,has_image,link_domains[]}
+  formatFlags   String?    // JSON: {is_thread,has_code,has_link,is_launch,is_benchmark,has_image,has_video,link_domains[]}
+  videoTranscript String?  // Whisper transcript of bookmarked video audio (null if no video / not yet processed / silent)
   // source already exists: "bookmark" | "like"
 }
 ```
@@ -214,10 +215,28 @@ CREATE VIRTUAL TABLE bookmark_vec USING vec0(
 |---|---|---|---|
 | 0 — entities | all | none (regex/parse) | free |
 | 1 — text tags + format flags + categories + segment | all | cheap text model (e.g. `gpt-5.x-mini` / haiku-class) | low |
-| 2 — vision/OCR | items with images only | vision model | medium (the expensive part) |
-| 3 — embeddings | all (text composite) | OpenAI `text-embedding-3-small` | <$1 total |
+| 2 — vision/OCR | items with images **OR video thumbnails** | vision model | medium (the expensive part) |
+| 3 — embeddings | all (text composite, **incl. video transcript**) | OpenAI `text-embedding-3-small` | <$1 total |
+| **V — video** | items with **video** (see §5.3.1) | `yt-dlp` + **local Whisper** (free) → vision frames only if silent | **$0 compute** (local) + bandwidth | 
 
-**Cost-estimate gate:** before the backfill enrichment run, the CLI prints `N items, M with images, est. $X.XX` and requires `--confirm` (or Apollo relays the estimate to Ace for approval). Daily incremental skips the gate (only new items, pennies).
+**Cost-estimate gate:** before the backfill enrichment run, the CLI prints `N items, M with images, V with video, est. $X.XX` and requires `--confirm` (or Apollo relays the estimate to Ace for approval). Daily incremental skips the gate (only new items, pennies). Video transcription is local/free so it doesn't add API cost, but it adds *time* — handled out-of-band (§5.3.1).
+
+### 5.3.1 Video enrichment (tiered, lazy, local-first)
+
+X posts with video are a real gap: Siftly's vision step only sees the **thumbnail**, never the audio/motion — so the substance of a bookmarked demo/talk/tutorial (which lives in what's *said*) is invisible to search. Fix with three sub-tiers, cheapest-first, run **out-of-band** from the brief-critical daily cron:
+
+| Sub-tier | What | Tool | Cost | When |
+|---|---|---|---|---|
+| V0 — thumbnail | vision/OCR on cover frame | Siftly vision (Tier 2) | cheap | every video |
+| **V1 — transcript** | audio-only pull → speech-to-text | `yt-dlp -x` + **local Whisper** (`turbo` model, M3 Ultra) | **free** | every video with audio (the main win) |
+| V2 — frame sampling | sample N frames, vision-analyze | `ffmpeg` + vision | medium | only when V1 transcript is empty/near-silent (silent memes, b-roll) |
+
+**Rules:**
+- **Local + free.** Whisper runs on the Mac Studio; a 2-min clip transcribes in seconds. Audio is **transient** — extract → transcribe → discard. We store only `videoTranscript` text (and it joins the embedding composite + FTS5).
+- **Non-blocking.** Video transcription does **NOT** run inside the 5:30am daily cron's 20-min budget. New videos enter a **persistent transcription queue** (`scripts/video-queue.py`, backed by a `VideoQueue` table/JSONL so it survives reboot and is idempotent — never double-transcribes a `tweetId`). Drained by a **separate low-priority cron** (e.g. hourly, off-peak) that processes a bounded number of items per run; a podcast-length clip can never blow the brief window.
+- **Long-video cap + chunking.** Cap per-video duration (configurable, e.g. 20 min); longer clips are chunked and the transcript truncated/summarized so one 90-min video can't dominate the corpus.
+- **Graceful failure.** If `yt-dlp` can't fetch (protected/age-gated/removed), fall back to V0 thumbnail + V2 frames; never crash. Log skipped videos.
+- **Provider-swappable** like embeddings: local Whisper is the default; an API STT provider is a documented swap if ever needed.
 
 ### 5.4 Segmentation (D13)
 
@@ -376,7 +395,7 @@ Each phase ends with a **smoke test** (real input, verify output), then commit +
 - **Phase 0 — Fork & scaffold + OAuth2 HARD GATE.** Fork Siftly → `siftly-ace`, clone to `~/Projects/siftly-ace`, `npm install`, init DB, `AGENTS.md`. **Register a DEDICATED `siftly-ace` X app (type: Web/automated), run the OAuth2 PKCE grant, and PROVE `xurl /2/users/56282605/bookmarks` returns 200 with data (not 403) — with ZERO mutation to the `forge` app's oauth1/bearer.** This is a hard gate: **if the grant fails or scopes aren't grantable on the plan, the project does not proceed past here** (fall back to documented cookie path only with Ace's explicit OK). Smoke: `npm run build` clean, `siftly stats` returns 0, `forge` app's `xurl auth status` unchanged before/after.
 - **Phase 1 — xurl OAuth2 ingestion.** One-time auth grant; `scripts/ingest.ts` (bookmarks + likes + dedupe + pagination + state). Smoke: pull a small page, verify rows + dedupe + source field.
 - **Phase 2 — Full backfill + cost gate.** Cost estimate → Ace approval → full paginated backfill. Smoke: report total items, pages, truncation, bookmark/like split.
-- **Phase 3 — Enrichment tiers + segment.** Entities, tags, format flags, categories, vision/OCR (gated), segment. Smoke: spot-check 5 enriched items incl. a meme (OCR text present).
+- **Phase 3 — Enrichment tiers + segment + video.** Entities, tags, format flags, categories, vision/OCR (gated), segment, **and video tier V (yt-dlp + local Whisper transcript, out-of-band queue)**. Smoke: spot-check 5 enriched items incl. a meme (OCR text present) **and a bookmarked video (transcript present, searchable by spoken content)**.
 - **Phase 4 — Embeddings + sqlite-vec + hybrid search.** Embed corpus, build vec table, hybrid retrieval + rerank. Smoke: run 3 known-item queries (A use case), verify the known tweet is top-3.
 - **Phase 5 — Obsidian export.** Patched exporter + indexes. Smoke: export, open a note in vault, verify frontmatter + backlinks + meme OCR caption.
 - **Phase 6 — Preference model + composition report.** `profile.ts` + report. Smoke: profile.json populated, composition report shows segment split.
@@ -452,7 +471,7 @@ Each step is independent; partial rollback (e.g. just disable brief integration 
 
 - [ ] OAuth2 user-context token works; `xurl /2/users/56282605/bookmarks` returns data (not 403).
 - [ ] Full backfill: bookmarks + likes ingested, deduped (bookmark wins), source field correct.
-- [ ] Corpus enriched: every item has entities + tags + format flags + segment; images have OCR/vision.
+- [ ] Corpus enriched: every item has entities + tags + format flags + segment; images have OCR/vision; **videos have Whisper transcripts (or documented fallback) and are searchable by spoken content**.
 - [ ] Embeddings: every item has a vector; hybrid search returns known item in top-3 for 3 test queries (A).
 - [ ] Obsidian: notes exported with full frontmatter + indexes + meme OCR captions; re-export doesn't dup.
 - [ ] Preference profile JSON + Obsidian profile generated from full corpus, bookmark/like weighted.
