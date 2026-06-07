@@ -1,11 +1,11 @@
 # PRD — PRD Lifecycle Skill Suite (authoring · swarm evals · closeout)
 
-**Version:** v10 (added Phase-4 Obsidian overview deliverable: `AI/PRD Skills & Kanban Orchestration — System Overview.html`, per Ace request)
+**Version:** v11 (BUILT + dogfooded + CLOSED OUT — all §8 acceptance criteria met; see docs/reviews/lifecycle-suite-closeout-report.md)
 **Date:** 2026-06-07
 **Author:** Apollo
 **Owner:** Apollo
 **Type:** Eight coordinated artifacts in the `software-development` PRD skill family + fleet (5 new skills, 1 reframed-patch, 1 slash command, 1 new agent profile)
-**Status:** APPROVED to build (Kanban/Daedalus expansion: 2-pass re-review APPROVE WITH CHANGES → APPROVE; live-verified)
+**Status:** ✅ DONE — built, dogfooded (4 skill dogfoods + Daedalus board-run x2), closed out 2026-06-07
 
 ---
 
@@ -350,17 +350,17 @@ Each phase ends with verification, then commit. (These skills are docs, so "test
 
 ## 8. Acceptance Criteria
 
-- [ ] `prd-interview` skill loads; dogfood shows research-first, judgment-calls-only (with recommended answers), force-concreteness, and a stop-with-success-criteria exit.
-- [ ] `prd-authoring` skill loads; produces a PRD where **every phase has a Verification block** (unit + e2e-when-boundary + negative-for-trust + evals-if-ML + verify-command), and **bans subjective-adjective requirements** (L11).
-- [ ] `prd-authoring` includes the template + testing-vs-evals reference, and points to `prd-interview` when the ask is vague.
-- [ ] `prd-swarm-planner` reframed to **plan/load/run** modes: PLAN writes a swarm-plan file and stops; LOAD creates the DAG on the native board via `kanban create`+`link` (proven with `hermes kanban list`); RUN uses `kanban dispatch/daemon`. Retains §1.1/1.2/2.6/2.7/2.8 wisdom.
-- [ ] `prd-swarm-plan-review` skill loads; catches a write-scope collision AND a dependency cycle in a broken plan (FIX-THESE with task ids) and PASSes a good one.
-- [ ] `Daedalus` profile created (config-gatekept, Ace-approved diff): `hermes -p daedalus doctor` passes; model = gpt-5.5 xhigh; own/no gateway tokens (not Apollo's); `dispatch_in_gateway: false`. SOUL authored via Opus-4-8 high.
-- [ ] Daedalus dogfood: a trivial Kanban coding task assigned to `daedalus` is dispatched, runs as Daedalus on gpt-5.5 in isolation, and hands back via `kanban_complete`/review-required.
-- [ ] `prd-closeout` skill loads; its checklist requires **evidence per item**.
-- [ ] `prd-closeout` dogfooded: a real closeout report produced for parakeet-transcribe with evidence (tests 11-green, Obsidian doc, commits, mem0).
-- [ ] `prd-document` skill loads; docs-only scope verified (updates docs WITHOUT running/gating tests); cross-pointer to `prd-closeout` present in both.
-- [ ] `/handoff` is invocable; dogfood produces a temp-dir handoff doc that references artifacts by path, has a suggested-skills section, lives outside the workspace, and redacts secrets.
-- [ ] All skills cross-link the lifecycle (interview → author → review → plan → plan-review → load → run → closeout; prd-document and /handoff cross-referenced).
-- [ ] `writing-plans` carries the upstream seam sentence pointing to `prd-authoring`.
+- [x] `prd-interview` skill loads; dogfood shows research-first, judgment-calls-only (with recommended answers), force-concreteness, and a stop-with-success-criteria exit.
+- [x] `prd-authoring` skill loads; produces a PRD where **every phase has a Verification block** (unit + e2e-when-boundary + negative-for-trust + evals-if-ML + verify-command), and **bans subjective-adjective requirements** (L11).
+- [x] `prd-authoring` includes the template + testing-vs-evals reference, and points to `prd-interview` when the ask is vague.
+- [x] `prd-swarm-planner` reframed to **plan/load/run** modes: PLAN writes a swarm-plan file and stops; LOAD creates the DAG on the native board via `kanban create`+`link` (proven with `hermes kanban list`); RUN uses `kanban dispatch/daemon`. Retains §1.1/1.2/2.6/2.7/2.8 wisdom.
+- [x] `prd-swarm-plan-review` skill loads; catches a write-scope collision AND a dependency cycle in a broken plan (FIX-THESE with task ids) and PASSes a good one.
+- [x] `Daedalus` profile created (config-gatekept, Ace-approved diff): `hermes -p daedalus doctor` passes; model = gpt-5.5 xhigh; own/no gateway tokens (not Apollo's); `dispatch_in_gateway: false`. SOUL authored via Opus-4-8 high.
+- [x] Daedalus dogfood: a trivial Kanban coding task assigned to `daedalus` is dispatched, runs as Daedalus on gpt-5.5 in isolation, and hands back via `kanban_complete`/review-required.
+- [x] `prd-closeout` skill loads; its checklist requires **evidence per item**.
+- [x] `prd-closeout` dogfooded: a real closeout report produced for parakeet-transcribe with evidence (tests 11-green, Obsidian doc, commits, mem0).
+- [x] `prd-document` skill loads; docs-only scope verified (updates docs WITHOUT running/gating tests); cross-pointer to `prd-closeout` present in both.
+- [x] `/handoff` is invocable; dogfood produces a temp-dir handoff doc that references artifacts by path, has a suggested-skills section, lives outside the workspace, and redacts secrets.
+- [x] All skills cross-link the lifecycle (interview → author → review → plan → plan-review → load → run → closeout; prd-document and /handoff cross-referenced).
+- [x] `writing-plans` carries the upstream seam sentence pointing to `prd-authoring`.
 - [x] Obsidian overview doc **`AI/PRD Skills & Kanban Orchestration — System Overview.html`** exists, renders in dark mode, and covers all seven required sections (what/why, the eight artifacts, lifecycle diagram, Kanban orchestration explainer, model routing, how-to-use, pointers); names all eight artifacts and links the PRD + skills dir + multi-gateway doc.
