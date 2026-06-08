@@ -12,11 +12,15 @@ export const DEFAULT_WALL_BUDGET_MS = 20 * 60 * 1000
 export const DEFAULT_INGEST_MAX_PAGES = 2
 export const DEFAULT_PAGE_SIZE = 100
 export const DEFAULT_STAGE_LIMIT = 500
+export const DEFAULT_ALERT_CHANNEL_ID = '1480528231286181948'
+export const DEFAULT_LOG_CHANNEL_ID = '1480525090331561984'
 
 const SOURCE_COUNT = 2
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const NOTIFY_SCRIPT = resolve(homedir(), '.hermes/scripts/notify.py')
+const CRON_ENV_FLAG = 'SIFTLY_DAILY_CRON'
 
+export type DailyIngestSourceName = 'bookmark' | 'like'
 export type DailyIngestStageName = 'ingest' | 'enrich' | 'embed' | 'export'
 export type DailyIngestFailureStage = DailyIngestStageName | 'credit-floor' | 'pipeline'
 export type DailyIngestFailureKind = 'credit-floor' | 'stage-failure' | 'timeout'
@@ -50,6 +54,8 @@ export interface DailyIngestResult {
   failure?: DailyIngestFailure
   alertSent?: boolean
   alertError?: string
+  heartbeatSent?: boolean
+  heartbeatError?: string
 }
 
 export interface DailyIngestRunContext {
@@ -58,8 +64,21 @@ export interface DailyIngestRunContext {
   env: NodeJS.ProcessEnv
 }
 
-export type DailyIngestStageRunner = (stage: DailyIngestStageCommand, context: DailyIngestRunContext) => Promise<void>
+export interface DailyIngestStageRunResult {
+  sourceRows?: Partial<Record<DailyIngestSourceName, number>>
+}
+
+export interface DailyIngestSuccessSummary {
+  bookmarks: number
+  likes: number
+}
+
+export type DailyIngestStageRunner = (
+  stage: DailyIngestStageCommand,
+  context: DailyIngestRunContext,
+) => Promise<DailyIngestStageRunResult | void>
 export type DailyIngestAlertSender = (message: string, failure: DailyIngestFailure) => Promise<void>
+export type DailyIngestHeartbeatSender = (message: string, summary: DailyIngestSuccessSummary) => Promise<void>
 export type DailyIngestCreditFloorChecker = (options: CheckCreditFloorOptions) => Promise<CreditFloorResult>
 
 export interface RunDailyIngestOptions {
@@ -69,6 +88,7 @@ export interface RunDailyIngestOptions {
   checkCreditFloor?: DailyIngestCreditFloorChecker
   runStage?: DailyIngestStageRunner
   sendAlert?: DailyIngestAlertSender
+  sendHeartbeat?: DailyIngestHeartbeatSender
 }
 
 class DailyIngestFailureError extends Error {
@@ -111,11 +131,13 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
   const config = resolveConfig(options.config)
   const stages = options.stages ?? buildDailyIngestStages(config)
   const runStage = options.runStage ?? runStageCommand
-  const sendAlert = options.sendAlert ?? sendDiscordAlert
+  const sendAlert = options.sendAlert ?? ((message, failure) => sendDiscordAlert(message, failure, config.env))
+  const sendHeartbeat = options.sendHeartbeat ?? ((message, summary) => sendDiscordHeartbeat(message, summary, config.env))
   const checkCreditFloor = options.checkCreditFloor ?? defaultCheckCreditFloor
   const wallBudgetMs = normalizePositiveInt(options.wallBudgetMs, config.wallBudgetMs)
   const abortController = new AbortController()
   const stagesRun: DailyIngestStageName[] = []
+  const successSummary: DailyIngestSuccessSummary = { bookmarks: 0, likes: 0 }
   let activeStage: DailyIngestFailureStage = 'pipeline'
   let timedOut = false
 
@@ -143,11 +165,24 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
     for (const stage of stages) {
       activeStage = stage.name
       if (abortController.signal.aborted) throw timeoutFailure(activeStage, wallBudgetMs)
-      await runStage(stage, { signal: abortController.signal, cwd: config.cwd, env: config.env })
+      const stageResult = await runStage(stage, { signal: abortController.signal, cwd: config.cwd, env: config.env })
+      mergeSourceRows(successSummary, stageResult?.sourceRows)
       stagesRun.push(stage.name)
     }
 
-    return { ok: true, exitCode: 0, stagesRun }
+    let heartbeatSent = false
+    let heartbeatError: string | undefined
+    if (isCronRun(config.env)) {
+      try {
+        await sendHeartbeat(formatHeartbeatMessage(successSummary), successSummary)
+        heartbeatSent = true
+      } catch (heartbeatErr) {
+        heartbeatError = errorMessage(heartbeatErr)
+        console.error(`daily-ingest heartbeat failed: ${heartbeatError}`)
+      }
+    }
+
+    return { ok: true, exitCode: 0, stagesRun, heartbeatSent, heartbeatError }
   } catch (err) {
     const failure = timedOut
       ? timeoutFailure(activeStage, wallBudgetMs).failure
@@ -172,24 +207,57 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
   }
 }
 
-export async function runStageCommand(stage: DailyIngestStageCommand, context: DailyIngestRunContext): Promise<void> {
+export async function runStageCommand(
+  stage: DailyIngestStageCommand,
+  context: DailyIngestRunContext,
+): Promise<DailyIngestStageRunResult | void> {
+  const captureOutput = stage.name === 'ingest'
   try {
-    await spawnAndWait(stage.command, stage.args, {
+    const result = await spawnAndWait(stage.command, stage.args, {
       cwd: context.cwd,
       env: context.env,
       signal: context.signal,
-      stdio: 'inherit',
+      stdio: captureOutput ? 'pipe' : 'inherit',
       killProcessGroup: true,
+      pipeOutput: captureOutput,
     })
+    if (captureOutput) return { sourceRows: parseIngestSourceRows(result.stdout) }
   } catch (err) {
     throw new Error(`${stage.name} failed: ${errorMessage(err)}`)
   }
 }
 
-export async function sendDiscordAlert(message: string): Promise<void> {
-  await spawnAndWait('python3', [NOTIFY_SCRIPT, '--send', message, '--channel', 'discord'], {
+export async function sendDiscordAlert(
+  message: string,
+  _failure?: DailyIngestFailure,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const target = envChannel(env.SIFTLY_ALERT_CHANNEL, DEFAULT_ALERT_CHANNEL_ID)
+  try {
+    await sendDiscordNotify(message, target, env)
+  } catch (err) {
+    console.error(`daily-ingest targeted alert failed; falling back to Home Discord: ${errorMessage(err)}`)
+    await spawnAndWait('python3', [NOTIFY_SCRIPT, '--send', message, '--channel', 'discord'], {
+      cwd: REPO_ROOT,
+      env,
+      stdio: 'inherit',
+      killProcessGroup: false,
+    })
+  }
+}
+
+export async function sendDiscordHeartbeat(
+  message: string,
+  _summary: DailyIngestSuccessSummary,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  await sendDiscordNotify(message, envChannel(env.SIFTLY_LOG_CHANNEL, DEFAULT_LOG_CHANNEL_ID), env)
+}
+
+async function sendDiscordNotify(message: string, target: string, env: NodeJS.ProcessEnv): Promise<void> {
+  await spawnAndWait('python3', [NOTIFY_SCRIPT, '--send', message, '--channel', 'discord', '--target', target], {
     cwd: REPO_ROOT,
-    env: process.env,
+    env,
     stdio: 'inherit',
     killProcessGroup: false,
   })
@@ -208,6 +276,35 @@ function resolveConfig(config: RunDailyIngestOptions['config'] = {}): DailyInges
   }
 }
 
+function isCronRun(env: NodeJS.ProcessEnv): boolean {
+  return env[CRON_ENV_FLAG] === '1'
+}
+
+function envChannel(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim()
+  return trimmed || fallback
+}
+
+function mergeSourceRows(summary: DailyIngestSuccessSummary, sourceRows: DailyIngestStageRunResult['sourceRows']): void {
+  if (!sourceRows) return
+  summary.bookmarks += normalizeNonNegativeInt(sourceRows.bookmark)
+  summary.likes += normalizeNonNegativeInt(sourceRows.like)
+}
+
+function parseIngestSourceRows(output: string): DailyIngestStageRunResult['sourceRows'] {
+  const sourceRows: Partial<Record<DailyIngestSourceName, number>> = {}
+  for (const line of output.split(/\r?\n/)) {
+    const match = /^(bookmark|like):\s+.*\brows=(\d+)\b/.exec(line)
+    if (!match) continue
+    sourceRows[match[1] as DailyIngestSourceName] = Number(match[2])
+  }
+  return sourceRows
+}
+
+function formatHeartbeatMessage(summary: DailyIngestSuccessSummary): string {
+  return `✅ siftly daily ingest: +${summary.bookmarks} bookmarks, +${summary.likes} likes`
+}
+
 function numberFromEnv(value: string | undefined): number | undefined {
   if (!value) return undefined
   const parsed = Number(value)
@@ -216,6 +313,11 @@ function numberFromEnv(value: string | undefined): number | undefined {
 
 function normalizePositiveInt(value: number | undefined, fallback: number): number {
   if (!Number.isFinite(value) || value === undefined || value <= 0) return fallback
+  return Math.floor(value)
+}
+
+function normalizeNonNegativeInt(value: number | undefined): number {
+  if (!Number.isFinite(value) || value === undefined || value < 0) return 0
   return Math.floor(value)
 }
 
@@ -247,17 +349,34 @@ interface SpawnOptions {
   signal?: AbortSignal
   stdio: StdioOptions
   killProcessGroup: boolean
+  pipeOutput?: boolean
 }
 
-function spawnAndWait(command: string, args: string[], options: SpawnOptions): Promise<void> {
+interface SpawnResult {
+  stdout: string
+  stderr: string
+}
+
+function spawnAndWait(command: string, args: string[], options: SpawnOptions): Promise<SpawnResult> {
   return new Promise((resolvePromise, reject) => {
     let settled = false
     let killTimer: NodeJS.Timeout | undefined
+    let stdout = ''
+    let stderr = ''
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env,
       stdio: options.stdio,
       detached: options.killProcessGroup,
+    })
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+      if (options.pipeOutput) process.stdout.write(chunk)
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+      if (options.pipeOutput) process.stderr.write(chunk)
     })
 
     const settle = (fn: () => void) => {
@@ -302,7 +421,7 @@ function spawnAndWait(command: string, args: string[], options: SpawnOptions): P
     child.on('exit', (code, signal) => {
       settle(() => {
         if (code === 0) {
-          resolvePromise()
+          resolvePromise({ stdout, stderr })
           return
         }
         const status = code === null ? `signal ${signal ?? 'unknown'}` : `exit ${code}`

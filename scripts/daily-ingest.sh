@@ -9,4 +9,9 @@ cd "$REPO_ROOT"
 # launchd starts with a sparse PATH; include Homebrew + system paths for op, node/npx, and python3.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
+# Route cron notifications to dedicated ops channels unless the launch environment overrides them.
+export SIFTLY_DAILY_CRON="${SIFTLY_DAILY_CRON:-1}"
+export SIFTLY_ALERT_CHANNEL="${SIFTLY_ALERT_CHANNEL:-1480528231286181948}"
+export SIFTLY_LOG_CHANNEL="${SIFTLY_LOG_CHANNEL:-1480525090331561984}"
+
 exec "$REPO_ROOT/scripts/with-secrets.sh" npx tsx scripts/daily-ingest.ts "$@"
