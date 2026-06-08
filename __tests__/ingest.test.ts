@@ -171,6 +171,7 @@ describe('xurl ingest', () => {
       sources: ['bookmark'],
       maxPages: 5,
       pageSize: 100,
+      resumeFromCursor: true,
     })
 
     expect(calls).toHaveLength(2)
@@ -185,9 +186,9 @@ describe('xurl ingest', () => {
     const db = new MemoryIngestDb()
     const runXurl = async (): Promise<XurlTweetPage> => mediaPage('42')
 
-    const first = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1 })
+    const first = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
     const originalMedia = db.rows.get('42')?.mediaItems[0]
-    const second = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1 })
+    const second = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
     const finalMedia = db.rows.get('42')?.mediaItems[0]
 
     expect(first.created).toBe(1)
@@ -202,8 +203,8 @@ describe('xurl ingest', () => {
     const db = new MemoryIngestDb()
     const runXurl = async (): Promise<XurlTweetPage> => page(['42'])
 
-    const first = await ingestXurlSources({ db, runXurl, sources: ['like'], maxPages: 1 })
-    const second = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1 })
+    const first = await ingestXurlSources({ db, runXurl, sources: ['like'], maxPages: 1, resumeFromCursor: true })
+    const second = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
 
     expect(first.created).toBe(1)
     expect(second.updated).toBe(1)
@@ -219,7 +220,7 @@ describe('xurl ingest', () => {
     })
 
     try {
-      const result = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1 })
+      const result = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
 
       expect(result.created).toBe(1)
       expect(db.rows.get('42')?.tweetId).toBe('42')

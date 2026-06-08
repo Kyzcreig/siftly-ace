@@ -162,8 +162,16 @@ function parseUsageBalance(payload: unknown): { projectCap: number; projectUsage
 }
 
 function numberValue(raw: unknown): number | null {
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
-  return raw
+  // The X usage API returns project_cap/project_usage as JSON STRINGS ("2000000"),
+  // not numbers — coerce numeric strings, reject everything else.
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (trimmed === '' || !/^-?\d+(\.\d+)?$/.test(trimmed)) return null
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
 }
 
 function balanceUnavailable(options: CheckCreditFloorOptions, reserve: number, detail: string): CreditFloorResult {

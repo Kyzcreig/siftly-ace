@@ -132,6 +132,7 @@ describe('xurl ingest 402 handling', () => {
     const onCreditsDepleted = vi.fn()
 
     const result = await ingestXurlSources({
+      resumeFromCursor: true,
       db,
       runXurl,
       sources: ['bookmark'],
@@ -179,6 +180,7 @@ describe('xurl ingest 402 handling', () => {
     })
 
     const result = await ingestXurlSources({
+      resumeFromCursor: true,
       db,
       runXurl,
       sources: ['bookmark'],
@@ -235,6 +237,7 @@ describe('xurl ingest 402 handling', () => {
     const onCreditsDepleted = vi.fn()
 
     const result = await ingestXurlSources({
+      resumeFromCursor: true,
       db,
       runXurl,
       sources: ['bookmark'],

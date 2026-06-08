@@ -123,11 +123,13 @@ export interface IngestOptions {
   retryCount?: number
   retryBaseMs?: number
   onCreditsDepleted?: (event: XurlCreditsDepletedEvent) => void | Promise<void>
-  // When true (default), each source resumes pagination from its persisted cursor
-  // — correct for resuming an interrupted BACKFILL. The daily INCREMENTAL path must
-  // pass false so it starts from the top of the list (X paginates newest→older;
-  // a persisted next_token points DEEPER into history and would skip new items).
-  resumeFromCursor?: boolean
+  // REQUIRED (no default) so every ingest entrypoint MUST consciously choose:
+  //  - BACKFILL / resume an interrupted run → true (resume from persisted cursor)
+  //  - daily INCREMENTAL → false (start from the TOP; X paginates newest→older, so a
+  //    persisted next_token points DEEPER into history and would SKIP new bookmarks).
+  // Making this required turns tsc into the structural guard against the recurring
+  // "incremental resumed a deep cursor and skipped new items" bug class.
+  resumeFromCursor: boolean
 }
 
 export interface XurlCreditsDepletedEvent {
@@ -703,7 +705,7 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
   }
 
   for (const source of sources) {
-    const initialCursor = (options.resumeFromCursor ?? true)
+    const initialCursor = options.resumeFromCursor
       ? await loadPersistedCursor(options.db, source)
       : null
     const fetched = await fetchSourcePages({

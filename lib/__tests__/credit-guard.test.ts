@@ -30,6 +30,19 @@ describe('checkCreditFloor', () => {
     })
   })
 
+  it('parses STRING-valued project_cap/project_usage (the real X API shape)', async () => {
+    // The live /2/usage/tweets returns these as JSON strings, not numbers.
+    const stringPayload = {
+      data: { project_cap: '2000000', project_usage: '6166', cap_reset_day: 9 },
+    }
+    const fetchImpl = vi.fn().mockResolvedValue(response(200, stringPayload))
+
+    const result = await checkCreditFloor({ reserve: 50_000, bearer: 'app-only-bearer', fetchImpl })
+
+    expect(result.remaining).toBe(1_993_834)
+    expect(result.ok).toBe(true)
+  })
+
   it('blocks when remaining credits are below the reserve', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response(200, usagePayload(100_000, 50_001)))
 
