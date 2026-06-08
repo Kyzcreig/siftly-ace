@@ -99,6 +99,7 @@ export interface XurlIngestDb {
     update: DbDelegateMethod<{ id: string }>
   }
   ingestState?: {
+    findUnique?: DbDelegateMethod<{ lastCursor?: string | null } | null>
     upsert: DbDelegateMethod
   }
   setting?: {
@@ -121,6 +122,21 @@ export interface IngestOptions {
   dryRun?: boolean
   retryCount?: number
   retryBaseMs?: number
+  onCreditsDepleted?: (event: XurlCreditsDepletedEvent) => void | Promise<void>
+  // When true (default), each source resumes pagination from its persisted cursor
+  // — correct for resuming an interrupted BACKFILL. The daily INCREMENTAL path must
+  // pass false so it starts from the top of the list (X paginates newest→older;
+  // a persisted next_token points DEEPER into history and would skip new items).
+  resumeFromCursor?: boolean
+}
+
+export interface XurlCreditsDepletedEvent {
+  source: XurlSource
+  status: 402
+  message: string
+  savedCursor: string | null
+  pagesFetched: number
+  rowsFetched: number
 }
 
 export interface IngestResult {
@@ -131,6 +147,7 @@ export interface IngestResult {
   updated: number
   skipped: number
   perSource: Record<XurlSource, { pages: number; rows: number; nextCursor: string | null }>
+  creditsDepleted?: XurlCreditsDepletedEvent
 }
 
 const DEFAULT_APP = 'siftly-ace'
@@ -286,6 +303,19 @@ function payloadMessage(payload: unknown): string {
 
 function isRetryable429(err: unknown): boolean {
   return err instanceof XurlApiError && err.status === 429
+}
+
+function classifyXurlError(err: unknown): number | undefined {
+  if (err instanceof XurlApiError) return err.status ?? statusFromText(err.message)
+  return statusFromText(err instanceof Error ? err.message : String(err))
+}
+
+function isCreditsDepletedError(err: unknown): boolean {
+  return classifyXurlError(err) === 402
+}
+
+function xurlErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 function sleep(ms: number): Promise<void> {
@@ -545,7 +575,7 @@ async function persistState(
   }
 
   if (db.setting) {
-    const key = `xurl_ingest:${source}`
+    const key = ingestStateSettingKey(source)
     let runCount = 1
     if (db.setting.findUnique) {
       const current = await db.setting.findUnique({ where: { key } })
@@ -562,6 +592,27 @@ async function persistState(
   }
 }
 
+function ingestStateSettingKey(source: XurlSource): string {
+  return `xurl_ingest:${source}`
+}
+
+async function loadPersistedCursor(db: XurlIngestDb, source: XurlSource): Promise<string | null> {
+  if (db.ingestState?.findUnique) {
+    const state = await db.ingestState.findUnique({ where: { source } })
+    if (state) return state.lastCursor ?? null
+  }
+
+  if (db.setting?.findUnique) {
+    const current = await db.setting.findUnique({ where: { key: ingestStateSettingKey(source) } })
+    if (current?.value) {
+      const parsed = tryParseJson(current.value) as { lastCursor?: unknown } | null
+      return typeof parsed?.lastCursor === 'string' ? parsed.lastCursor : null
+    }
+  }
+
+  return null
+}
+
 async function fetchSourcePages(params: {
   source: XurlSource
   runXurl: RunXurl
@@ -571,11 +622,17 @@ async function fetchSourcePages(params: {
   limit?: number
   retryCount: number
   retryBaseMs: number
-}): Promise<{ sourcePages: XurlSourcePage[]; rows: number; nextCursor: string | null }> {
+  initialCursor?: string | null
+}): Promise<{
+  sourcePages: XurlSourcePage[]
+  rows: number
+  nextCursor: string | null
+  creditsDepleted?: XurlCreditsDepletedEvent
+}> {
   const sourcePages: XurlSourcePage[] = []
   let rows = 0
-  let cursor: string | undefined
-  let nextCursor: string | null = null
+  let cursor: string | undefined = params.initialCursor ?? undefined
+  let nextCursor: string | null = params.initialCursor ?? null
 
   for (let pageIndex = 0; pageIndex < params.maxPages; pageIndex++) {
     if (params.limit !== undefined && rows >= params.limit) break
@@ -588,7 +645,25 @@ async function fetchSourcePages(params: {
       pageSize,
       paginationToken: cursor,
     })
-    const page = await fetchWithRetry(endpoint, params.runXurl, params.retryCount, params.retryBaseMs)
+    let page: XurlTweetPage
+    try {
+      page = await fetchWithRetry(endpoint, params.runXurl, params.retryCount, params.retryBaseMs)
+    } catch (err) {
+      if (!isCreditsDepletedError(err)) throw err
+      return {
+        sourcePages,
+        rows,
+        nextCursor,
+        creditsDepleted: {
+          source: params.source,
+          status: 402,
+          message: xurlErrorMessage(err),
+          savedCursor: nextCursor,
+          pagesFetched: sourcePages.length,
+          rowsFetched: rows,
+        },
+      }
+    }
     const pageRows = page.data ?? []
     const trimmedRows = remaining === undefined ? pageRows : pageRows.slice(0, remaining)
     const trimmedPage = pageRows.length === trimmedRows.length ? page : { ...page, data: trimmedRows }
@@ -620,12 +695,17 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
   const runXurl = options.runXurl ?? ((endpoint: string) => defaultRunXurl(endpoint, app))
 
   const allSourcePages: XurlSourcePage[] = []
+  const fetchedSources: XurlSource[] = []
+  let creditsDepleted: XurlCreditsDepletedEvent | undefined
   const perSource = {
     bookmark: { pages: 0, rows: 0, nextCursor: null as string | null },
     like: { pages: 0, rows: 0, nextCursor: null as string | null },
   }
 
   for (const source of sources) {
+    const initialCursor = (options.resumeFromCursor ?? true)
+      ? await loadPersistedCursor(options.db, source)
+      : null
     const fetched = await fetchSourcePages({
       source,
       runXurl,
@@ -635,12 +715,19 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
       limit: options.limit,
       retryCount,
       retryBaseMs,
+      initialCursor,
     })
     allSourcePages.push(...fetched.sourcePages)
+    fetchedSources.push(source)
     perSource[source] = {
       pages: fetched.sourcePages.length,
       rows: fetched.rows,
       nextCursor: fetched.nextCursor,
+    }
+
+    if (fetched.creditsDepleted) {
+      creditsDepleted = fetched.creditsDepleted
+      break
     }
   }
 
@@ -648,10 +735,12 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
   const counts = options.dryRun ? { created: 0, updated: 0, skipped: 0 } : await upsertRows(options.db, rows)
 
   if (!options.dryRun) {
-    for (const source of sources) {
+    for (const source of fetchedSources) {
       await persistState(options.db, source, perSource[source].nextCursor)
     }
   }
+
+  if (creditsDepleted && options.onCreditsDepleted) await options.onCreditsDepleted(creditsDepleted)
 
   return {
     pagesFetched: allSourcePages.length,
@@ -659,5 +748,6 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
     rowsDeduped: rows.length,
     ...counts,
     perSource,
+    ...(creditsDepleted ? { creditsDepleted } : {}),
   }
 }

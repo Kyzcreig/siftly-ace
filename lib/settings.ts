@@ -15,6 +15,18 @@ let _miniMaxModelCacheExpiry = 0
 
 const CACHE_TTL = 5 * 60 * 1000
 
+export const SIFTLY_CREDIT_RESERVE_KEY = 'SIFTLY_CREDIT_RESERVE'
+export const DEFAULT_SIFTLY_CREDIT_RESERVE = 50_000
+
+export function getSiftlyCreditReserve(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[SIFTLY_CREDIT_RESERVE_KEY]
+  if (!raw) return DEFAULT_SIFTLY_CREDIT_RESERVE
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_SIFTLY_CREDIT_RESERVE
+  return Math.floor(parsed)
+}
+
 /**
  * Get the configured Anthropic model from settings (cached for 5 minutes).
  */
