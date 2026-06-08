@@ -45,3 +45,14 @@ Verification: `embed --limit 5 --force` → `vec=sqlite-vec`; known-item query "
 - Covers fresh-DB pipeline, legacy `bookmark_vec_rowids` self-heal, dim/provider swap, brute-force fallback correctness, video drain (OCR-preserve, dedupe compaction, stale-TTL + dead-pid reclaim, partial-owner lock timeout, live-embed missing-key hard-fail).
 - Also hardened video-queue stale-lock reclaim (TOCTOU): inode-identity verified pre/post rename, rollback-on-drift, logs orphaned `.reclaiming-*` on rollback failure.
 - Verified: tsc clean; 65 pass/6 skip (vec unset); 8/8 real-vec all mode=sqlite-vec. Opus pass-2 APPROVE_WITH_CHANGES (F2 applied; F1/F3 declined).
+
+## Persistent embed key — DONE (2026-06-08), commit 25b8b6b (pushed)
+- `scripts/with-secrets.sh` pulls OPENAI_API_KEY from 1Password (Engineering, `op://Engineering/77x7lxny2xabgkuupkhkthttsy/credential`) at runtime via fleet service-account token (cron) or interactive op (shell); auto-defaults SIFTLY_SQLITE_VEC_EXTENSION_PATH=.local/vec0.dylib; confirms by length only, never prints secret. NO key literal in repo (.env secret removed; .env.example documents wrapper).
+- npm scripts: `embed`, `embed:secure`, `test:e2e:live`. Verified: embed:secure -> vec=sqlite-vec; test:e2e:live 8/8; suite 65/6; tsc clean.
+- The redaction layer mangles `$(op read ...)` in write_file/patch content -> write the literal bytes via execute_code, verify with `od -c`.
+
+## Wave 3 — cost-gated backfill — SCOPED (2026-06-08), not yet dispatched
+- Scope + task DAG: `docs/plans/WAVE-3-backfill-scope.md`. Engine (pagination/429/402-detect/dedup) already exists in `lib/xurl-ingest.ts`; Wave 3 delta = credit-floor preflight, cost-estimate `--confirm` gate, 402->alert+resumable-stop, 5:30am daily-incremental cron (ingest->enrich->embed->export, 20-min budget, alert-on-fail).
+- 4 dispatchable tasks (T-W3-1..4) + 1 GATED main-agent-only task (T-W3-5 = the real ~$15-25 backfill spend, Apollo runs with Ace present, NOT a worker).
+- Credit-meter auth gotcha (verified live): `/2/usage/tweets` is App-Only bearer; user-context token -> 403. Credit-floor guard must use the bearer, not the ingest user token.
+- Awaiting Ace go/no-go to dispatch the swarm.
