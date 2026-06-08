@@ -80,3 +80,13 @@ model Setting {
   key   String @id
   value String
 }
+
+model IngestState {
+  id         String   @id @default(cuid())
+  source     String   @unique
+  lastCursor String?
+  lastRunAt  DateTime?
+  runCount   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
