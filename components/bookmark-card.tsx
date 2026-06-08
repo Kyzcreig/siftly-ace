@@ -380,17 +380,13 @@ function QuotedTweetEmbed({
   initialQuotedTweetId: string | null
 }) {
   const [state, setState] = useState<QuoteState>(
-    initialQuotedTweetId ? { status: 'loading', quotedTweetId: initialQuotedTweetId } : { status: 'resolving' },
+    initialQuotedTweetId ? { status: 'loading', quotedTweetId: initialQuotedTweetId } : { status: 'missing' },
   )
 
   useEffect(() => {
-    if (!initialQuotedTweetId) {
-      setState({ status: 'missing' })
-      return
-    }
+    if (!initialQuotedTweetId) return
 
     let cancelled = false
-    setState({ status: 'loading', quotedTweetId: initialQuotedTweetId })
 
     fetch(`/api/tweets/${encodeURIComponent(initialQuotedTweetId)}`)
       .then(async (res) => {
@@ -778,9 +774,6 @@ export default function BookmarkCard({ bookmark }: BookmarkCardProps) {
   // Always strip t.co shortlinks from display text — Twitter appends them to every tweet
   const tcoUrls = bookmark.text.match(TCO_REGEX) ?? []
   const cleanText = stripTcoUrls(bookmark.text)
-  const quoteFields = bookmark as BookmarkQuoteFields
-  const rawJson = quoteFields.rawJson ?? null
-  const entities = quoteFields.entities ?? null
   const initialQuotedTweetId = extractQuotedTweetIdFromBookmark(bookmark)
   // Show generic link preview only when there's no real media and this is not
   // a quote tweet. Quote URLs get the richer embedded quoted-post treatment.
