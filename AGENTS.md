@@ -88,3 +88,14 @@ Verification: `embed --limit 5 --force` → `vec=sqlite-vec`; known-item query "
 - Senior Opus review APPROVE_WITH_CHANGES applied: deterministic group_concat ordering; auth fail-fast + test. Declined char(1)-collision (model/tesseract output can't emit \u0001) and concurrent read-then-write race (single-process CLI).
 - Verified: tsc clean; suite 100 pass/6 skip; real-vec e2e 8/8. Content-search proven live: "dramatic landscape with rock formations" surfaces a 1-word "Evergreen." tweet purely via its image caption.
 - `scripts/finalize-after-drain.sh` (commit 3fcd0ef): waits for the video queue to drain, then re-embeds full corpus (--force, sweeps captions+OCR+transcripts into vec index) and re-exports to Obsidian. Armed as background job after the caption backfill. Until it runs, captions are live in FTS/lexical search; semantic-vector parity lands post-drain.
+
+## Wave 4 — Always-on web launchd artifact (staged, not loaded)
+- `scripts/web-server.sh` serves the Next.js production build on `0.0.0.0:3000`; `deploy/launchd/ai.siftly.web.plist` is staged in-repo only. G2/Apollo owns copying/loading it into `~/Library/LaunchAgents/` after Ace approval.
+- After UI changes, refresh the live service with: `npm run build && launchctl kickstart -k gui/$(id -u)/ai.siftly.web`.
+
+## Video drain "errors" — ROOT-CAUSED (2026-06-08), not a bug
+- 91 queue entries at status=error / attempts=3 (parked, not retrying). Live-investigated, not assumed:
+  - **61 "empty transcript"** = video has an audio track but no speech (music/ambient/silent) → Parakeet returns empty. Correct, unrecoverable as a transcript.
+  - **30 "ACE-AI service unavailable / all backends failed"** = MISLEADING script message. True cause proven server-side AND reproduced locally: `yt-dlp -x` fails with `Postprocessing: WARNING: unable to obtain file audio codec with ffprobe`. ffprobe on the downloaded mp4 shows **0 audio streams** (video-only h264). i.e. these are **silent videos with no audio stream at all** — same root category as the 61, just detected at extract time instead of transcribe time.
+- CONCLUSION: all 91 are genuinely non-transcribable (no speech). NOT recoverable by re-pull/repair. Thumbnail OCR + image caption tiers still cover their visual content for search.
+- COSMETIC BUG (low pri, not fixed): parakeet-transcribe.sh reports "ACE-AI service unavailable" when /health is 200 but /transcribe returns 502. The 502 detail (real reason) is swallowed. If we ever touch the script: surface the /transcribe error body instead of the generic "service unavailable". Also could pre-check audio-stream presence to mark no-audio videos distinctly from real backend outages.
