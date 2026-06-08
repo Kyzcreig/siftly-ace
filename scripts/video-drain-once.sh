@@ -16,6 +16,12 @@ export NEXT_TELEMETRY_DISABLED="${NEXT_TELEMETRY_DISABLED:-1}"
 # pins each worker to a backend via PARAKEET_URL because parakeet-transcribe.sh
 # itself only accepts one URL per call.
 export SIFTLY_PARAKEET_BACKENDS="${SIFTLY_PARAKEET_BACKENDS:-http://192.168.1.216:8923,http://192.168.1.78:8923,http://127.0.0.1:8924}"
+# Launchd can inherit HERMES_PROFILE=daedalus from prior worker sessions. The
+# Daedalus profile copy of parakeet-transcribe.sh is stale and ignores
+# PARAKEET_URL, which collapses the fleet pool back to ACE-AI. Pin the current
+# default-profile skill script explicitly so per-worker PARAKEET_URL fan-out is
+# honored without mutating another Hermes profile.
+export PARAKEET_TRANSCRIBE_SCRIPT="${PARAKEET_TRANSCRIBE_SCRIPT:-/Users/alexgierczyk/.hermes/skills/media/parakeet-transcribe/scripts/parakeet-transcribe.sh}"
 
 mkdir -p "$(dirname "$LOG_PATH")"
 exec >>"$LOG_PATH" 2>&1
