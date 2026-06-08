@@ -226,6 +226,54 @@ describe('xurl ingest 402 handling', () => {
     expect([...db.rows.keys()].sort()).toEqual(['1', '2', '9'])
   })
 
+  it('persists partial pages + cursor and resumes when a non-402 fetch error (e.g. 429 exhausted) interrupts mid-source', async () => {
+    const db = new MemoryIngestDb()
+    let failOn2 = true
+    const runXurl = vi.fn(async (endpoint: string): Promise<XurlTweetPage> => {
+      const token = paginationToken(endpoint)
+      if (!token) return page(['1'], 'after-1')
+      if (token === 'after-1') {
+        if (failOn2) throw new XurlApiError('xurl failed: Too Many Requests', 429, { status: 429 })
+        return page(['2'])
+      }
+      throw new Error(`unexpected token ${token}`)
+    })
+
+    // First run: page 1 ok, page 2 (token after-1) 429s with retries exhausted.
+    const first = await ingestXurlSources({
+      db,
+      runXurl,
+      sources: ['bookmark'],
+      maxPages: 5,
+      retryCount: 0,
+      retryBaseMs: 0,
+      resumeFromCursor: true,
+    })
+
+    // Partial progress saved (page 1's row), not discarded, and the interruption surfaced.
+    expect([...db.rows.keys()]).toEqual(['1'])
+    expect(first.created).toBe(1)
+    expect(first.interrupted).toMatchObject({ source: 'bookmark', status: 429, savedCursor: 'after-1' })
+    expect(first.creditsDepleted).toBeUndefined()
+    const saved = JSON.parse(db.settings.get('xurl_ingest:bookmark') ?? '{}')
+    expect(saved.lastCursor).toBe('after-1')
+
+    // Second run resumes from the saved cursor; this time page 2 succeeds.
+    failOn2 = false
+    const second = await ingestXurlSources({
+      db,
+      runXurl,
+      sources: ['bookmark'],
+      maxPages: 5,
+      retryCount: 0,
+      retryBaseMs: 0,
+      resumeFromCursor: true,
+    })
+
+    expect([...db.rows.keys()].sort()).toEqual(['1', '2'])
+    expect(second.interrupted).toBeUndefined()
+  })
+
   it('keeps retrying 429s without treating them as credits-depleted aborts', async () => {
     const db = new MemoryIngestDb()
     const runXurl = vi.fn(async (): Promise<XurlTweetPage> => {

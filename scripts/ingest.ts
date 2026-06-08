@@ -161,6 +161,14 @@ function printResult(result: IngestResult, options: CliOptions, log: (message: s
       `${source}: pages=${sourceStats.pages} rows=${sourceStats.rows} next-cursor=${sourceStats.nextCursor ?? 'none'}`,
     )
   }
+
+  if (result.creditsDepleted) {
+    log(`CREDITS DEPLETED on ${result.creditsDepleted.source} (402); fetched rows saved + cursor persisted — re-run to resume.`)
+  }
+  if (result.interrupted) {
+    log(`INTERRUPTED on ${result.interrupted.source} (status=${result.interrupted.status ?? 'unknown'}): ${result.interrupted.message}`)
+    log(`Partial rows were saved + cursor persisted — re-run the same command to resume from where it stopped.`)
+  }
 }
 
 function isDirectRun(): boolean {

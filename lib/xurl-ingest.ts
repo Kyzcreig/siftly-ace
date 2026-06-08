@@ -141,6 +141,15 @@ export interface XurlCreditsDepletedEvent {
   rowsFetched: number
 }
 
+export interface XurlInterruptedEvent {
+  source: XurlSource
+  status: number | undefined
+  message: string
+  savedCursor: string | null
+  pagesFetched: number
+  rowsFetched: number
+}
+
 export interface IngestResult {
   pagesFetched: number
   rowsFetched: number
@@ -150,6 +159,7 @@ export interface IngestResult {
   skipped: number
   perSource: Record<XurlSource, { pages: number; rows: number; nextCursor: string | null }>
   creditsDepleted?: XurlCreditsDepletedEvent
+  interrupted?: XurlInterruptedEvent
 }
 
 const DEFAULT_APP = 'siftly-ace'
@@ -630,6 +640,7 @@ async function fetchSourcePages(params: {
   rows: number
   nextCursor: string | null
   creditsDepleted?: XurlCreditsDepletedEvent
+  interrupted?: XurlInterruptedEvent
 }> {
   const sourcePages: XurlSourcePage[] = []
   let rows = 0
@@ -651,15 +662,33 @@ async function fetchSourcePages(params: {
     try {
       page = await fetchWithRetry(endpoint, params.runXurl, params.retryCount, params.retryBaseMs)
     } catch (err) {
-      if (!isCreditsDepletedError(err)) throw err
+      if (isCreditsDepletedError(err)) {
+        return {
+          sourcePages,
+          rows,
+          nextCursor,
+          creditsDepleted: {
+            source: params.source,
+            status: 402,
+            message: xurlErrorMessage(err),
+            savedCursor: nextCursor,
+            pagesFetched: sourcePages.length,
+            rowsFetched: rows,
+          },
+        }
+      }
+      // Any other fetch failure (e.g. 429 retries exhausted, network) after we've already
+      // collected pages must NOT discard that progress. Return what we have + an interrupted
+      // marker so the caller upserts the fetched rows and persists the cursor — the next run
+      // resumes from here instead of re-spending credits on the whole source.
       return {
         sourcePages,
         rows,
         nextCursor,
-        creditsDepleted: {
+        interrupted: {
           source: params.source,
-          status: 402,
           message: xurlErrorMessage(err),
+          status: classifyXurlError(err),
           savedCursor: nextCursor,
           pagesFetched: sourcePages.length,
           rowsFetched: rows,
@@ -699,6 +728,7 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
   const allSourcePages: XurlSourcePage[] = []
   const fetchedSources: XurlSource[] = []
   let creditsDepleted: XurlCreditsDepletedEvent | undefined
+  let interrupted: XurlInterruptedEvent | undefined
   const perSource = {
     bookmark: { pages: 0, rows: 0, nextCursor: null as string | null },
     like: { pages: 0, rows: 0, nextCursor: null as string | null },
@@ -731,6 +761,11 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
       creditsDepleted = fetched.creditsDepleted
       break
     }
+
+    if (fetched.interrupted) {
+      interrupted = fetched.interrupted
+      break
+    }
   }
 
   const rows = dedupeXurlTweets(allSourcePages)
@@ -751,5 +786,6 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
     ...counts,
     perSource,
     ...(creditsDepleted ? { creditsDepleted } : {}),
+    ...(interrupted ? { interrupted } : {}),
   }
 }
