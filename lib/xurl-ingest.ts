@@ -166,6 +166,10 @@ const DEFAULT_APP = 'siftly-ace'
 const DEFAULT_USER_ID = '56282605'
 const DEFAULT_MAX_PAGES = 50
 const DEFAULT_PAGE_SIZE = 100
+// X API server bug: the bookmarks endpoint returns NO next_token when
+// max_results=100 (silently caps the whole history at ~99 items). Requesting
+// 90 restores pagination. Likes are unaffected. See devcommunity.x.com/t/257339.
+const BOOKMARKS_MAX_PAGE_SIZE = 90
 const TWEET_FIELDS = [
   'created_at',
   'author_id',
@@ -205,7 +209,7 @@ export function buildXurlEndpoint(params: {
   paginationToken?: string
 }): string {
   const query = new URLSearchParams({
-    max_results: String(clampPageSize(params.pageSize ?? DEFAULT_PAGE_SIZE)),
+    max_results: String(clampPageSize(params.pageSize ?? DEFAULT_PAGE_SIZE, params.source)),
     'tweet.fields': TWEET_FIELDS,
     expansions: EXPANSIONS,
     'media.fields': MEDIA_FIELDS,
@@ -217,9 +221,10 @@ export function buildXurlEndpoint(params: {
   return `/2/users/${params.userId ?? DEFAULT_USER_ID}/${endpointPath(params.source)}?${query.toString()}`
 }
 
-function clampPageSize(pageSize: number): number {
-  if (!Number.isFinite(pageSize) || pageSize <= 0) return DEFAULT_PAGE_SIZE
-  return Math.min(100, Math.max(5, Math.floor(pageSize)))
+function clampPageSize(pageSize: number, source?: XurlSource): number {
+  const ceiling = source === 'bookmark' ? BOOKMARKS_MAX_PAGE_SIZE : 100
+  if (!Number.isFinite(pageSize) || pageSize <= 0) return Math.min(ceiling, DEFAULT_PAGE_SIZE)
+  return Math.min(ceiling, Math.max(5, Math.floor(pageSize)))
 }
 
 async function defaultRunXurl(endpoint: string, app = DEFAULT_APP): Promise<XurlTweetPage> {
