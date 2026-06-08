@@ -88,6 +88,37 @@ class PfScoreTest(unittest.TestCase):
         self.assertFalse(data['ok'])
         self.assertTrue(data['base_score_only'])
 
+    def test_baseline_downshift_penalizes_low_affinity(self):
+        # A low-affinity off-interest candidate should go NEGATIVE under the default
+        # baseline (true up/down signal), but stay >= 0 when PF_BASELINE=0 (legacy lift).
+        weak = {'candidates': [{'source': 'web', 'url': 'https://example.com/x', 'title': 'knitting patterns for beginners'}]}
+        with tempfile.TemporaryDirectory() as d:
+            profile = Path(d) / 'profile.json'
+            candidates = Path(d) / 'candidates.json'
+            profile.write_text(json.dumps(PROFILE), encoding='utf-8')
+            candidates.write_text(json.dumps(weak), encoding='utf-8')
+            # default baseline (0.18)
+            data = json.loads(run(str(candidates), '--profile', str(profile), env={'PF_WEIGHT': '30'}).stdout)
+            self.assertEqual(data['pf_baseline'], 0.18)
+            self.assertLess(data['items'][0]['personal_fit_delta'], 0)
+            self.assertIn('personal_fit_affinity', data['items'][0])
+            # PF_BASELINE=0 restores legacy "lift everything" (never negative)
+            legacy = json.loads(run(str(candidates), '--profile', str(profile), env={'PF_WEIGHT': '30', 'PF_BASELINE': '0'}).stdout)
+            self.assertEqual(legacy['pf_baseline'], 0)
+            self.assertGreaterEqual(legacy['items'][0]['personal_fit_delta'], 0)
+
+    def test_baseline_preserves_delta_equals_raw_times_weight(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile = Path(d) / 'profile.json'
+            candidates = Path(d) / 'candidates.json'
+            profile.write_text(json.dumps(PROFILE), encoding='utf-8')
+            candidates.write_text(json.dumps(CANDIDATES), encoding='utf-8')
+            data = json.loads(run(str(candidates), '--profile', str(profile), env={'PF_WEIGHT': '30', 'PF_BASELINE': '0.18'}).stdout)
+            item = data['items'][0]
+            self.assertAlmostEqual(item['personal_fit_delta'], item['personal_fit_raw'] * 30, places=2)
+            # raw must equal affinity - baseline (clamped)
+            self.assertAlmostEqual(item['personal_fit_raw'], item['personal_fit_affinity'] - 0.18, places=4)
+
 
 if __name__ == '__main__':
     unittest.main()

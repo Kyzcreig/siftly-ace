@@ -150,6 +150,35 @@ const FACTUAL_FORMAT_FLAGS = new Set([
 
 const NEGATIVE_PREFIXES = ['contrast:', 'negative:', 'downrank:', 'discarded:', 'auto-zeroed:']
 
+// Topic canonicalization: collapse semantically-identical labels that otherwise
+// fragment weight across near-duplicate buckets (e.g. `developer-tools`,
+// `dev-tools-and-engineering`, `embedding-cluster:dev-tools` all === `dev-tools`).
+// The `embedding-cluster:` prefix is stripped so a semantic cluster folds into its
+// base topic instead of forming a parallel inflated bucket.
+const TOPIC_SYNONYMS: Record<string, string> = {
+  'developer-tools': 'dev-tools',
+  'dev-tools-and-engineering': 'dev-tools',
+  'developer-tooling': 'dev-tools',
+  'ai-and-machine-learning': 'ai-ml',
+  'machine-learning': 'ai-ml',
+  'artificial-intelligence': 'ai-ml',
+  'ai-and-ml': 'ai-ml',
+  'startups-and-business': 'startups-business',
+  'startups-and-businesses': 'startups-business',
+  'finance-and-investing': 'finance',
+  'finance-investing': 'finance',
+  'investing': 'finance',
+  'technology-business': 'tech-industry',
+  'tech-and-business': 'tech-industry',
+}
+
+export function canonicalizeTopic(value: string): string {
+  let key = normalizeTopic(value)
+  if (key.startsWith('embedding-cluster-')) key = key.slice('embedding-cluster-'.length)
+  if (key.startsWith('embedding-cluster:')) key = key.slice('embedding-cluster:'.length)
+  return TOPIC_SYNONYMS[key] ?? key
+}
+
 export function loadProfileRowsFromDatabase(dbPath: string): PreferenceProfileRow[] {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true })
   try {
@@ -222,10 +251,10 @@ export function buildPreferenceProfile(rows: PreferenceProfileRow[], options: Bu
     if (signals.circular) continue
 
     for (const topic of signals.topics) {
-      addWeighted(topicBuckets, topic, signals.weight, signals.segment)
+      addWeighted(topicBuckets, canonicalizeTopic(topic), signals.weight, signals.segment)
     }
     const clusterTag = clusterTags.get(signals.row.id)
-    if (clusterTag) addWeighted(topicBuckets, clusterTag, signals.weight, signals.segment)
+    if (clusterTag) addWeighted(topicBuckets, canonicalizeTopic(clusterTag), signals.weight, signals.segment)
 
     const handle = normalizeHandle(signals.row.authorHandle)
     if (handle) addWeighted(authorBuckets, handle, signals.weight, signals.segment)

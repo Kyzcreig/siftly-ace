@@ -81,9 +81,11 @@ describe('preference profile', () => {
     expect(profile.updated_at).toBe('2026-06-08T12:00:00.000Z')
     expect(profile.top_topics.map((topic) => topic.name)).toEqual(expect.arrayContaining([
       'agent-workflows',
-      'artificial-intelligence',
+      // 'Artificial intelligence' context-annotation canonicalizes into the ai-ml family
+      'ai-ml',
     ]))
-    expect(profile.top_topics.some((topic) => topic.name.startsWith('embedding-cluster:'))).toBe(true)
+    // embedding-cluster: labels are folded into their base topic, never kept as a parallel bucket
+    expect(profile.top_topics.some((topic) => topic.name.startsWith('embedding-cluster:'))).toBe(false)
     expect(profile.favorite_formats).toEqual(expect.arrayContaining(['is_thread', 'has_code', 'format:thread']))
     expect(profile.downrank_patterns).toContain('low-context-meme')
     expect(profile.novelty_profile).toEqual({ evergreen_ratio: 0 })

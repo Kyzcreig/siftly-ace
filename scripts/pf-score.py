@@ -22,6 +22,7 @@ from typing import Any
 DEFAULT_PROFILE = Path.home() / ".hermes/state/x-bookmarks/preference-profile.json"
 DEFAULT_CONFIG = Path.home() / ".hermes/state/x-bookmarks/brief-config.json"
 DEFAULT_WEIGHT = 30.0
+DEFAULT_BASELINE = 0.18
 WORD_RE = re.compile(r"[a-z0-9][a-z0-9+_.-]{1,}", re.I)
 URL_RE = re.compile(r"https?://\S+", re.I)
 X_STATUS_RE = re.compile(r"(?:x|twitter)\.com/([^/]+)/status/(\d+)", re.I)
@@ -87,6 +88,28 @@ def load_weight(config_path: Path) -> float:
     return DEFAULT_WEIGHT
 
 
+def normalize_baseline(value: Any, default: float = DEFAULT_BASELINE) -> float:
+    try:
+        n = float(value)
+    except Exception:
+        return default
+    if not math.isfinite(n):
+        return default
+    # Baseline is subtracted from the affinity (which lives in [-1, 1]); keep it sane.
+    return max(0.0, min(1.0, n))
+
+
+def load_baseline(config_path: Path) -> float:
+    env = os.environ.get("PF_BASELINE") or os.environ.get("SIFTLY_PF_BASELINE")
+    if env is not None:
+        return normalize_baseline(env)
+    if config_path.exists():
+        cfg = load_json(config_path)
+        if isinstance(cfg, dict):
+            return normalize_baseline(cfg.get("PF_BASELINE", cfg.get("pf_baseline", DEFAULT_BASELINE)))
+    return DEFAULT_BASELINE
+
+
 def words(text: str) -> set[str]:
     return {m.group(0).lower() for m in WORD_RE.finditer(text)}
 
@@ -150,7 +173,7 @@ def format_hits(c: dict[str, Any], text: str, favorite_formats: list[str]) -> li
     return hits[:5]
 
 
-def score_candidate(c: dict[str, Any], idx: int, profile: dict[str, Any], weight: float) -> dict[str, Any]:
+def score_candidate(c: dict[str, Any], idx: int, profile: dict[str, Any], weight: float, baseline: float = DEFAULT_BASELINE) -> dict[str, Any]:
     text = text_of(c)
     token_set = words(text + " " + str(c.get("url", "")))
     handle = handle_of(c)
@@ -205,13 +228,17 @@ def score_candidate(c: dict[str, Any], idx: int, profile: dict[str, Any], weight
             downrank_hits.append(pat)
     downrank_score = min(1.0, len(downrank_hits) / 3.0)
 
-    raw = 0.42 * topic_score + 0.28 * author_score + 0.18 * format_score - 0.18 * downrank_score
+    affinity = 0.42 * topic_score + 0.28 * author_score + 0.18 * format_score - 0.18 * downrank_score
     # Small source-specific prior: X candidates are more likely to be comparable to the corpus than generic web pages.
     source = str(c.get("source", "")).lower()
     url_value = c.get("url")
     if source == "x" or (isinstance(url_value, str) and X_STATUS_RE.search(url_value)):
-        raw += 0.08
-    raw = max(-1.0, min(1.0, raw))
+        affinity += 0.08
+    affinity = max(-1.0, min(1.0, affinity))
+    # Downshift by the corpus baseline so the layer is a true up/down signal: items below the
+    # typical affinity floor get a NEGATIVE delta (penalized) instead of a universal positive lift.
+    # PF_BASELINE=0 restores the legacy "lift everything" behavior.
+    raw = max(-1.0, min(1.0, affinity - baseline))
     delta = raw * weight
     return {
         "index": idx,
@@ -219,6 +246,7 @@ def score_candidate(c: dict[str, Any], idx: int, profile: dict[str, Any], weight
         "url": c.get("url"),
         "title": c.get("title") or c.get("text"),
         "personal_fit_raw": round(raw, 4),
+        "personal_fit_affinity": round(affinity, 4),
         "personal_fit_delta": round(delta, 2),
         "base_score_only": weight == 0,
         "signals": {
@@ -250,14 +278,16 @@ def main() -> int:
         config_path = Path(args.config)
         profile = load_json(profile_path)
         weight = load_weight(config_path)
+        baseline = load_baseline(config_path)
         data = load_input(args.input)
         candidates = candidates_from(data)
-        items = [score_candidate(c, i, profile, weight) for i, c in enumerate(candidates)]
+        items = [score_candidate(c, i, profile, weight, baseline) for i, c in enumerate(candidates)]
         print(json.dumps({
             "ok": True,
             "base_score_only": weight == 0,
             "profile_path": str(profile_path),
             "pf_weight": weight,
+            "pf_baseline": baseline,
             "items": items,
         }, ensure_ascii=False))
         return 0
