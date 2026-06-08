@@ -386,6 +386,58 @@ describe('Phase 3 enrichment', () => {
     expect(settled).toBe(true)
   })
 
+  it('reclaims stale queue locks but errors on live locks within a bounded time', async () => {
+    const staleQueuePath = path.join(tmp, 'video-queue-stale-lock.jsonl')
+    const staleLockPath = `${staleQueuePath}.lock`
+    await mkdir(staleLockPath)
+    await writeFile(path.join(staleLockPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, createdAt: '2000-01-01T00:00:00.000Z' })}\n`, 'utf8')
+
+    const staleEnqueue = enqueueVideoItems([videoBookmark()], {
+      queuePath: staleQueuePath,
+      now: new Date('2026-06-07T12:00:00Z'),
+      lockTimeoutMs: 500,
+      lockStaleMs: 1,
+    })
+    const staleOutcome = await Promise.race([
+      staleEnqueue.then(() => 'resolved' as const, (err) => err as Error),
+      delay(500).then(() => 'hung' as const),
+    ])
+    if (staleOutcome === 'hung') {
+      await rm(staleLockPath, { recursive: true, force: true })
+      await staleEnqueue.catch(() => undefined)
+    }
+    expect(staleOutcome).toBe('resolved')
+    const staleState = await readVideoQueueState(staleQueuePath)
+    expect(staleState.get('video-media-1')).toMatchObject({ status: 'pending' })
+
+    const liveQueuePath = path.join(tmp, 'video-queue-live-lock-timeout.jsonl')
+    const liveLockPath = `${liveQueuePath}.lock`
+    await mkdir(liveLockPath)
+    await writeFile(path.join(liveLockPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, 'utf8')
+
+    const startedAt = Date.now()
+    const liveEnqueue = enqueueVideoItems([videoBookmark()], {
+      queuePath: liveQueuePath,
+      now: new Date('2026-06-07T12:00:00Z'),
+      lockTimeoutMs: 75,
+      lockStaleMs: 60_000,
+    })
+    let liveOutcome: 'resolved' | 'hung' | Error
+    try {
+      liveOutcome = await Promise.race([
+        liveEnqueue.then(() => 'resolved' as const, (err) => err as Error),
+        delay(500).then(() => 'hung' as const),
+      ])
+    } finally {
+      await rm(liveLockPath, { recursive: true, force: true })
+      await liveEnqueue.catch(() => undefined)
+    }
+
+    expect(liveOutcome).toBeInstanceOf(Error)
+    expect((liveOutcome as Error).message).toMatch(/timed out acquiring video queue lock/)
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
+  })
+
   it('rejects remote OCR URLs outside the twimg allowlist before fetching', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('fetch should not be called'))
     try {

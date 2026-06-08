@@ -48,6 +48,12 @@ const SQLITE_VEC_TABLE = 'bookmark_vec'
 const SQLITE_VEC_ROWIDS_TABLE = 'bookmark_vec_idmap'
 const SQLITE_VEC_META_TABLE = 'bookmark_vec_meta'
 const SQLITE_VEC_META_KEY = 'active'
+const SQLITE_VEC_SHADOW_TABLES = [
+  'bookmark_vec_rowids',
+  'bookmark_vec_chunks',
+  'bookmark_vec_info',
+  'bookmark_vec_vector_chunks00',
+] as const
 
 export function openVectorStore(options: VecOptions): VectorStore {
   return new BetterSqliteVectorStore(options)
@@ -232,6 +238,7 @@ class BetterSqliteVectorStore implements VectorStore {
       );
       DROP TABLE IF EXISTS ${SQLITE_VEC_TABLE};
       DROP TABLE IF EXISTS ${SQLITE_VEC_ROWIDS_TABLE};
+      ${SQLITE_VEC_SHADOW_TABLES.map((tableName) => `DROP TABLE IF EXISTS ${tableName};`).join('\n      ')}
       CREATE TABLE ${SQLITE_VEC_ROWIDS_TABLE} (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
         bookmark_id TEXT NOT NULL UNIQUE
@@ -353,7 +360,7 @@ class BetterSqliteVectorStore implements VectorStore {
         SELECT rowid, distance
         FROM ${SQLITE_VEC_TABLE}
         WHERE embedding MATCH @embedding
-          AND k = ${candidateLimit}
+          AND k = @candidateLimit
         ORDER BY distance
       ) knn
       JOIN ${SQLITE_VEC_ROWIDS_TABLE} m ON m.rowid = knn.rowid
@@ -364,9 +371,10 @@ class BetterSqliteVectorStore implements VectorStore {
       LIMIT @limit
     `).all({
       embedding: JSON.stringify(vector),
+      candidateLimit: sqliteInteger(candidateLimit, 'candidateLimit'),
       model,
       dimensions: vector.length,
-      limit,
+      limit: sqliteInteger(limit, 'limit'),
     }) as { bookmarkId: string; distance: number }[]
   }
 
@@ -423,8 +431,17 @@ function sqliteVecExtensionPath(options: VecOptions): string | undefined {
 }
 
 function normalizeLimit(limit: number): number {
-  if (!Number.isFinite(limit) || limit <= 0) return 10
-  return Math.min(200, Math.floor(limit))
+  const numericLimit = Number(limit)
+  if (!Number.isFinite(numericLimit) || numericLimit <= 0) return 10
+  const integerLimit = Math.trunc(numericLimit)
+  if (!Number.isInteger(integerLimit)) return 10
+  return Math.min(200, integerLimit)
+}
+
+function sqliteInteger(value: number, name: string): bigint {
+  const integerValue = Math.trunc(Number(value))
+  if (!Number.isInteger(integerValue)) throw new Error(`${name} must be a finite integer`)
+  return BigInt(integerValue)
 }
 
 function assertVector(vector: number[]): void {

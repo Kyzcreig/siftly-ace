@@ -590,20 +590,94 @@ async function ensureParent(filePath: string): Promise<void> {
 }
 
 const VIDEO_QUEUE_LOCK_RETRY_MS = 25
+const VIDEO_QUEUE_LOCK_TIMEOUT_MS = 30_000
+const VIDEO_QUEUE_LOCK_STALE_MS = 10 * 60_000
+
+interface VideoQueueLockOptions {
+  timeoutMs?: number
+  staleMs?: number
+}
+
+interface VideoQueueLockOwner {
+  pid?: number
+  createdAt?: string
+}
 
 function videoQueueLockPath(queuePath: string): string {
   return `${queuePath}.lock`
 }
 
-async function acquireVideoQueueLock(queuePath: string): Promise<() => Promise<void>> {
+function videoQueueLockOwnerPath(lockPath: string): string {
+  return path.join(lockPath, 'owner.json')
+}
+
+function normalizeMs(value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback
+  if (!Number.isFinite(value) || value < 0) return fallback
+  return Math.floor(value)
+}
+
+async function readVideoQueueLockOwner(lockPath: string): Promise<VideoQueueLockOwner | null> {
+  try {
+    const parsed = parseJson<Record<string, unknown>>(await readFile(videoQueueLockOwnerPath(lockPath), 'utf8'), {})
+    const pid = typeof parsed.pid === 'number' ? parsed.pid : Number(parsed.pid)
+    return {
+      pid: Number.isInteger(pid) && pid > 0 ? pid : undefined,
+      createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : undefined,
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    return null
+  }
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ESRCH'
+  }
+}
+
+function staleVideoQueueLockReason(owner: VideoQueueLockOwner | null, staleMs: number, nowMs: number): string | null {
+  if (!owner) return null
+  const createdAtMs = owner.createdAt ? Date.parse(owner.createdAt) : Number.NaN
+  if (Number.isFinite(createdAtMs) && nowMs - createdAtMs > staleMs) {
+    return `owner createdAt ${owner.createdAt} is older than ${staleMs}ms`
+  }
+  if (owner.pid !== undefined && !isPidAlive(owner.pid)) {
+    return `owner pid ${owner.pid} is not alive`
+  }
+  return null
+}
+
+function describeVideoQueueLockOwner(owner: VideoQueueLockOwner | null): string {
+  if (!owner) return 'owner unknown'
+  return `owner pid=${owner.pid ?? 'unknown'} createdAt=${owner.createdAt ?? 'unknown'}`
+}
+
+async function reclaimStaleVideoQueueLock(lockPath: string, staleMs: number): Promise<boolean> {
+  const owner = await readVideoQueueLockOwner(lockPath)
+  const reason = staleVideoQueueLockReason(owner, staleMs, Date.now())
+  if (!reason) return false
+  await rm(lockPath, { recursive: true, force: true })
+  return true
+}
+
+async function acquireVideoQueueLock(queuePath: string, options: VideoQueueLockOptions = {}): Promise<() => Promise<void>> {
   const lockPath = videoQueueLockPath(queuePath)
+  const timeoutMs = normalizeMs(options.timeoutMs, VIDEO_QUEUE_LOCK_TIMEOUT_MS)
+  const staleMs = normalizeMs(options.staleMs, VIDEO_QUEUE_LOCK_STALE_MS)
+  const startedAt = Date.now()
+  let attemptedStaleReclaim = false
   await ensureParent(queuePath)
 
   while (true) {
     try {
       await mkdir(lockPath)
       try {
-        await writeFile(path.join(lockPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, 'utf8')
+        await writeFile(videoQueueLockOwnerPath(lockPath), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, 'utf8')
       } catch (err) {
         await rm(lockPath, { recursive: true, force: true })
         throw err
@@ -613,13 +687,22 @@ async function acquireVideoQueueLock(queuePath: string): Promise<() => Promise<v
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-      await delay(VIDEO_QUEUE_LOCK_RETRY_MS)
+      if (!attemptedStaleReclaim && await reclaimStaleVideoQueueLock(lockPath, staleMs)) {
+        attemptedStaleReclaim = true
+        continue
+      }
+      const elapsedMs = Date.now() - startedAt
+      if (elapsedMs >= timeoutMs) {
+        const owner = await readVideoQueueLockOwner(lockPath)
+        throw new Error(`timed out acquiring video queue lock ${lockPath} after ${timeoutMs}ms; ${describeVideoQueueLockOwner(owner)}`)
+      }
+      await delay(Math.min(VIDEO_QUEUE_LOCK_RETRY_MS, Math.max(0, timeoutMs - elapsedMs)))
     }
   }
 }
 
-async function withVideoQueueLock<T>(queuePath: string, fn: () => Promise<T>): Promise<T> {
-  const release = await acquireVideoQueueLock(queuePath)
+async function withVideoQueueLock<T>(queuePath: string, fn: () => Promise<T>, options: VideoQueueLockOptions = {}): Promise<T> {
+  const release = await acquireVideoQueueLock(queuePath, options)
   try {
     return await fn()
   } finally {
@@ -685,7 +768,7 @@ function videoSourceUrl(bookmark: EnrichBookmarkInput, media: EnrichMediaItemInp
   return validateVideoSourceUrl(`https://x.com/${authorHandle}/status/${bookmark.tweetId}`)
 }
 
-export async function enqueueVideoItems(bookmarks: EnrichBookmarkInput[], options: { queuePath?: string; now?: Date; maxAttempts?: number } = {}): Promise<{ enqueued: number; skipped: number }> {
+export async function enqueueVideoItems(bookmarks: EnrichBookmarkInput[], options: { queuePath?: string; now?: Date; maxAttempts?: number; lockTimeoutMs?: number; lockStaleMs?: number } = {}): Promise<{ enqueued: number; skipped: number }> {
   const queuePath = resolveVideoQueuePath(options.queuePath)
   return withVideoQueueLock(queuePath, async () => {
     const state = await readVideoQueueState(queuePath)
@@ -726,7 +809,7 @@ export async function enqueueVideoItems(bookmarks: EnrichBookmarkInput[], option
 
     if (state.size > 0 || enqueued > 0) await writeVideoQueueState(queuePath, state)
     return { enqueued, skipped }
-  })
+  }, { timeoutMs: options.lockTimeoutMs, staleMs: options.lockStaleMs })
 }
 
 function expandHome(filePath: string, env: Record<string, string | undefined> = process.env): string {
@@ -779,6 +862,8 @@ export async function drainVideoQueue(options: {
   transcribe?: (sourceUrl: string) => Promise<string>
   now?: Date
   maxAttempts?: number
+  lockTimeoutMs?: number
+  lockStaleMs?: number
 }): Promise<{ processed: number; transcribed: number; failed: number }> {
   const queuePath = resolveVideoQueuePath(options.queuePath)
   return withVideoQueueLock(queuePath, async () => {
@@ -857,5 +942,5 @@ export async function drainVideoQueue(options: {
     }
 
     return { processed, transcribed, failed }
-  })
+  }, { timeoutMs: options.lockTimeoutMs, staleMs: options.lockStaleMs })
 }

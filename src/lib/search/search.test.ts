@@ -246,6 +246,51 @@ describe('hybrid bookmark search', () => {
     }
   })
 
+  realSqliteVecIt('self-heals legacy sqlite-vec rowids shadow table while embedding', async () => {
+    const { dir, dbPath } = createFixtureDb()
+    cleanupDirs.push(dir)
+
+    const db = new Database(dbPath)
+    try {
+      db.exec('CREATE TABLE bookmark_vec_rowids (rowid INTEGER PRIMARY KEY, bookmark_id TEXT NOT NULL UNIQUE)')
+    } finally {
+      db.close()
+    }
+
+    const embedResult = await embedBookmarkCorpus({ dbPath, provider, force: true })
+    expect(embedResult.vecMode).toBe('sqlite-vec')
+
+    const store = openVectorStore({ dbPath })
+    try {
+      const nearest = store.search(keywordVector('sqlite vec macos semantic search'), 3, provider.model)
+      expect(nearest.length).toBeGreaterThan(0)
+      expect(nearest.every((row) => row.mode === 'sqlite-vec')).toBe(true)
+      expect(nearest[0]?.bookmarkId).toBe('b-sqlite-vec')
+    } finally {
+      store.close()
+    }
+  })
+
+  realSqliteVecIt('normalizes sqlite-vec limit values before binding integer parameters', () => {
+    const { dir, dbPath } = createFixtureDb()
+    cleanupDirs.push(dir)
+
+    const store = openVectorStore({ dbPath })
+    try {
+      const activeModel = 'active-limit-normalization-model'
+      store.upsert({ bookmarkId: 'b-xurl', model: activeModel, vector: [1, 0, 0] })
+      store.upsert({ bookmarkId: 'b-openai-local', model: activeModel, vector: [0.9, 0.1, 0] })
+      store.upsert({ bookmarkId: 'b-obsidian', model: activeModel, vector: [0, 1, 0] })
+
+      const nearest = store.search([1, 0, 0], '1.9' as unknown as number, activeModel)
+      expect(nearest).toHaveLength(1)
+      expect(nearest[0]).toMatchObject({ bookmarkId: 'b-xurl', mode: 'sqlite-vec' })
+      expect(nearest.every((row) => row.mode === 'sqlite-vec')).toBe(true)
+    } finally {
+      store.close()
+    }
+  })
+
   it('scopes brute-force vector search to the active model and skips mixed dimensions', () => {
     const { dir, dbPath } = createFixtureDb()
     cleanupDirs.push(dir)
