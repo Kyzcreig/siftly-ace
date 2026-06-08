@@ -51,6 +51,8 @@ function buildDashboardData(result: QueryResult) {
     authorName: b.authorName,
     tweetCreatedAt: b.tweetCreatedAt?.toISOString() ?? null,
     importedAt: b.importedAt.toISOString(),
+    rawJson: b.rawJson,
+    entities: b.entities,
     mediaItems: b.mediaItems,
     categories: b.categories.map((bc) => ({
       id: bc.category.id,

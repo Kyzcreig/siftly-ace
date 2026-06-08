@@ -2,7 +2,9 @@
 
 import React, { useRef, useEffect, useState } from 'react'
 import { ExternalLink, Download, FileText, Play, Pencil, X, Check, ImageOff, Bookmark, Globe } from 'lucide-react'
+import { EmbeddedTweet } from 'react-tweet'
 import type { BookmarkWithMedia, Category } from '@/lib/types'
+import type { Tweet } from 'react-tweet/api'
 
 // ── URL helpers ────────────────────────────────────────────────────────────────
 
@@ -237,6 +239,189 @@ function formatDate(dateStr: string | null): string {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+// ── Quote tweet helpers ────────────────────────────────────────────────────────
+
+type BookmarkQuoteFields = BookmarkWithMedia & {
+  rawJson?: string | null
+  entities?: string | null
+}
+
+type TweetEntitiesLike = {
+  tweetType?: string
+  urls?: Array<{ expanded_url?: string; unwound_url?: string; url?: string }>
+}
+
+type RawTweetLike = {
+  tweet?: unknown
+  referenced_tweets?: Array<{ type?: string; id?: string }>
+  entities?: unknown
+}
+
+type QuoteState =
+  | { status: 'resolving' | 'missing' }
+  | { status: 'loading'; quotedTweetId: string }
+  | { status: 'loaded'; quotedTweetId: string; tweet: Tweet }
+  | { status: 'not-found'; quotedTweetId: string }
+
+const TWEET_ID_RE = /^[0-9]+$/
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function quotedIdFromUrl(url: string | undefined): string | null {
+  if (!url) return null
+  const match = url.match(/(?:twitter\.com|x\.com)\/(?:i\/web\/status|[^/]+\/status)\/(\d+)/i)
+  return match?.[1] ?? null
+}
+
+function quotedIdFromEntities(value: unknown): string | null {
+  const parsed = parseMaybeJson(value)
+  if (!isObject(parsed)) return null
+
+  const entities = parsed as TweetEntitiesLike
+  if (entities.tweetType !== 'quote') return null
+
+  for (const url of entities.urls ?? []) {
+    const quotedId = quotedIdFromUrl(url.expanded_url) ?? quotedIdFromUrl(url.unwound_url) ?? quotedIdFromUrl(url.url)
+    if (quotedId) return quotedId
+  }
+  return null
+}
+
+function quotedIdFromRawJson(rawJson: unknown, entities?: unknown): string | null {
+  const raw = parseMaybeJson(rawJson)
+  if (!isObject(raw)) return quotedIdFromEntities(entities)
+
+  const tweet = isObject((raw as RawTweetLike).tweet) ? (raw as RawTweetLike).tweet as RawTweetLike : raw as RawTweetLike
+  const refs = tweet.referenced_tweets ?? []
+  const quotedRef = refs.find((ref) => ref?.type === 'quoted' && typeof ref.id === 'string' && TWEET_ID_RE.test(ref.id))
+  if (quotedRef?.id) return quotedRef.id
+
+  return quotedIdFromEntities(tweet.entities) ?? quotedIdFromEntities((raw as RawTweetLike).entities) ?? quotedIdFromEntities(entities)
+}
+
+export function extractQuotedTweetIdFromBookmark(bookmark: BookmarkWithMedia): string | null {
+  const fields = bookmark as BookmarkQuoteFields
+  return quotedIdFromRawJson(fields.rawJson ?? null, fields.entities ?? null)
+}
+
+function quotedTweetUrl(quotedTweetId: string): string {
+  return `https://twitter.com/i/web/status/${quotedTweetId}`
+}
+
+function QuotedTweetFallback({ quotedTweetId }: { quotedTweetId: string }) {
+  const href = quotedTweetUrl(quotedTweetId)
+  return (
+    <a
+      data-testid="quoted-tweet-fallback"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="mt-3 flex items-center gap-3 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800/40 hover:border-zinc-700 hover:bg-zinc-800/70 transition-all group/link px-4 py-3"
+    >
+      <div className="w-10 h-10 rounded-lg bg-zinc-700/60 flex items-center justify-center shrink-0">
+        <svg viewBox="0 0 24 24" className="w-5 h-5 text-zinc-400" fill="currentColor" aria-hidden="true">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-zinc-200 group-hover/link:text-white transition-colors">
+          View quoted post on X
+        </p>
+        <p className="text-xs text-zinc-500 truncate">twitter.com/i/web/status/{quotedTweetId}</p>
+      </div>
+      <ExternalLink size={14} className="text-zinc-600 group-hover/link:text-zinc-400 transition-colors shrink-0" />
+    </a>
+  )
+}
+
+function QuotedTweetLoading({ quotedTweetId }: { quotedTweetId: string }) {
+  return (
+    <div
+      data-testid="quoted-tweet-loading"
+      data-theme="dark"
+      className="dark mt-3 rounded-xl border border-zinc-800 bg-zinc-800/40 h-28 animate-pulse"
+      aria-label={`Loading quoted tweet ${quotedTweetId}`}
+    />
+  )
+}
+
+export function QuotedTweetFrame({ quotedTweetId, tweet }: { quotedTweetId: string; tweet: Tweet | null }) {
+  if (!tweet) return <QuotedTweetFallback quotedTweetId={quotedTweetId} />
+
+  return (
+    <div
+      data-testid="quoted-tweet-frame"
+      data-theme="dark"
+      className="dark mt-3 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40 [&_.react-tweet-theme]:!my-0 [&_.react-tweet-theme]:!max-w-none [&_.react-tweet-theme]:!border-0"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <EmbeddedTweet tweet={tweet} />
+    </div>
+  )
+}
+
+function QuotedTweetEmbed({
+  initialQuotedTweetId,
+}: {
+  initialQuotedTweetId: string | null
+}) {
+  const [state, setState] = useState<QuoteState>(
+    initialQuotedTweetId ? { status: 'loading', quotedTweetId: initialQuotedTweetId } : { status: 'resolving' },
+  )
+
+  useEffect(() => {
+    if (!initialQuotedTweetId) {
+      setState({ status: 'missing' })
+      return
+    }
+
+    let cancelled = false
+    setState({ status: 'loading', quotedTweetId: initialQuotedTweetId })
+
+    fetch(`/api/tweets/${encodeURIComponent(initialQuotedTweetId)}`)
+      .then(async (res) => {
+        if (res.status === 404) return { tweet: null }
+        if (!res.ok) throw new Error(`tweet fetch failed: ${res.status}`)
+        return res.json() as Promise<{ tweet: Tweet | null }>
+      })
+      .then((result) => {
+        if (cancelled) return
+        setState(result.tweet
+          ? { status: 'loaded', quotedTweetId: initialQuotedTweetId, tweet: result.tweet }
+          : { status: 'not-found', quotedTweetId: initialQuotedTweetId })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: 'not-found', quotedTweetId: initialQuotedTweetId })
+      })
+
+    return () => { cancelled = true }
+  }, [initialQuotedTweetId])
+
+  switch (state.status) {
+    case 'resolving':
+    case 'missing':
+      return null
+    case 'loading':
+      return <QuotedTweetLoading quotedTweetId={state.quotedTweetId} />
+    case 'not-found':
+      return <QuotedTweetFrame quotedTweetId={state.quotedTweetId} tweet={null} />
+    case 'loaded':
+      return <QuotedTweetFrame quotedTweetId={state.quotedTweetId} tweet={state.tweet} />
+  }
 }
 
 // ── Author Avatar ──────────────────────────────────────────────────────────────
@@ -593,8 +778,13 @@ export default function BookmarkCard({ bookmark }: BookmarkCardProps) {
   // Always strip t.co shortlinks from display text — Twitter appends them to every tweet
   const tcoUrls = bookmark.text.match(TCO_REGEX) ?? []
   const cleanText = stripTcoUrls(bookmark.text)
-  // Show link preview only when there's no real media attached
-  const previewUrl = !hasMedia && tcoUrls.length > 0 ? tcoUrls[tcoUrls.length - 1] : null
+  const quoteFields = bookmark as BookmarkQuoteFields
+  const rawJson = quoteFields.rawJson ?? null
+  const entities = quoteFields.entities ?? null
+  const initialQuotedTweetId = extractQuotedTweetIdFromBookmark(bookmark)
+  // Show generic link preview only when there's no real media and this is not
+  // a quote tweet. Quote URLs get the richer embedded quoted-post treatment.
+  const previewUrl = !initialQuotedTweetId && !hasMedia && tcoUrls.length > 0 ? tcoUrls[tcoUrls.length - 1] : null
 
   const TEXT_LIMIT = 280
   const isLong = cleanText.length > TEXT_LIMIT
@@ -789,6 +979,7 @@ export default function BookmarkCard({ bookmark }: BookmarkCardProps) {
           {previewUrl && (
             <LinkPreview url={previewUrl} tweetUrl={tweetUrl} tweetId={bookmark.tweetId} prominent={!displayText} />
           )}
+          <QuotedTweetEmbed initialQuotedTweetId={initialQuotedTweetId} />
         </div>
 
         {/* Footer: categories + meta — fixed two-row structure keeps all cards aligned */}
