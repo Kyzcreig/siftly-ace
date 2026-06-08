@@ -59,9 +59,6 @@ async function createTextImage(outputPath: string, text: string): Promise<void> 
   ])
 }
 
-async function createSpeechAudio(outputPath: string, text: string): Promise<void> {
-  await execFileAsync('/usr/bin/say', ['-v', 'Samantha', '-o', outputPath, text], { timeout: 30_000 })
-}
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ')

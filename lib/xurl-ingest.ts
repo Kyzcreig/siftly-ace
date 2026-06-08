@@ -90,6 +90,7 @@ interface ExistingBookmarkRow {
   mediaItems?: ExistingMediaItemRow[]
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma delegate args are structurally diverse; callers supply concrete shapes.
 type DbDelegateMethod<TResult = unknown> = (args: any) => Promise<TResult>
 
 export interface XurlIngestDb {

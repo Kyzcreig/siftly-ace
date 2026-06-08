@@ -116,6 +116,45 @@ describe('siftly-ace pipeline e2e', () => {
     expect(() => createE2EEmbeddingProvider({ SIFTLY_E2E_LIVE_EMBED: '1' } as unknown as NodeJS.ProcessEnv)).toThrow(/requires SIFTLY_EMBED_API_KEY or OPENAI_API_KEY/)
   })
 
+  it('survives a hard-failing image mid-OCR-batch and still processes the good media after it', async () => {
+    // Regression guard for the silent-batch-abort bug: runOcrForMediaItems
+    // used to throw on a single bad image (404/decode/timeout), losing OCR on
+    // every later item. A broken image before the good meme must not stop the
+    // good meme from being OCR'd, embedded, and exported.
+    const fixture = await newFixture()
+    const db = new Database(fixture.dbPath)
+    const adapter = new SqliteE2EDb(db)
+    try {
+      // Insert a broken image item that sorts BEFORE the real meme media id.
+      db.prepare(
+        `INSERT INTO MediaItem (id, bookmarkId, type, url, thumbnailUrl, localPath, imageTags)
+         VALUES (@id, @bookmarkId, @type, @url, @thumbnailUrl, NULL, @imageTags)`,
+      ).run({
+        id: 'media-aaa-broken',
+        bookmarkId: 'b-obsidian-ocr-meme',
+        type: 'photo',
+        url: '/nonexistent/path/does-not-exist.png', // tesseract can't read -> throws
+        thumbnailUrl: null,
+        imageTags: null,
+      })
+
+      const ocrResult = await runOcrForMediaItems(adapter, selectMediaForOcr(db), 30_000)
+
+      // Batch did not abort: both attempted, one failed (broken), one succeeded (meme).
+      expect(ocrResult.attempted).toBe(2)
+      expect(ocrResult.failed).toBe(1)
+      expect(ocrResult.succeeded).toBe(1)
+
+      // The good meme AFTER the failure was still OCR'd.
+      const memeTags = parseImageTags(mediaImageTags(db, 'media-meme'))
+      expect(normalizeText(String((memeTags.text_ocr as string[]).join(' ')))).toContain('pineapple meme')
+      // The broken item was left untouched (no partial/garbage write).
+      expect(mediaImageTags(db, 'media-aaa-broken')).toBeNull()
+    } finally {
+      db.close()
+    }
+  }, 120_000)
+
   it('keeps brute-force fallback correct and model-scoped when sqlite-vec is intentionally disabled', async () => {
     const fixture = await newFixture()
     const provider = createRecordedProvider()

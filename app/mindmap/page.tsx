@@ -92,7 +92,7 @@ function UncategorizedState({ totalBookmarks }: { totalBookmarks: number }) {
         }
       })
       .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [])
 
   async function startCategorization() {

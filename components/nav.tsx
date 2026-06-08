@@ -95,7 +95,7 @@ const PIPELINE_STAGE_LABELS: Record<string, string> = {
 export default function Nav() {
   const pathname = usePathname()
   const [categories, setCategories] = useState<CategoryItem[]>([])
-  const [totalBookmarks, setTotalBookmarks] = useState<number | null>(null)
+  const [, setTotalBookmarks] = useState<number | null>(null)
   const [showAllCats, setShowAllCats] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(() => {
     if (typeof window === 'undefined') return true

@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Search, X, ArrowRight, Loader2 } from 'lucide-react'
 import type { BookmarkWithMedia } from '@/lib/types'
 
-interface SearchResult extends BookmarkWithMedia {
-  total?: number
-}
 
 export default function CommandPalette() {
   const [open, setOpen] = useState(false)

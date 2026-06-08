@@ -16,7 +16,6 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Zap,
   Copy,
   Coffee,
   Terminal,
@@ -1060,13 +1059,6 @@ function DangerZoneSection({ onToast }: { onToast: (t: Toast) => void }) {
   )
 }
 
-const TECH_STACK = [
-  { label: 'Next.js 15', color: 'bg-zinc-800 text-zinc-300 border-zinc-700' },
-  { label: 'Prisma + SQLite', color: 'bg-zinc-800 text-zinc-300 border-zinc-700' },
-  { label: 'Anthropic / OpenAI / MiniMax', color: 'bg-blue-500/10 text-blue-300 border-blue-500/20' },
-  { label: 'React Flow', color: 'bg-zinc-800 text-zinc-300 border-zinc-700' },
-  { label: 'Tailwind CSS', color: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20' },
-]
 
 const DONATION_ADDRESS = '0xcF10B967a9e422753812004Cd59990f62E360760'
 

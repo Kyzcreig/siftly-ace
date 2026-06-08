@@ -6,13 +6,9 @@ import type { BookmarkWithMedia, Category } from '@/lib/types'
 
 // ── URL helpers ────────────────────────────────────────────────────────────────
 
-const URL_REGEX = /https?:\/\/[^\s]+/g
 // Twitter always shortens links to t.co — strip these from display text
 const TCO_REGEX = /https?:\/\/t\.co\/[^\s]+/g
 
-function extractUrls(text: string): string[] {
-  return text.match(URL_REGEX) ?? []
-}
 
 /** Always strip t.co shortlinks — Twitter appends them to every tweet with a link or media */
 function stripTcoUrls(text: string): string {

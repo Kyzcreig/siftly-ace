@@ -11,14 +11,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint --max-warnings 14",
     "test": "vitest run",
     "test:e2e": "vitest run --dir e2e",
     "siftly": "tsx cli/siftly.ts",
     "ingest": "tsx scripts/ingest.ts",
     "embed": "tsx scripts/embed.ts",
     "embed:secure": "scripts/with-secrets.sh tsx scripts/embed.ts",
-    "test:e2e:live": "scripts/with-secrets.sh vitest run --dir e2e"
+    "test:e2e:live": "scripts/with-secrets.sh vitest run --dir e2e",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e",
+    "verify:live": "npm run typecheck && npm run lint && npm run test && npm run test:e2e:live"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

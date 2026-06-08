@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process'
+import { execSync } from 'child_process'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'

@@ -383,15 +383,6 @@ interface BookmarkRow {
   source: 'bookmark' | 'like'
 }
 
-interface MediaRow {
-  id: string
-  bookmarkId: string
-  type: string
-  url: string
-  thumbnailUrl: string | null
-  localPath: string | null
-  imageTags: string | null
-}
 
 interface CategoryRow {
   id: string
