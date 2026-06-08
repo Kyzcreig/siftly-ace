@@ -68,6 +68,8 @@ describe('xurl ingest cost estimate', () => {
 
     expect(logs[0]).toBe('est: 4000 reads ~= $20.00 (rate $0.005/read)')
     expect(ingest).toHaveBeenCalledOnce()
+    // Full backfill resumes from the persisted cursor.
+    expect((ingest.mock.calls[0] as unknown[])[0]).toMatchObject({ resumeFromCursor: true })
   })
 
   it('--incremental skips the estimate gate and proceeds without an estimate', async () => {
@@ -82,5 +84,8 @@ describe('xurl ingest cost estimate', () => {
 
     expect(logs.some((line) => line.startsWith('est: '))).toBe(false)
     expect(ingest).toHaveBeenCalledOnce()
+    // CRITICAL wiring: incremental must start from the TOP, not resume a deep cursor,
+    // or it silently skips new top-of-list bookmarks (X paginates newest→older).
+    expect((ingest.mock.calls[0] as unknown[])[0]).toMatchObject({ resumeFromCursor: false })
   })
 })

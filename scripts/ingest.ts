@@ -133,6 +133,9 @@ export async function runIngestCli(argv: string[], deps: IngestCliDependencies =
     limit: options.limit,
     dryRun: options.dryRun,
     sources: options.sources,
+    // Incremental runs must start from the TOP of the list (X paginates newest→older;
+    // resuming from a persisted cursor would skip new bookmarks). Full backfill resumes.
+    resumeFromCursor: !options.incremental,
   })
 
   printResult(result, options, log)
