@@ -30,6 +30,17 @@ if [[ $# -eq 0 ]]; then
   exit 64
 fi
 
+# Under launchd the environment is sparse: OP_SERVICE_ACCOUNT_TOKEN may be unset even though
+# it lives in ~/.hermes/.env. Source ONLY that one var (no secret echoed) so op can auth
+# non-interactively. Interactive shells already have it exported and skip this.
+if [[ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" && -r "$HOME/.hermes/.env" ]]; then
+  _optok_line="$(grep -E "^OP_SERVICE_ACCOUNT_TOKEN=" "$HOME/.hermes/.env" | head -n1)"
+  if [[ -n "$_optok_line" ]]; then
+    export OP_SERVICE_ACCOUNT_TOKEN="${_optok_line#OP_SERVICE_ACCOUNT_TOKEN=}"
+  fi
+  unset _optok_line
+fi
+
 if ! command -v op >/dev/null 2>&1; then
   echo "with-secrets.sh: 1Password CLI 'op' not found on PATH" >&2
   exit 69
