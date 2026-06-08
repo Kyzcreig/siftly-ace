@@ -136,6 +136,39 @@ describe('Phase 3 enrichment', () => {
     expect(JSON.stringify(enrichment)).not.toMatch(/why|intent|reason/i)
   })
 
+  it('densifies tags from X context_annotations when keyword rules find nothing', () => {
+    // A tweet whose text has no taggable keywords, but X's own context
+    // annotations classify it as crypto + finance. Should still get tagged.
+    const bookmark: EnrichBookmarkInput = {
+      id: 'bookmark-ctx',
+      tweetId: '777',
+      text: 'wild times out there lol',
+      authorHandle: 'someone',
+      rawJson: JSON.stringify({
+        tweet: {
+          id: '777',
+          context_annotations: [
+            { domain: { name: 'Unified Twitter Taxonomy' }, entity: { name: 'Cryptocurrencies' } },
+            { domain: { name: 'Interests and Hobbies Vertical' }, entity: { name: 'Business & finance' } },
+            { domain: { name: 'Unified Twitter Taxonomy' }, entity: { name: 'Politics' } },
+          ],
+        },
+      }),
+      entities: null,
+      semanticTags: null,
+      enrichmentMeta: null,
+      mediaItems: [],
+      categories: [],
+    }
+
+    const enrichment = extractFactualEnrichment(bookmark)
+
+    expect(enrichment.topicTags).toEqual(expect.arrayContaining(['crypto-web3', 'finance', 'politics']))
+    expect(enrichment.categorySlugs).toEqual(expect.arrayContaining(['finance-crypto', 'finance-investing', 'politics']))
+    // context annotations are still preserved on entities for downstream use
+    expect(enrichment.entities.contextAnnotations.length).toBe(3)
+  })
+
   it('keeps vision/OCR behind a cost-estimate confirmation gate', () => {
     const large = estimateVisionCost({ imageCount: 200, videoThumbnailCount: 10 })
     expect(large.totalItems).toBe(210)

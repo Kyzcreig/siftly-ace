@@ -130,6 +130,48 @@ const TOPIC_RULES: Array<{ tag: string; category: string; pattern: RegExp }> = [
   { tag: 'news', category: 'news', pattern: /breaking|news|report|election|regulation|policy|lawsuit|geopolitic/i },
 ]
 
+// X's own context_annotations (Unified Twitter Taxonomy, Business Taxonomy,
+// Interests & Hobbies, Brand, Person, etc.) are a free, high-coverage signal
+// already present in the tweet payload. Map their entity names onto our tag
+// vocabulary so items the keyword tagger misses still get classified.
+// Substring match is case-insensitive against the annotation entity name.
+const CONTEXT_ANNOTATION_RULES: Array<{ tag: string; category: string; match: RegExp }> = [
+  { tag: 'ai-ml', category: 'ai-resources', match: /artificial intelligence|machine learning|\bai\b|generative ai|openai|anthropic|large language/i },
+  { tag: 'developer-tools', category: 'dev-tools', match: /computer programming|software|developer|programming languages?|web development|technology business/i },
+  { tag: 'crypto-web3', category: 'finance-crypto', match: /crypto|bitcoin|cryptocurren|digital assets|blockchain|cryptocoins|web3|ethereum/i },
+  { tag: 'finance', category: 'finance-investing', match: /financial services|business & finance|investing|stock market|economy|markets?\b|banking/i },
+  { tag: 'startups-business', category: 'startups-business', match: /business personalities|entrepreneur|leadership|startup|venture capital|business taxonomy|small business/i },
+  { tag: 'politics', category: 'politics', match: /politic|election|government|president|congress|policy|political figures|geopolitic/i },
+  { tag: 'tech-industry', category: 'tech-industry', match: /tech personalities|technology\b|gadgets|consumer electronics|big tech/i },
+  { tag: 'gaming', category: 'gaming', match: /gaming|video game|esports|game business/i },
+  { tag: 'sports', category: 'sports', match: /sports?\b|fitness business|athlete|football|basketball|soccer|nba|nfl/i },
+  { tag: 'automotive', category: 'automotive', match: /automotive|automobile|electric vehicle|\btesla\b|\bcars?\b|aircraft/i },
+  { tag: 'food-drink', category: 'food-drink', match: /food & beverage|food and beverage|restaurant|drinks?\b|cooking|cuisine/i },
+  { tag: 'entertainment', category: 'entertainment', match: /entertainment|movies?|television|music\b|celebrities|streaming|leisure business/i },
+  { tag: 'science', category: 'science', match: /science\b|space|astronomy|physics|biology|research\b|nasa|spacex/i },
+  { tag: 'health', category: 'health-wellness', match: /health|wellness|medicine|fitness\b|nutrition|mental health/i },
+  { tag: 'news', category: 'news', match: /\bnews\b|journalism|current events|breaking/i },
+]
+
+function tagsFromContextAnnotations(
+  contextAnnotations: unknown[],
+): { topicTags: string[]; categorySlugs: string[] } {
+  const topicTags: string[] = []
+  const categorySlugs: string[] = []
+  for (const raw of contextAnnotations) {
+    const ca = raw as { entity?: { name?: unknown } }
+    const name = typeof ca?.entity?.name === 'string' ? ca.entity.name : null
+    if (!name) continue
+    for (const rule of CONTEXT_ANNOTATION_RULES) {
+      if (rule.match.test(name)) {
+        topicTags.push(rule.tag)
+        categorySlugs.push(rule.category)
+      }
+    }
+  }
+  return { topicTags: uniquePreserveCase(topicTags), categorySlugs: uniquePreserveCase(categorySlugs) }
+}
+
 const TOOL_RULES: Array<{ name: string; pattern: RegExp }> = [
   { name: 'OpenAI', pattern: /\bopenai\b|\bgpt[- ]?\d*\b/i },
   { name: 'Claude', pattern: /\bclaude\b|\banthropic\b/i },
@@ -317,7 +359,11 @@ export function extractFactualEnrichment(bookmark: EnrichBookmarkInput): Factual
     link_domains: domains,
   }
   const detected = detectTopicTagsAndCategories(searchText, flags)
-  const categorySlugs = uniquePreserveCase([...existingCategorySlugs(bookmark), ...detected.categorySlugs])
+  // Fold in X's own context_annotations to densify tags on items the keyword
+  // rules miss (rescues ~1k untagged items in the live corpus).
+  const fromContext = tagsFromContextAnnotations(raw.contextAnnotations ?? [])
+  const topicTags = uniquePreserveCase([...detected.topicTags, ...fromContext.topicTags])
+  const categorySlugs = uniquePreserveCase([...existingCategorySlugs(bookmark), ...detected.categorySlugs, ...fromContext.categorySlugs])
   const segment: Segment = categorySlugs.some((slug) => BRIEF_RELEVANT_CATEGORIES.has(slug)) || flags.is_launch || flags.is_benchmark || flags.has_code
     ? 'brief-relevant'
     : 'everything-else'
@@ -331,7 +377,7 @@ export function extractFactualEnrichment(bookmark: EnrichBookmarkInput): Factual
       tweetType: format,
       contextAnnotations: raw.contextAnnotations ?? [],
     },
-    topicTags: detected.topicTags,
+    topicTags,
     categorySlugs,
     formatFlags: flags,
     segment,
