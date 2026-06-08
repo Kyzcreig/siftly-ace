@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Staged only: do not load from a worker. G2/Apollo installs this after Ace approval.
+  Proposed install: copy to ~/Library/LaunchAgents/ai.siftly.web.plist, then run
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.siftly.web.plist
+
+  Cold-load survival check required before go-live (objective reboot proxy):
+    launchctl bootout gui/$(id -u)/ai.siftly.web || true
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.siftly.web.plist
+    curl -sf http://127.0.0.1:3000/api/stats
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.siftly.web</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alexgierczyk/Projects/siftly-ace/scripts/web-server.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/alexgierczyk/Projects/siftly-ace</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>NEXT_TELEMETRY_DISABLED</key>
+    <string>1</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/alexgierczyk/Library/Logs/siftly-web.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/alexgierczyk/Library/Logs/siftly-web.log</string>
+</dict>
+</plist>
