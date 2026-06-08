@@ -16,6 +16,7 @@
     "test:e2e": "vitest run --dir e2e",
     "siftly": "tsx cli/siftly.ts",
     "ingest": "tsx scripts/ingest.ts",
+    "x-feed-fetch": "tsx scripts/x-feed-fetch.ts",
     "embed": "tsx scripts/embed.ts",
     "embed:secure": "scripts/with-secrets.sh tsx scripts/embed.ts",
     "test:e2e:live": "scripts/with-secrets.sh vitest run --dir e2e",
