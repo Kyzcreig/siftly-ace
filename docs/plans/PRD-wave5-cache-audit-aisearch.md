@@ -126,7 +126,31 @@ Yes, **once**, after the audit logging lands — that's the cheap, definitive wa
 
 ---
 
-## 7. Open Questions
-1. Cache TTL default — 90 min reasonable, or longer (the timeline doesn't change much intra-day)? Could default higher and rely on `--force` for genuine freshness.
-2. Feature 3 fix (a) vs (b): hard error on provider/key mismatch, or auto-pick the present key? (Leaning auto-pick + warn.)
-3. Should morning-digest also cache its `search/recent` calls, or leave it (cheap)? (Leaning: cache for symmetry, low priority.)
+## 7. Resolved Decisions (Ace, 2026-06-08)
+1. **Cache TTL default = 90 min** (timeline doesn't change much intra-day); `--force`/`X_FEED_FRESH=1` for genuine freshness.
+2. **AI-search provider/key mismatch → auto-pick the provider whose key IS present, log a warning** (fix 5.2(b)); hard-error 5.2(a) only if NO usable key for any provider. **The 90s CLI hang is fixed regardless** — bound it / make it opt-in so the interactive box never hangs.
+3. **Cache morning-digest `search/recent` calls too** (symmetry; Ace approved). morning-digest is cheap but caching is free wins + keeps reruns truly free.
+4. **x-feed confirming rerun happens AFTER the cache lands** so it's free, not ~$6.50.
+
+
+---
+
+## 8. Pass-1 Review Resolution (Opus via claude-api-proxy-f2, 2026-06-08)
+
+Review verdict: **BLOCK** on two real Feature-1 incremental-path bugs + day-key design. Full report: `docs/reviews/wave5-review-pass1.md`. Resolution:
+
+- **B1.2 (FIXED)** — `idIsNewer` now compares snowflake ids as **BigInt** (numeric), not length-then-lex. Correct across 18/19/20-digit changes. Regression test added.
+- **B1.1 (FIXED)** — incremental top-up no longer re-trims the merged cache against a per-run-recomputed `since` (which silently shrank the window by deleting still-valid cached tweets). The cache stores its **original sweep `since`** in `meta.since`; incremental runs anchor to that window, keep ALL existing cached tweets, and only window-check newly-fetched pages. Regression test proves a 23h->25h-old cached tweet survives a rerun.
+- **B2/B3 (FIXED)** — cache day key is now **America/Los_Angeles (PT)**, matching the cron's PT schedule and the seen-list's PT dates. The daily 7:30am PT run is the **first run of its PT day -> always a fresh MISS**, so the canonical daily run never depends on the incremental path. No `--force` needed in the prompt (it would defeat free same-morning test reruns). Regression test proves an evening-before rerun keys to the prior PT day.
+- **RC1 (DONE)** — regression tests added: incremental window-preservation, cross-digit-length id, PT-day boundary, 20-page ceiling on the incremental path. Suite now 148 unit + 10 e2e green; live re-proven cold=1/warm=0.
+- **RC2 (DESCOPED)** — `search/recent` caching is **not built**; explicitly a follow-up. The 3 interest searches (~$0.30) remain inline.
+- **RC6 (CLARIFIED)** — Feature 1's prompt edit (G-W5-1) is **DONE & approved** this session (`.bak.20260608-163534-pre-cache` exists). No longer a pending gate.
+
+### Carried into Feature 2 build (not yet built)
+- **RC3** — `pf-audit/*.json` persists Ace's full inbound timeline (handles + verbatim text). No secrets, but unbounded PII. Build requirement: 7-day prune (mirror seen-list), dir gitignored / outside synced vault, store `id`+scores+top-2 signals (drop raw `text` from the durable artifact; Obsidian archive already holds tweets). Distinguish `timeout` (no JSON) from `ok:false` (ran, declined) in `reason`.
+
+### Carried into Feature 3 build (not yet built)
+- **RC4** — provider/key guard must key off **actual env-key presence at request time** and bypass/invalidate `getProvider()`'s in-process `_cachedProvider` TTL. Bound CLI path to <=25s (confirmed `timeoutMs: 90_000` at `route.ts` ~378/388).
+- **RC5** — deterministic precedence: DB provider set-but-unusable AND a different provider's key present -> auto-pick with loud warning + surface resolved provider in response; DB provider unset -> documented fixed order.
+
+**Status:** Feature 1 BLOCK cleared (B1-B3 + RC1 fixed, live-reproven). Features 2 & 3 remain APPROVE-WITH-CHANGES, to be built with RC3/RC4/RC5 baked in.

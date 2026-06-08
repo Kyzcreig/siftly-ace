@@ -103,18 +103,36 @@ export const DEFAULT_CACHE_DIR = path.join(
   'cache',
 )
 
+/** Logical cache day in America/Los_Angeles (PT) — matches the cron schedule
+ *  (`30 7 * * *` fires in local PT) and the seen-list's PT `date` fields, so the
+ *  "first run of the day" boundary is the day Ace actually experiences. Using UTC
+ *  here was a latent bug: an evening PT rerun crosses into the next UTC day and
+ *  would key a stale file under tomorrow's name. */
 function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  // en-CA locale yields YYYY-MM-DD; timeZone shifts to PT.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
 }
 
 function sinceBoundary(now: Date, hours: number): string {
   return new Date(now.getTime() - hours * 3600_000).toISOString()
 }
 
-/** X tweet ids are 64-bit snowflakes: numerically/lexicographically (same length) monotonic in time. */
+/** X tweet ids are 64-bit snowflakes: monotonic by NUMERIC value. Compare as BigInt
+ *  (not string length+lex) so the comparison stays correct across digit-length changes
+ *  (e.g. an 18-digit legacy id, or the eventual 19->20-digit rollover). */
 export function idIsNewer(candidate: string, reference: string): boolean {
-  if (candidate.length !== reference.length) return candidate.length > reference.length
-  return candidate > reference
+  try {
+    return BigInt(candidate) > BigInt(reference)
+  } catch {
+    // Non-numeric id (shouldn't happen for X ids) — fall back to length-then-lex.
+    if (candidate.length !== reference.length) return candidate.length > reference.length
+    return candidate > reference
+  }
 }
 
 export function maxId(ids: string[]): string | null {
@@ -287,13 +305,20 @@ export async function fetchTimeline(opts: FetchOptions): Promise<FetchOutcome> {
 
   // Stale same-day cache -> incremental top-up (only pages newer than cached newest id).
   if (existing && existing.meta.newest_id) {
-    const { tweets: fresh, users: freshUsers, pages } = await sweep(opts, since, existing.meta.newest_id)
-    const merged = mergeTweets(existing.tweets, fresh).filter((t) => !t.created_at || t.created_at >= since)
+    // ANCHOR the retained window to the cache's ORIGINAL sweep boundary, not a per-run
+    // recomputed `since`. Re-trimming the merged set against `now-24h` would silently
+    // delete still-valid cached tweets (a tweet 23h old at first cache is 24h+ on a later
+    // rerun), shrinking the window below a fresh sweep's. Fetch new pages bounded by the
+    // original window; keep ALL existing cached tweets; only newly-fetched tweets are
+    // window-checked (the sweep already stops at the boundary).
+    const windowSince = existing.meta.since || since
+    const { tweets: fresh, users: freshUsers, pages } = await sweep(opts, windowSince, existing.meta.newest_id)
+    const merged = mergeTweets(existing.tweets, fresh)
     const mergedUsers = mergeUsers(existing.users ?? [], freshUsers)
-    const meta = buildMeta(merged, (existing.meta.page_count ?? 0) + pages)
+    const meta: CacheMeta = { ...buildMeta(merged, (existing.meta.page_count ?? 0) + pages), since: windowSince }
     const payload: CachePayload = { meta, tweets: merged, users: mergedUsers }
     const file = await writeCache(cacheDir, payload)
-    log.log(`x-feed: cache INCREMENTAL — ${pages} reads, merged ${fresh.length} new (total ${merged.length})`)
+    log.log(`x-feed: cache INCREMENTAL — ${pages} reads, merged ${fresh.length} new (total ${merged.length}, window since ${windowSince})`)
     return { status: 'incremental', tweets: merged, users: mergedUsers, pagesFetched: pages, newCount: fresh.length, meta, cacheFile: file }
   }
 
