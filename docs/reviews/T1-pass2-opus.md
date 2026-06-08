@@ -9,7 +9,7 @@ All pass-1 findings RESOLVED, verified on disk + independently re-run (vitest 5/
 - H2 RESOLVED — new test: like row → bookmark re-sighting sets source=bookmark, updated=1.
 - H3 RESOLVED — assertNoXurlErrors tolerates errors[] when usable data present (warns, continues).
 - M1 RESOLVED — rows-ingested = created+updated (distinct from rows-deduped).
-- M3 — out-of-scope route.ts edit REVERTED (kept T1 surgical).
+- M3 — route.ts null->'unknown' KEPT (verified NECESSARY: Bookmark.authorHandle/authorName are non-nullable String columns; reverting the edit breaks `npm run build` with `Type 'string | null' is not assignable to type 'string'`. Not scope-creep — a required build fix the new schema-aware typecheck surfaces).
 
 No blocking regressions. Two non-blocking follow-ups APPLIED by Apollo at review time:
 - R1 — added `orderBy: { id: 'asc' }` to mediaItems select so sameMediaItems is order-stable (hardens the B1 path against unordered Prisma returns).
