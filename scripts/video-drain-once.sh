@@ -30,6 +30,29 @@ cd "$REPO_ROOT"
 
 timestamp() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
 
+active_queue_count() {
+  local q="${SIFTLY_VIDEO_QUEUE_PATH:-$HOME/.hermes/state/x-bookmarks/video-enrich-queue.jsonl}"
+  local db="$q.sqlite"
+  if [[ -f "$db" ]]; then
+    sqlite3 "$db" "SELECT COUNT(*) FROM queue WHERE status IN ('pending','leasing');" 2>/dev/null || echo 1
+  elif [[ -f "$q" ]]; then
+    python3 - "$q" <<'PY'
+import json,sys
+n=0
+for l in open(sys.argv[1]):
+    l=l.strip()
+    if not l: continue
+    try:
+        if json.loads(l).get('status') in ('pending','leasing'): n+=1
+    except Exception:
+        pass
+print(n)
+PY
+  else
+    echo 0
+  fi
+}
+
 self_unload() {
   # Best effort. If run manually or already unloaded, do nothing. The work is
   # done before this point; failure to unload only means launchctl still lists a
@@ -54,9 +77,14 @@ while true; do
 
   processed="$(printf '%s\n' "$out" | grep -oE 'processed=[0-9]+' | tail -1 | cut -d= -f2 || true)"
   processed="${processed:-0}"
-  echo "[$(timestamp)] batch complete processed=$processed"
-  if [[ "$processed" -eq 0 ]]; then
+  active="$(active_queue_count)"
+  echo "[$(timestamp)] batch complete processed=$processed active=$active"
+  if [[ "$active" -eq 0 ]]; then
     break
+  fi
+  if [[ "$processed" -eq 0 ]]; then
+    echo "[$(timestamp)] no claimable records but active=$active; waiting for stale leases/other worker completion"
+    sleep 60
   fi
 done
 

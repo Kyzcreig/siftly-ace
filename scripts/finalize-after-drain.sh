@@ -10,16 +10,27 @@ cd "$HERE" || exit 1
 
 pending_count() {
   python3 - "$QUEUE" <<'PY'
-import json,sys
+import json,sqlite3,sys
 p=sys.argv[1]
+db=p+'.sqlite'
+try:
+    con=sqlite3.connect(db)
+    try:
+        print(con.execute("SELECT COUNT(*) FROM queue WHERE status IN ('pending','leasing')").fetchone()[0])
+        raise SystemExit
+    finally:
+        con.close()
+except Exception:
+    pass
 n=0
 try:
     for l in open(p):
         l=l.strip()
         if not l: continue
         try:
-            if json.loads(l).get('status')=='pending': n+=1
-        except: pass
+            if json.loads(l).get('status') in ('pending','leasing'): n+=1
+        except Exception:
+            pass
 except FileNotFoundError:
     pass
 print(n)
