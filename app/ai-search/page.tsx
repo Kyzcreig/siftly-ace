@@ -88,11 +88,19 @@ export default function AISearchPage() {
     setExplanation('')
     setSearched(true)
     try {
-      const res = await fetch('/api/search/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() }),
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 100_000)
+      let res: Response
+      try {
+        res = await fetch('/api/search/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query.trim() }),
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
       const data = (await res.json()) as {
         bookmarks?: AIBookmark[]
         explanation?: string
@@ -102,7 +110,11 @@ export default function AISearchPage() {
       setResults(data.bookmarks ?? [])
       setExplanation(data.explanation ?? '')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Search failed')
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setError('Search timed out. Try a shorter or more specific query.')
+      } else {
+        setError(e instanceof Error ? e.message : 'Search failed')
+      }
     } finally {
       setLoading(false)
     }

@@ -350,31 +350,12 @@ Constraints:
       : { matches: [], explanation: 'No results found.' }
   }
 
-  // Try CLI first (works with ChatGPT OAuth), then fall back to SDK
-  let cliSucceeded = false
-  if (provider === 'openai' && await getCodexCliAvailability()) {
-    try {
-      const result = await codexPrompt(prompt, { timeoutMs: 90_000 })
-      if (result.success && result.data) {
-        aiResponse = parseSearchResponse(result.data)
-        cliSucceeded = true
-      }
-    } catch { /* fall through to SDK */ }
-  } else if (provider === 'anthropic' && await getCliAvailability()) {
-    try {
-      const cliModel = modelNameToCliAlias(model)
-      const result = await claudePrompt(prompt, { model: cliModel, timeoutMs: 90_000 })
-      if (result.success && result.data) {
-        aiResponse = parseSearchResponse(result.data)
-        cliSucceeded = true
-      }
-    } catch { /* fall through to SDK */ }
-  }
-
-  if (!cliSucceeded) {
-    if (!client) {
-      return NextResponse.json({ error: 'No CLI available and no API key configured. Add an API key in Settings or install Codex/Claude CLI.' }, { status: 400 })
-    }
+  // Prefer the fast SDK path whenever a usable API client is configured.
+  // The CLI path (`codex exec` / `claude -p`) is a full agentic run that can take
+  // 90s+ per query, which makes the UI appear to hang forever. Only fall back to
+  // the CLI when there is NO SDK API key available.
+  let sdkSucceeded = false
+  if (client) {
     try {
       const response = await client.createMessage({
         model,
@@ -383,10 +364,41 @@ Constraints:
       })
       const rawText = response.text ?? '{}'
       aiResponse = parseSearchResponse(rawText)
+      sdkSucceeded = true
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      console.error('AI search error:', errMsg)
-      return NextResponse.json({ error: `AI search failed: ${errMsg}` }, { status: 500 })
+      console.error('AI search SDK error (will try CLI fallback):', errMsg)
+    }
+  }
+
+  if (!sdkSucceeded) {
+    let cliSucceeded = false
+    if (provider === 'openai' && await getCodexCliAvailability()) {
+      try {
+        const result = await codexPrompt(prompt, { timeoutMs: 90_000 })
+        if (result.success && result.data) {
+          aiResponse = parseSearchResponse(result.data)
+          cliSucceeded = true
+        }
+      } catch { /* handled below */ }
+    } else if (provider === 'anthropic' && await getCliAvailability()) {
+      try {
+        const cliModel = modelNameToCliAlias(model)
+        const result = await claudePrompt(prompt, { model: cliModel, timeoutMs: 90_000 })
+        if (result.success && result.data) {
+          aiResponse = parseSearchResponse(result.data)
+          cliSucceeded = true
+        }
+      } catch { /* handled below */ }
+    }
+
+    if (!cliSucceeded) {
+      return NextResponse.json(
+        { error: client
+          ? 'AI search failed: the AI provider did not return a usable response. Check your API key/model in Settings.'
+          : 'No API key configured and no CLI available. Add an API key in Settings or install Codex/Claude CLI.' },
+        { status: client ? 500 : 400 },
+      )
     }
   }
 
