@@ -5,7 +5,9 @@ import {
   enrichBookmarkRows,
   enqueueVideoItems,
   estimateVisionCost,
+  isCaptionCandidate,
   resolveVideoQueuePath,
+  runCaptionForMediaItems,
   runOcrForMediaItems,
   type EnrichBookmarkInput,
   type EnrichDb,
@@ -18,16 +20,18 @@ interface CliOptions {
   force: boolean
   dryRun: boolean
   vision: boolean
+  caption: boolean
   confirm: boolean
   queuePath?: string
 }
 
 function usage(): string {
   return [
-    'Usage: npx tsx scripts/enrich.ts [--limit N] [--force] [--dry-run] [--vision] [--confirm] [--queue-path PATH]',
+    'Usage: npx tsx scripts/enrich.ts [--limit N] [--force] [--dry-run] [--vision] [--caption] [--confirm] [--queue-path PATH]',
     '',
     'Runs Phase 3 factual enrichment. Video transcription is NOT run here; video media are only enqueued for scripts/video-enrich.ts.',
-    'Vision/OCR prints a cost estimate and requires --confirm or SIFTLY_ENRICH_CONFIRM_VISION=1 for large backfills.',
+    'Vision/OCR (--vision) prints a cost estimate and requires --confirm or SIFTLY_ENRICH_CONFIRM_VISION=1 for large backfills.',
+    'Image captioning (--caption) describes purely-visual images (no OCR text) via a cheap multimodal model; same cost gate.',
   ].join('\n')
 }
 
@@ -43,6 +47,7 @@ function parseArgs(argv: string[]): CliOptions {
     force: false,
     dryRun: false,
     vision: false,
+    caption: false,
     confirm: false,
   }
 
@@ -66,6 +71,9 @@ function parseArgs(argv: string[]): CliOptions {
       case '--vision':
       case '--ocr':
         options.vision = true
+        break
+      case '--caption':
+        options.caption = true
         break
       case '--confirm':
         options.confirm = true
@@ -99,13 +107,19 @@ async function main(): Promise<void> {
 
   const allMedia = bookmarks.flatMap((bookmark) => bookmark.mediaItems)
   const ocrCandidates = allMedia.filter(isOcrCandidate)
+  const captionCandidates = allMedia.filter(isCaptionCandidate)
   const estimate = estimateVisionCost({
     imageCount: ocrCandidates.filter((media) => media.type === 'photo' || media.type === 'gif').length,
     videoThumbnailCount: ocrCandidates.filter((media) => media.type === 'video').length,
   })
+  const captionEstimate = estimateVisionCost({
+    imageCount: captionCandidates.filter((media) => media.type === 'photo' || media.type === 'gif').length,
+    videoThumbnailCount: captionCandidates.filter((media) => media.type === 'video').length,
+  })
   const videoCount = allMedia.filter((media) => media.type === 'video').length
 
   console.log(`vision/OCR estimate: ${estimate.summary}`)
+  console.log(`caption estimate: ${captionEstimate.summary}`)
   console.log(`factual candidates=${bookmarks.length} video-media=${videoCount}`)
   console.log(`video queue path=${queuePath}`)
 
@@ -125,6 +139,15 @@ async function main(): Promise<void> {
     console.log('vision/OCR skipped: pass --vision to run the gated tier')
   }
 
+  let caption = { attempted: 0, succeeded: 0, failed: 0 }
+  if (options.caption) {
+    if (enforceVisionCostGate(captionEstimate, { confirm: options.confirm, dryRun: options.dryRun })) {
+      caption = await runCaptionForMediaItems(prisma as unknown as VideoEnrichDb, captionCandidates)
+    }
+  } else {
+    console.log('caption skipped: pass --caption to describe textless images')
+  }
+
   const videoQueue = await enqueueVideoItems(bookmarks, { queuePath })
   console.log(
     [
@@ -132,6 +155,9 @@ async function main(): Promise<void> {
       `factual=${factual.enriched}`,
       `ocr-attempted=${ocr.attempted}`,
       `ocr-succeeded=${ocr.succeeded}`,
+      `caption-attempted=${caption.attempted}`,
+      `caption-succeeded=${caption.succeeded}`,
+      `caption-failed=${caption.failed}`,
       `video-enqueued=${videoQueue.enqueued}`,
       `video-skipped=${videoQueue.skipped}`,
     ].join(' '),

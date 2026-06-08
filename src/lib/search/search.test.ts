@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { openVectorStore } from '../vec'
-import { createEmbeddingProviderFromEnv, embedBookmarkCorpus, type EmbeddingProvider } from './embeddings'
+import { buildEmbeddingInput, buildMediaSearchText, createEmbeddingProviderFromEnv, embedBookmarkCorpus, type EmbeddingProvider } from './embeddings'
 import { hybridSearch } from './index'
 
 const VECTOR_TERMS = [
@@ -95,6 +95,15 @@ function createFixtureDb(): { dir: string; dbPath: string } {
         enrichedAt DATETIME,
         enrichmentMeta TEXT,
         source TEXT NOT NULL DEFAULT 'bookmark'
+      );
+      CREATE TABLE MediaItem (
+        id TEXT PRIMARY KEY,
+        bookmarkId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        url TEXT NOT NULL,
+        thumbnailUrl TEXT,
+        localPath TEXT,
+        imageTags TEXT
       );
     `)
 
@@ -391,5 +400,40 @@ describe('hybrid bookmark search', () => {
       SIFTLY_EMBED_BASE_URL: 'http://localhost:8000/v1',
       SIFTLY_EMBED_MODEL: 'local-fixture-model',
     })).not.toThrow()
+  })
+})
+
+describe('buildEmbeddingInput media text inclusion', () => {
+  const baseRow = {
+    id: 'b1', tweetId: '123', text: 'a tweet', authorHandle: 'ace', authorName: 'Ace',
+    semanticTags: null, entities: null, source: 'bookmark',
+  }
+
+  it('includes OCR text, vision caption, and video transcript from media imageTags', () => {
+    const mediaImageTags = JSON.stringify({
+      text_ocr: ['BUY THE DIP'],
+      vision_caption: 'a red candlestick chart crashing',
+      video_transcript: 'here is why the market moved today',
+    })
+    const out = buildEmbeddingInput({ ...baseRow, mediaImageTags })
+    expect(out).toContain('media:')
+    expect(out).toContain('BUY THE DIP')
+    expect(out).toContain('red candlestick chart')
+    expect(out).toContain('why the market moved')
+  })
+
+  it('omits the media line entirely when there is no media text', () => {
+    expect(buildEmbeddingInput({ ...baseRow, mediaImageTags: null })).not.toContain('media:')
+    expect(buildEmbeddingInput({ ...baseRow })).not.toContain('media:')
+  })
+
+  it('flattens multiple media blobs joined by the SQL group_concat separator', () => {
+    const blobs = [
+      JSON.stringify({ vision_caption: 'first image of a cat' }),
+      JSON.stringify({ vision_caption: 'second image of a dog' }),
+    ].join('\u0001')
+    const out = buildMediaSearchText(blobs)
+    expect(out).toContain('first image of a cat')
+    expect(out).toContain('second image of a dog')
   })
 })

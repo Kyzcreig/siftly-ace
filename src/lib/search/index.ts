@@ -38,6 +38,7 @@ interface BookmarkSearchRow {
   semanticTags: string | null
   entities: string | null
   source: string
+  mediaImageTags?: string | null
 }
 
 interface FtsCandidate {
@@ -169,7 +170,15 @@ function fetchBookmarksByIds(db: Database.Database, ids: string[]): BookmarkSear
       authorName,
       semanticTags,
       entities,
-      source
+      source,
+      (
+        SELECT group_concat(imageTags, char(1)) FROM (
+          SELECT m.imageTags AS imageTags
+          FROM MediaItem m
+          WHERE m.bookmarkId = Bookmark.id AND m.imageTags IS NOT NULL AND m.imageTags != '' AND m.imageTags != '{}'
+          ORDER BY m.id
+        )
+      ) AS mediaImageTags
     FROM Bookmark
     WHERE id IN (${placeholders})
   `).all(...ids) as BookmarkSearchRow[]

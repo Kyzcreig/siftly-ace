@@ -12,7 +12,11 @@ import {
   enqueueVideoItems,
   estimateVisionCost,
   extractFactualEnrichment,
+  generateImageCaption,
+  isCaptionCandidate,
+  mergeCaptionImageTags,
   readVideoQueueState,
+  runCaptionForMediaItems,
   runLocalOcr,
   runOcrForMediaItems,
   transcribeWithParakeet,
@@ -446,5 +450,84 @@ describe('Phase 3 enrichment', () => {
     } finally {
       fetchSpy.mockRestore()
     }
+  })
+})
+
+describe('image captioning (vision tier for textless images)', () => {
+  it('detects caption candidates only when no OCR text and no existing caption', () => {
+    const base = { id: 'm1', type: 'photo', url: 'https://pbs.twimg.com/media/a.jpg', thumbnailUrl: null }
+    expect(isCaptionCandidate({ ...base, imageTags: null })).toBe(true)
+    expect(isCaptionCandidate({ ...base, imageTags: '{}' })).toBe(true)
+    expect(isCaptionCandidate({ ...base, imageTags: JSON.stringify({ text_ocr: [] }) })).toBe(true)
+    expect(isCaptionCandidate({ ...base, imageTags: JSON.stringify({ text_ocr: ['BUY NOW'] }) })).toBe(false)
+    expect(isCaptionCandidate({ ...base, imageTags: JSON.stringify({ vision_caption: 'a cat' }) })).toBe(false)
+    expect(isCaptionCandidate({ ...base, type: 'tweet' as unknown as string, imageTags: null })).toBe(false)
+  })
+
+  it('merges a caption without clobbering existing OCR/transcript tags', () => {
+    const existing = JSON.stringify({ text_ocr: ['keep me'], video_transcript: 'spoken words' })
+    const merged = JSON.parse(mergeCaptionImageTags(existing, 'two people on a stage'))
+    expect(merged.text_ocr).toEqual(['keep me'])
+    expect(merged.video_transcript).toBe('spoken words')
+    expect(merged.vision_caption).toBe('two people on a stage')
+    expect(merged.caption_backend).toBe('gpt-4o-mini')
+  })
+
+  it('rejects caption image URLs outside the twimg allowlist before any network call', async () => {
+    const fetchFn = vi.fn(async () => { throw new Error('should not be called') }) as unknown as typeof fetch
+    await expect(generateImageCaption('https://evil.example/x.jpg', { apiKey: 'k', fetchFn })).rejects.toThrow(/allowlist/i)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('captions a candidate via an injected model client and persists vision_caption', async () => {
+    const db = new MemoryVideoDb(['video-media-1'])
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'A line chart trending upward.' } }] }), { status: 200 })) as unknown as typeof fetch
+    const result = await runCaptionForMediaItems(
+      db,
+      [{ id: 'video-media-1', type: 'photo', url: 'https://pbs.twimg.com/media/a.jpg', thumbnailUrl: null }],
+      { apiKey: 'k', fetchFn },
+    )
+    expect(result).toEqual({ attempted: 1, succeeded: 1, failed: 0 })
+    const tags = JSON.parse(db.mediaItems.get('video-media-1')!.imageTags!)
+    expect(tags.vision_caption).toBe('A line chart trending upward.')
+  })
+
+  it('counts a failure (and does not throw) when the model returns an empty caption', async () => {
+    const db = new MemoryVideoDb(['video-media-1'])
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 })) as unknown as typeof fetch
+    const result = await runCaptionForMediaItems(
+      db,
+      [{ id: 'video-media-1', type: 'photo', url: 'https://pbs.twimg.com/media/a.jpg', thumbnailUrl: null }],
+      { apiKey: 'k', fetchFn },
+    )
+    expect(result).toEqual({ attempted: 1, succeeded: 0, failed: 1 })
+    expect(db.mediaItems.get('video-media-1')!.imageTags).toBeNull()
+  })
+})
+
+describe('caption cost gate + auth fail-fast', () => {
+  it('blocks a large caption backfill without --confirm (same gate as vision)', () => {
+    const estimate = estimateVisionCost({ imageCount: 200, videoThumbnailCount: 0 })
+    expect(estimate.requiresConfirmation).toBe(true)
+    expect(() => enforceVisionCostGate(estimate, { confirm: false })).toThrow(/requires approval/i)
+    expect(enforceVisionCostGate(estimate, { confirm: true })).toBe(true)
+  })
+
+  it('aborts the whole batch on an auth (401) error instead of burning paid calls per item', async () => {
+    const db = new MemoryVideoDb(['m1', 'm2', 'm3'])
+    let calls = 0
+    const fetchFn = vi.fn(async () => { calls++; return new Response('unauthorized', { status: 401 }) }) as unknown as typeof fetch
+    await expect(
+      runCaptionForMediaItems(
+        db,
+        [
+          { id: 'm1', type: 'photo', url: 'https://pbs.twimg.com/media/a.jpg', thumbnailUrl: null },
+          { id: 'm2', type: 'photo', url: 'https://pbs.twimg.com/media/b.jpg', thumbnailUrl: null },
+          { id: 'm3', type: 'photo', url: 'https://pbs.twimg.com/media/c.jpg', thumbnailUrl: null },
+        ],
+        { apiKey: 'bad', fetchFn },
+      ),
+    ).rejects.toThrow(/auth/i)
+    expect(calls).toBe(1)
   })
 })

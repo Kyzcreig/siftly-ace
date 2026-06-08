@@ -568,6 +568,114 @@ export async function runOcrForMediaItems(db: VideoEnrichDb, mediaItems: EnrichM
   return { attempted, succeeded }
 }
 
+const DEFAULT_CAPTION_MODEL = 'gpt-4o-mini'
+const CAPTION_PROMPT =
+  'Describe this image in one factual sentence (max 30 words) for a search index. ' +
+  'State concrete visible content: subjects, setting, notable objects, any chart/diagram type. ' +
+  'No preamble, no opinions, no "this image shows".'
+
+export interface CaptionResult {
+  caption: string
+}
+
+/**
+ * Generate a one-sentence factual caption for a purely-visual image (no readable text)
+ * using a cheap multimodal model. Used to make image-only posts content-searchable.
+ * The image URL is allowlist-validated (same hosts as OCR) before being sent to the model.
+ */
+export async function generateImageCaption(
+  rawUrl: string,
+  options: {
+    apiKey?: string
+    baseUrl?: string
+    model?: string
+    timeoutMs?: number
+    detail?: 'low' | 'high'
+    fetchFn?: typeof fetch
+  } = {},
+): Promise<CaptionResult> {
+  const url = validateOcrImageUrl(rawUrl)
+  const apiKey = options.apiKey ?? process.env.SIFTLY_CAPTION_API_KEY ?? process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('image caption requires OPENAI_API_KEY (or SIFTLY_CAPTION_API_KEY)')
+  const baseUrl = (options.baseUrl ?? process.env.SIFTLY_CAPTION_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '')
+  const model = options.model ?? process.env.SIFTLY_CAPTION_MODEL ?? DEFAULT_CAPTION_MODEL
+  const timeoutMs = options.timeoutMs ?? 30_000
+  const doFetch = options.fetchFn ?? fetch
+
+  const response = await doFetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify({
+      model,
+      max_tokens: 80,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: CAPTION_PROMPT },
+            { type: 'image_url', image_url: { url, detail: options.detail ?? 'low' } },
+          ],
+        },
+      ],
+    }),
+  })
+  if (!response.ok) {
+    const authFailure = response.status === 401 || response.status === 403
+    throw new Error(`caption request failed: HTTP ${response.status}${authFailure ? ' (auth)' : ''}`)
+  }
+  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+  const caption = payload.choices?.[0]?.message?.content?.trim() ?? ''
+  return { caption }
+}
+
+export function mergeCaptionImageTags(existing: string | null | undefined, caption: string): string {
+  const parsed = parseJson<Record<string, unknown>>(existing, {})
+  return JSON.stringify({ ...parsed, vision_caption: caption, caption_backend: DEFAULT_CAPTION_MODEL })
+}
+
+/** True for image/video media that has no readable OCR text yet (caption candidates). */
+export function isCaptionCandidate(media: EnrichMediaItemInput): boolean {
+  if (media.type !== 'photo' && media.type !== 'gif' && media.type !== 'video') return false
+  const tags = parseJson<Record<string, unknown>>(media.imageTags, {})
+  if (typeof tags.vision_caption === 'string' && (tags.vision_caption as string).trim()) return false
+  const ocr = Array.isArray(tags.text_ocr) ? (tags.text_ocr as unknown[]).map(String).filter((s) => s.trim()) : []
+  return ocr.length === 0
+}
+
+export async function runCaptionForMediaItems(
+  db: VideoEnrichDb,
+  mediaItems: EnrichMediaItemInput[],
+  options: { apiKey?: string; baseUrl?: string; model?: string; timeoutMs?: number; fetchFn?: typeof fetch } = {},
+): Promise<{ attempted: number; succeeded: number; failed: number }> {
+  let attempted = 0
+  let succeeded = 0
+  let failed = 0
+  for (const item of mediaItems) {
+    const target = item.type === 'video' ? (item.thumbnailUrl ?? item.url) : item.url
+    if (!target) continue
+    attempted++
+    try {
+      const { caption } = await generateImageCaption(target, options)
+      if (!caption) {
+        failed++
+        continue
+      }
+      const existingImageTags = await freshMediaImageTags(db, item.id)
+      const imageTags = mergeCaptionImageTags(existingImageTags, caption)
+      await db.mediaItem.update({ where: { id: item.id }, data: { imageTags } })
+      succeeded++
+    } catch (err) {
+      failed++
+      const message = (err as Error).message
+      console.warn(`caption failed for media ${item.id}: ${message}`)
+      // Fail fast on auth errors so a bad key doesn't burn through the whole candidate set as paid calls.
+      if (message.includes('(auth)')) throw err
+    }
+  }
+  return { attempted, succeeded, failed }
+}
+
 function profileBaseHome(env: Record<string, string | undefined> = process.env): string {
   const hermesHome = env.HERMES_HOME
   const marker = '/.hermes/profiles/'

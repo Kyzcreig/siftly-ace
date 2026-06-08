@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import Database from 'better-sqlite3'
 
+import { buildImageContext } from '../../../lib/image-context'
 import { ensureEmbeddingTable, openVectorStore, type VecOptions, type VecStatus } from '../vec'
 
 export interface EmbeddingProvider {
@@ -37,6 +38,7 @@ interface BookmarkEmbeddingRow {
   semanticTags: string | null
   entities: string | null
   source: string
+  mediaImageTags?: string | null
 }
 
 interface OpenAIEmbeddingProviderOptions {
@@ -146,6 +148,7 @@ export async function embedBookmarkCorpus(options: EmbedBookmarkCorpusOptions): 
 }
 
 export function buildEmbeddingInput(row: BookmarkEmbeddingRow): string {
+  const mediaText = buildMediaSearchText(row.mediaImageTags)
   return [
     `tweet_id: ${row.tweetId}`,
     `source: ${row.source}`,
@@ -153,7 +156,22 @@ export function buildEmbeddingInput(row: BookmarkEmbeddingRow): string {
     `text: ${row.text}`,
     row.semanticTags ? `semantic_tags: ${jsonToSearchText(row.semanticTags)}` : '',
     row.entities ? `entities: ${jsonToSearchText(row.entities)}` : '',
+    mediaText ? `media: ${mediaText}` : '',
   ].filter(Boolean).join('\n')
+}
+
+/**
+ * Flatten one or more media imageTags JSON blobs (joined by the SQL group_concat
+ * separator) into human-readable search text covering OCR, vision captions, and
+ * video transcripts. Empty when no media or no extractable text.
+ */
+export function buildMediaSearchText(rawMediaImageTags: string | null | undefined): string {
+  if (!rawMediaImageTags) return ''
+  return rawMediaImageTags
+    .split('\u0001')
+    .map((blob) => buildImageContext(blob.trim() || undefined))
+    .filter(Boolean)
+    .join(' | ')
 }
 
 function selectRowsForEmbedding(
@@ -181,7 +199,15 @@ function selectRowsForEmbedding(
       b.authorName AS authorName,
       b.semanticTags AS semanticTags,
       b.entities AS entities,
-      b.source AS source
+      b.source AS source,
+      (
+        SELECT group_concat(imageTags, char(1)) FROM (
+          SELECT m.imageTags AS imageTags
+          FROM MediaItem m
+          WHERE m.bookmarkId = b.id AND m.imageTags IS NOT NULL AND m.imageTags != '' AND m.imageTags != '{}'
+          ORDER BY m.id
+        )
+      ) AS mediaImageTags
     FROM Bookmark b
     ${whereSql}
     ORDER BY COALESCE(b.tweetCreatedAt, b.importedAt) DESC, b.id ASC
