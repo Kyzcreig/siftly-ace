@@ -46,7 +46,7 @@ for _ in $(seq 1 720); do
 done
 
 echo "[finalize] queue drained — re-embedding full corpus"
-scripts/with-secrets.sh tsx scripts/embed.ts --limit 100000 --force 2>&1 | grep -viE "loaded|vec0=" | tail -5
+scripts/with-secrets.sh npx tsx scripts/embed.ts --limit 100000 --force 2>&1 | grep -viE "loaded|vec0=" | tail -5
 
 echo "[finalize] re-exporting to Obsidian"
 npx tsx scripts/export-obsidian.ts 2>&1 | tail -5
