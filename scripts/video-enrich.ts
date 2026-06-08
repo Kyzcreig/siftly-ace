@@ -1,5 +1,5 @@
 import prisma from '../lib/db'
-import { drainVideoQueue, resolveVideoQueuePath, type VideoEnrichDb } from '../src/lib/enrich'
+import { drainVideoQueue, resolveHealthyParakeetBackends, resolveVideoQueuePath, type VideoEnrichDb } from '../src/lib/enrich'
 
 interface CliOptions {
   limit: number
@@ -60,7 +60,9 @@ function parseArgs(argv: string[]): CliOptions {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
   const queuePath = resolveVideoQueuePath(options.queuePath)
+  const backendUrls = await resolveHealthyParakeetBackends()
   console.log(`video queue path=${queuePath}`)
+  console.log(`video parakeet backends=${backendUrls.join(',') || 'none'}`)
   const result = await drainVideoQueue({
     db: prisma as unknown as VideoEnrichDb,
     queuePath,
@@ -68,6 +70,7 @@ async function main(): Promise<void> {
     workers: options.workers,
     scriptPath: options.scriptPath,
     timeoutMs: options.timeoutMs,
+    backendUrls,
   })
 
   console.log(
