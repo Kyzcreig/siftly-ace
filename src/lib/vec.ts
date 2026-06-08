@@ -323,22 +323,15 @@ class BetterSqliteVectorStore implements VectorStore {
   }
 
   private searchSqliteVec(vector: number[], limit: number, model: string): VectorSearchResult[] {
-    const rows = this.db.prepare(`
-      SELECT m.bookmark_id AS bookmarkId, v.distance AS distance
-      FROM ${SQLITE_VEC_TABLE} v
-      JOIN ${SQLITE_VEC_ROWIDS_TABLE} m ON m.rowid = v.rowid
-      JOIN ${EMBEDDING_TABLE} e ON e.bookmark_id = m.bookmark_id
-      WHERE v.embedding MATCH @embedding
-        AND k = @limit
-        AND e.model = @model
-        AND e.dimensions = @dimensions
-      ORDER BY v.distance
-    `).all({
-      embedding: JSON.stringify(vector),
-      limit: BigInt(limit),
-      model,
-      dimensions: vector.length,
-    }) as { bookmarkId: string; distance: number }[]
+    const vectorRows = this.sqliteVecRowCount()
+    if (vectorRows <= 0) return []
+
+    let candidateLimit = Math.min(vectorRows, Math.max(limit * 4, limit + 20))
+    let rows = this.searchSqliteVecCandidates(vector, candidateLimit, limit, model)
+    while (rows.length < limit && candidateLimit < vectorRows) {
+      candidateLimit = Math.min(vectorRows, candidateLimit * 2)
+      rows = this.searchSqliteVecCandidates(vector, candidateLimit, limit, model)
+    }
 
     return rows.map((row) => ({
       bookmarkId: row.bookmarkId,
@@ -346,6 +339,42 @@ class BetterSqliteVectorStore implements VectorStore {
       score: 1 / (1 + Math.max(0, row.distance)),
       mode: 'sqlite-vec' as const,
     }))
+  }
+
+  private searchSqliteVecCandidates(
+    vector: number[],
+    candidateLimit: number,
+    limit: number,
+    model: string,
+  ): { bookmarkId: string; distance: number }[] {
+    return this.db.prepare(`
+      SELECT m.bookmark_id AS bookmarkId, knn.distance AS distance
+      FROM (
+        SELECT rowid, distance
+        FROM ${SQLITE_VEC_TABLE}
+        WHERE embedding MATCH @embedding
+          AND k = ${candidateLimit}
+        ORDER BY distance
+      ) knn
+      JOIN ${SQLITE_VEC_ROWIDS_TABLE} m ON m.rowid = knn.rowid
+      JOIN ${EMBEDDING_TABLE} e ON e.bookmark_id = m.bookmark_id
+      WHERE e.model = @model
+        AND e.dimensions = @dimensions
+      ORDER BY knn.distance
+      LIMIT @limit
+    `).all({
+      embedding: JSON.stringify(vector),
+      model,
+      dimensions: vector.length,
+      limit,
+    }) as { bookmarkId: string; distance: number }[]
+  }
+
+  private sqliteVecRowCount(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS count FROM ${SQLITE_VEC_TABLE}`).get() as { count: number | bigint } | undefined
+    const vectorRows = Number(row?.count ?? 0)
+    if (!Number.isFinite(vectorRows) || vectorRows <= 0) return 0
+    return Math.floor(vectorRows)
   }
 
   private searchBruteForce(vector: number[], limit: number, model: string): VectorSearchResult[] {

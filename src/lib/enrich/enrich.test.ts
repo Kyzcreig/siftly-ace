@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import {
   drainVideoQueue,
@@ -310,6 +311,79 @@ describe('Phase 3 enrichment', () => {
     expect(latest.status).toBe('error')
     expect(latest.attempts).toBe(3)
     expect(latest.error).toBe('third failure')
+  })
+
+  it('retries transient drain failures up to maxAttempts before marking terminal error', async () => {
+    const queuePath = path.join(tmp, 'video-queue-drain-retries.jsonl')
+    const record = {
+      key: 'video-media-1',
+      status: 'pending' as const,
+      bookmarkId: 'bookmark-video',
+      tweetId: '9001',
+      mediaItemId: 'video-media-1',
+      sourceUrl: 'https://video.twimg.com/ext_tw_video/demo.mp4',
+      attempts: 1,
+      enqueuedAt: '2026-06-07T12:00:00.000Z',
+    }
+    await writeFile(queuePath, `${JSON.stringify(record)}\n`, 'utf8')
+    const transcribe = vi.fn(async () => {
+      throw new Error('temporary network timeout')
+    })
+
+    await expect(drainVideoQueue({ db: new MemoryVideoDb(['video-media-1']), queuePath, transcribe, maxAttempts: 3, now: new Date('2026-06-07T12:00:01Z') })).resolves.toMatchObject({ processed: 1, failed: 1 })
+    let state = await readVideoQueueState(queuePath)
+    expect(state.get('video-media-1')).toMatchObject({ status: 'pending', attempts: 2, error: 'temporary network timeout' })
+
+    await drainVideoQueue({ db: new MemoryVideoDb(['video-media-1']), queuePath, transcribe, maxAttempts: 3, now: new Date('2026-06-07T12:00:02Z') })
+    state = await readVideoQueueState(queuePath)
+    expect(state.get('video-media-1')).toMatchObject({ status: 'pending', attempts: 3 })
+
+    await drainVideoQueue({ db: new MemoryVideoDb(['video-media-1']), queuePath, transcribe, maxAttempts: 3, now: new Date('2026-06-07T12:00:03Z') })
+    state = await readVideoQueueState(queuePath)
+    expect(state.get('video-media-1')).toMatchObject({ status: 'error', attempts: 3, error: 'temporary network timeout' })
+    expect(transcribe).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not re-transcribe when a prior crash already wrote a video transcript but left the queue pending', async () => {
+    const queuePath = path.join(tmp, 'video-queue-crash-after-db-update.jsonl')
+    const db = new MemoryVideoDb(['video-media-1'])
+    db.mediaItems.set('video-media-1', { imageTags: JSON.stringify({ video_transcript: 'already persisted transcript' }) })
+    const record = {
+      key: 'video-media-1',
+      status: 'pending' as const,
+      bookmarkId: 'bookmark-video',
+      tweetId: '9001',
+      mediaItemId: 'video-media-1',
+      sourceUrl: 'https://video.twimg.com/ext_tw_video/demo.mp4',
+      attempts: 1,
+      enqueuedAt: '2026-06-07T12:00:00.000Z',
+    }
+    await writeFile(queuePath, `${JSON.stringify(record)}\n`, 'utf8')
+    const transcribe = vi.fn(async () => 'SHOULD_NOT_RUN')
+
+    const result = await drainVideoQueue({ db, queuePath, transcribe, now: new Date('2026-06-07T12:00:01Z') })
+
+    expect(result).toEqual({ processed: 1, transcribed: 0, failed: 0 })
+    expect(transcribe).not.toHaveBeenCalled()
+    const state = await readVideoQueueState(queuePath)
+    expect(state.get('video-media-1')).toMatchObject({ status: 'done', attempts: 1, transcriptChars: 'already persisted transcript'.length })
+  })
+
+  it('serializes queue mutations with an advisory queue lock', async () => {
+    const queuePath = path.join(tmp, 'video-queue-lock.jsonl')
+    const lockPath = `${queuePath}.lock`
+    await mkdir(lockPath)
+    let settled = false
+
+    const enqueue = enqueueVideoItems([videoBookmark()], { queuePath, now: new Date('2026-06-07T12:00:00Z') }).finally(() => {
+      settled = true
+    })
+    await delay(50)
+    expect(settled).toBe(false)
+
+    await rm(lockPath, { recursive: true, force: true })
+    await expect(enqueue).resolves.toEqual({ enqueued: 1, skipped: 0 })
+    expect(settled).toBe(true)
   })
 
   it('rejects remote OCR URLs outside the twimg allowlist before fetching', async () => {

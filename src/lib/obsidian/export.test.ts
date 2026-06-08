@@ -197,4 +197,72 @@ describe('Obsidian saved tweet export', () => {
 
     expect(noteFilename(tweet)).toBe('2026-06-07 - @dotty - row-fallback.md')
   })
+
+  it('disambiguates fallback filenames when tweet id and bookmark id sanitize empty', async () => {
+    const first = {
+      ...baseTweet,
+      id: '::::',
+      tweetId: '../..',
+      text: 'first invalid id bookmark',
+      authorHandle: '???',
+      authorName: 'Invalid Account',
+      tweetCreatedAt: new Date('2026-06-07T00:00:00.000Z'),
+      source: 'bookmark',
+      entities: JSON.stringify({ hashtags: [], urls: [], mentions: [], tools: [], tweetType: 'original' }),
+      categories: [],
+    } satisfies ObsidianSavedTweet
+    const second = {
+      ...first,
+      id: '****',
+      text: 'second invalid id bookmark',
+    } satisfies ObsidianSavedTweet
+
+    const filenames = [noteFilename(first), noteFilename(second)]
+    expect(new Set(filenames).size).toBe(2)
+
+    const outputDir = await makeOutputDir()
+    const result = await exportSavedTweetsToObsidian({ outputDir, bookmarks: [first, second] })
+
+    expect(result.written).toBe(2)
+    expect(result.errors).toEqual([])
+    expect(await readFile(path.join(outputDir, filenames[0]), 'utf8')).toContain('first invalid id bookmark')
+    expect(await readFile(path.join(outputDir, filenames[1]), 'utf8')).toContain('second invalid id bookmark')
+  })
+
+  it('does not rewrite unchanged index files and counts only actual index writes', async () => {
+    const outputDir = await makeOutputDir()
+    const tweet = {
+      ...baseTweet,
+      id: 'row-index-idempotent',
+      tweetId: '3333333333',
+      text: 'unchanged index content',
+      authorHandle: 'stableindex',
+      authorName: 'Stable Index',
+      tweetCreatedAt: new Date('2026-06-07T00:00:00.000Z'),
+      source: 'bookmark',
+      semanticTags: JSON.stringify(['stable']),
+      entities: JSON.stringify({ hashtags: [], urls: [], mentions: [], tools: [], tweetType: 'original' }),
+      categories: [],
+    } satisfies ObsidianSavedTweet
+
+    const initial = await exportSavedTweetsToObsidian({ outputDir, bookmarks: [tweet] })
+    expect(initial.indexesWritten).toBe(6)
+
+    const indexPaths = [
+      path.join(outputDir, 'README.md'),
+      path.join(outputDir, '_index', 'MOC.md'),
+      path.join(outputDir, '_index', 'Authors.md'),
+      path.join(outputDir, '_index', 'Categories.md'),
+      path.join(outputDir, '_index', 'Tools.md'),
+      path.join(outputDir, '_index', 'Segments.md'),
+    ]
+    const unchangedMtime = new Date('2024-02-03T04:05:06.000Z')
+    await Promise.all(indexPaths.map((filePath) => utimes(filePath, unchangedMtime, unchangedMtime)))
+
+    const rerun = await exportSavedTweetsToObsidian({ outputDir, bookmarks: [tweet] })
+    const stats = await Promise.all(indexPaths.map((filePath) => stat(filePath)))
+
+    expect(rerun.indexesWritten).toBe(0)
+    expect(stats.map((fileStat) => fileStat.mtime.getTime())).toEqual(indexPaths.map(() => unchangedMtime.getTime()))
+  })
 })

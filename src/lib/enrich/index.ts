@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -588,6 +589,44 @@ async function ensureParent(filePath: string): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true })
 }
 
+const VIDEO_QUEUE_LOCK_RETRY_MS = 25
+
+function videoQueueLockPath(queuePath: string): string {
+  return `${queuePath}.lock`
+}
+
+async function acquireVideoQueueLock(queuePath: string): Promise<() => Promise<void>> {
+  const lockPath = videoQueueLockPath(queuePath)
+  await ensureParent(queuePath)
+
+  while (true) {
+    try {
+      await mkdir(lockPath)
+      try {
+        await writeFile(path.join(lockPath, 'owner.json'), `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, 'utf8')
+      } catch (err) {
+        await rm(lockPath, { recursive: true, force: true })
+        throw err
+      }
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true })
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+      await delay(VIDEO_QUEUE_LOCK_RETRY_MS)
+    }
+  }
+}
+
+async function withVideoQueueLock<T>(queuePath: string, fn: () => Promise<T>): Promise<T> {
+  const release = await acquireVideoQueueLock(queuePath)
+  try {
+    return await fn()
+  } finally {
+    await release()
+  }
+}
+
 async function writeVideoQueueState(queuePath: string, records: Map<string, VideoQueueRecord>): Promise<void> {
   await ensureParent(queuePath)
   const rows = [...records.values()].sort((a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt) || a.key.localeCompare(b.key))
@@ -615,9 +654,14 @@ export async function readVideoQueueState(queuePath = defaultQueuePath()): Promi
   return records
 }
 
-export function hasVideoTranscript(imageTags: string | null | undefined): boolean {
+function videoTranscriptChars(imageTags: string | null | undefined): number | null {
   const parsed = parseJson<Record<string, unknown>>(imageTags, {})
-  return typeof parsed.video_transcript === 'string' && parsed.video_transcript.trim().length > 0
+  const transcript = parsed.video_transcript
+  return typeof transcript === 'string' && transcript.trim().length > 0 ? transcript.length : null
+}
+
+export function hasVideoTranscript(imageTags: string | null | undefined): boolean {
+  return videoTranscriptChars(imageTags) !== null
 }
 
 function isLikelyStaticPreview(url: string): boolean {
@@ -643,44 +687,46 @@ function videoSourceUrl(bookmark: EnrichBookmarkInput, media: EnrichMediaItemInp
 
 export async function enqueueVideoItems(bookmarks: EnrichBookmarkInput[], options: { queuePath?: string; now?: Date; maxAttempts?: number } = {}): Promise<{ enqueued: number; skipped: number }> {
   const queuePath = resolveVideoQueuePath(options.queuePath)
-  const state = await readVideoQueueState(queuePath)
-  const now = (options.now ?? new Date()).toISOString()
-  const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
-  let enqueued = 0
-  let skipped = 0
+  return withVideoQueueLock(queuePath, async () => {
+    const state = await readVideoQueueState(queuePath)
+    const now = (options.now ?? new Date()).toISOString()
+    const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
+    let enqueued = 0
+    let skipped = 0
 
-  for (const bookmark of bookmarks) {
-    for (const media of bookmark.mediaItems) {
-      if (media.type !== 'video') continue
-      const current = state.get(media.id)
-      if (
-        hasVideoTranscript(media.imageTags) ||
-        current?.status === 'pending' ||
-        current?.status === 'done' ||
-        (current?.status === 'error' && current.attempts >= maxAttempts)
-      ) {
-        skipped++
-        continue
+    for (const bookmark of bookmarks) {
+      for (const media of bookmark.mediaItems) {
+        if (media.type !== 'video') continue
+        const current = state.get(media.id)
+        if (
+          hasVideoTranscript(media.imageTags) ||
+          current?.status === 'pending' ||
+          current?.status === 'done' ||
+          (current?.status === 'error' && current.attempts >= maxAttempts)
+        ) {
+          skipped++
+          continue
+        }
+        const attempts = (current?.attempts ?? 0) + 1
+        const record: VideoQueueRecord = {
+          key: media.id,
+          status: 'pending',
+          bookmarkId: bookmark.id,
+          tweetId: bookmark.tweetId,
+          mediaItemId: media.id,
+          sourceUrl: videoSourceUrl(bookmark, media),
+          attempts,
+          enqueuedAt: current?.enqueuedAt ?? now,
+          updatedAt: now,
+        }
+        state.set(media.id, record)
+        enqueued++
       }
-      const attempts = (current?.attempts ?? 0) + 1
-      const record: VideoQueueRecord = {
-        key: media.id,
-        status: 'pending',
-        bookmarkId: bookmark.id,
-        tweetId: bookmark.tweetId,
-        mediaItemId: media.id,
-        sourceUrl: videoSourceUrl(bookmark, media),
-        attempts,
-        enqueuedAt: current?.enqueuedAt ?? now,
-        updatedAt: now,
-      }
-      state.set(media.id, record)
-      enqueued++
     }
-  }
 
-  if (state.size > 0 || enqueued > 0) await writeVideoQueueState(queuePath, state)
-  return { enqueued, skipped }
+    if (state.size > 0 || enqueued > 0) await writeVideoQueueState(queuePath, state)
+    return { enqueued, skipped }
+  })
 }
 
 function expandHome(filePath: string, env: Record<string, string | undefined> = process.env): string {
@@ -732,46 +778,84 @@ export async function drainVideoQueue(options: {
   timeoutMs?: number
   transcribe?: (sourceUrl: string) => Promise<string>
   now?: Date
+  maxAttempts?: number
 }): Promise<{ processed: number; transcribed: number; failed: number }> {
   const queuePath = resolveVideoQueuePath(options.queuePath)
-  const state = await readVideoQueueState(queuePath)
-  const pending = [...state.values()]
-    .filter((record) => record.status === 'pending')
-    .sort((a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt))
-    .slice(0, options.limit ?? 5)
-  let processed = 0
-  let transcribed = 0
-  let failed = 0
+  return withVideoQueueLock(queuePath, async () => {
+    const state = await readVideoQueueState(queuePath)
+    const pending = [...state.values()]
+      .filter((record) => record.status === 'pending')
+      .sort((a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt))
+      .slice(0, options.limit ?? 5)
+    const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
+    let processed = 0
+    let transcribed = 0
+    let failed = 0
 
-  for (const record of pending) {
-    processed++
-    const now = (options.now ?? new Date()).toISOString()
-    try {
-      const sourceUrl = validateVideoSourceUrl(record.sourceUrl)
-      const transcript = (options.transcribe ?? ((url: string) => transcribeWithParakeet(url, { scriptPath: options.scriptPath, timeoutMs: options.timeoutMs })))(sourceUrl)
-      const text = (await transcript).trim()
-      if (!text) throw new Error('empty transcript')
-      const existingImageTags = await freshMediaImageTags(options.db, record.mediaItemId)
-      await options.db.mediaItem.update({
-        where: { id: record.mediaItemId },
-        data: { imageTags: mergeVideoTranscriptImageTags(existingImageTags, text) },
-      })
-      const done: VideoQueueRecord = { ...record, status: 'done', updatedAt: now, transcriptChars: text.length }
-      state.set(record.key, done)
-      await writeVideoQueueState(queuePath, state)
-      transcribed++
-    } catch (err) {
-      const errored: VideoQueueRecord = {
-        ...record,
-        status: 'error',
-        updatedAt: now,
-        error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+    for (const record of pending) {
+      processed++
+      const now = (options.now ?? new Date()).toISOString()
+      try {
+        const sourceUrl = validateVideoSourceUrl(record.sourceUrl)
+        const existingBeforeTranscribe = await freshMediaImageTags(options.db, record.mediaItemId)
+        const existingTranscriptChars = videoTranscriptChars(existingBeforeTranscribe)
+        if (existingTranscriptChars !== null) {
+          const done: VideoQueueRecord = {
+            key: record.key,
+            status: 'done',
+            bookmarkId: record.bookmarkId,
+            tweetId: record.tweetId,
+            mediaItemId: record.mediaItemId,
+            sourceUrl: record.sourceUrl,
+            attempts: record.attempts,
+            enqueuedAt: record.enqueuedAt,
+            updatedAt: now,
+            transcriptChars: existingTranscriptChars,
+          }
+          state.set(record.key, done)
+          await writeVideoQueueState(queuePath, state)
+          continue
+        }
+
+        const transcript = (options.transcribe ?? ((url: string) => transcribeWithParakeet(url, { scriptPath: options.scriptPath, timeoutMs: options.timeoutMs })))(sourceUrl)
+        const text = (await transcript).trim()
+        if (!text) throw new Error('empty transcript')
+        const existingImageTags = await freshMediaImageTags(options.db, record.mediaItemId)
+        await options.db.mediaItem.update({
+          where: { id: record.mediaItemId },
+          data: { imageTags: mergeVideoTranscriptImageTags(existingImageTags, text) },
+        })
+        const done: VideoQueueRecord = {
+          key: record.key,
+          status: 'done',
+          bookmarkId: record.bookmarkId,
+          tweetId: record.tweetId,
+          mediaItemId: record.mediaItemId,
+          sourceUrl: record.sourceUrl,
+          attempts: record.attempts,
+          enqueuedAt: record.enqueuedAt,
+          updatedAt: now,
+          transcriptChars: text.length,
+        }
+        state.set(record.key, done)
+        await writeVideoQueueState(queuePath, state)
+        transcribed++
+      } catch (err) {
+        const attempts = Math.max(1, record.attempts)
+        const canRetry = attempts < maxAttempts
+        const errored: VideoQueueRecord = {
+          ...record,
+          status: canRetry ? 'pending' : 'error',
+          attempts: canRetry ? attempts + 1 : attempts,
+          updatedAt: now,
+          error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+        }
+        state.set(record.key, errored)
+        await writeVideoQueueState(queuePath, state)
+        failed++
       }
-      state.set(record.key, errored)
-      await writeVideoQueueState(queuePath, state)
-      failed++
     }
-  }
 
-  return { processed, transcribed, failed }
+    return { processed, transcribed, failed }
+  })
 }

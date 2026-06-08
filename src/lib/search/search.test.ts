@@ -118,6 +118,56 @@ function createFixtureDb(): { dir: string; dbPath: string } {
   return { dir, dbPath }
 }
 
+function probeSqliteVecAvailability(): { available: boolean; reason: string } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'siftly-vec-probe-'))
+  const dbPath = path.join(dir, 'probe.db')
+  const store = openVectorStore({ dbPath })
+  try {
+    return {
+      available: store.mode === 'sqlite-vec',
+      reason: store.status.reason,
+    }
+  } finally {
+    store.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+const sqliteVecAvailability = probeSqliteVecAvailability()
+const realSqliteVecIt = sqliteVecAvailability.available ? it : it.skip
+const realSqliteVecTestName = sqliteVecAvailability.available
+  ? 'keeps real sqlite-vec results complete across dimension changes and metadata filters'
+  : `keeps real sqlite-vec results complete across dimension changes and metadata filters (skipped: ${sqliteVecAvailability.reason})`
+
+type StoreWithInternalDb = ReturnType<typeof openVectorStore> & { db: Database.Database }
+
+function storeInternalDb(store: ReturnType<typeof openVectorStore>): Database.Database {
+  return (store as StoreWithInternalDb).db
+}
+
+function seedOutOfScopeSqliteVecCandidate(
+  db: Database.Database,
+  bookmarkId: string,
+  model: string,
+  vector: number[],
+): void {
+  db.prepare(`
+    INSERT INTO bookmark_embeddings (bookmark_id, vector_json, model, dimensions, embedded_at)
+    VALUES (@bookmarkId, @vectorJson, @model, @dimensions, CURRENT_TIMESTAMP)
+  `).run({
+    bookmarkId,
+    vectorJson: JSON.stringify(vector),
+    model,
+    dimensions: vector.length,
+  })
+  db.prepare('INSERT OR IGNORE INTO bookmark_vec_idmap (bookmark_id) VALUES (?)').run(bookmarkId)
+  const row = db.prepare('SELECT rowid FROM bookmark_vec_idmap WHERE bookmark_id = ?').get(bookmarkId) as { rowid: number } | undefined
+  if (!row) throw new Error(`missing sqlite-vec id map row for ${bookmarkId}`)
+  const rowid = BigInt(row.rowid)
+  db.prepare('DELETE FROM bookmark_vec WHERE rowid = ?').run(rowid)
+  db.prepare('INSERT INTO bookmark_vec (rowid, embedding) VALUES (?, ?)').run(rowid, JSON.stringify(vector))
+}
+
 describe('hybrid bookmark search', () => {
   const cleanupDirs: string[] = []
 
@@ -157,6 +207,42 @@ describe('hybrid bookmark search', () => {
       expect(nearest[0]?.score).toBeGreaterThan(0)
     } finally {
       fallbackStore.close()
+    }
+  })
+
+  realSqliteVecIt(realSqliteVecTestName, () => {
+    const { dir, dbPath } = createFixtureDb()
+    cleanupDirs.push(dir)
+
+    const store = openVectorStore({ dbPath })
+    try {
+      expect(store.mode).toBe('sqlite-vec')
+
+      store.upsert({ bookmarkId: 'b-sqlite-vec', model: 'old-two-dimensional-model', vector: [1, 0] })
+      expect(store.search([1, 0], 1, 'old-two-dimensional-model')).toMatchObject([
+        { bookmarkId: 'b-sqlite-vec', mode: 'sqlite-vec' },
+      ])
+
+      const activeModel = 'active-three-dimensional-model'
+      store.upsert({ bookmarkId: 'b-xurl', model: activeModel, vector: [0.7, 0.3, 0] })
+      store.upsert({ bookmarkId: 'b-openai-local', model: activeModel, vector: [0.65, 0.35, 0] })
+      store.upsert({ bookmarkId: 'b-obsidian', model: activeModel, vector: [0, 1, 0] })
+
+      const db = storeInternalDb(store)
+      const meta = db.prepare('SELECT model, dimensions FROM bookmark_vec_meta WHERE key = ?').get('active')
+      expect(meta).toEqual({ model: activeModel, dimensions: 3 })
+
+      // Reproduce the vec0 starvation bug: the closest KNN rows can belong to
+      // another model/dimension and then get filtered out after MATCH.
+      seedOutOfScopeSqliteVecCandidate(db, 'other-nearest-a', 'other-three-dimensional-model', [1, 0, 0])
+      seedOutOfScopeSqliteVecCandidate(db, 'other-nearest-b', 'other-three-dimensional-model', [0.99, 0.01, 0])
+
+      const nearest = store.search([1, 0, 0], 2, activeModel)
+      expect(nearest).toHaveLength(2)
+      expect(nearest.map((row) => row.mode)).toEqual(['sqlite-vec', 'sqlite-vec'])
+      expect(nearest.map((row) => row.bookmarkId)).toEqual(['b-xurl', 'b-openai-local'])
+    } finally {
+      store.close()
     }
   })
 

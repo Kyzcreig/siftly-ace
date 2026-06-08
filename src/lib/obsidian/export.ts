@@ -147,7 +147,9 @@ export function sanitizeFilename(value: string): string {
 export function noteFilename(bookmark: ObsidianSavedTweet): string {
   const date = dateOnly(bookmark.tweetCreatedAt) ?? 'unknown-date'
   const author = sanitizeFilename(bookmark.authorHandle || 'unknown') || 'unknown'
-  const tweetId = sanitizeFilename(bookmark.tweetId) || sanitizeFilename(bookmark.id) || 'unknown-id'
+  const sanitizedTweetId = sanitizeFilename(bookmark.tweetId)
+  const sanitizedBookmarkId = sanitizeFilename(bookmark.id)
+  const tweetId = sanitizedTweetId || sanitizedBookmarkId || `unknown-id-${contentFingerprint(bookmark.id).slice(0, 8)}`
   return `${date} - @${author} - ${tweetId}.md`
 }
 
@@ -537,6 +539,10 @@ export async function exportSavedTweetsToObsidian(options: ObsidianExportOptions
   ] as const
 
   for (const [relativePath, content] of indexes) {
+    const filePath = path.resolve(outputDir, relativePath)
+    assertInside(outputDir, filePath)
+    if (!overwrite && await contentMatches(filePath, content)) continue
+
     await writeExportFile(outputDir, relativePath, content)
     result.indexesWritten++
   }
