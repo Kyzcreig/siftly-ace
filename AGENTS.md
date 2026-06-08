@@ -56,3 +56,10 @@ Verification: `embed --limit 5 --force` → `vec=sqlite-vec`; known-item query "
 - 4 dispatchable tasks (T-W3-1..4) + 1 GATED main-agent-only task (T-W3-5 = the real ~$15-25 backfill spend, Apollo runs with Ace present, NOT a worker).
 - Credit-meter auth gotcha (verified live): `/2/usage/tweets` is App-Only bearer; user-context token -> 403. Credit-floor guard must use the bearer, not the ingest user token.
 - Awaiting Ace go/no-go to dispatch the swarm.
+
+## Wave 3 — T-W3-1/2/3 DONE (2026-06-08), commit 57fb6da (pushed); T-W3-4 in flight
+- T-W3-1 credit-floor guard (lib/credit-guard.ts): checkCreditFloor reads /2/usage/tweets via app-only bearer, fail-closes on 403/parse/network, detects user-token-403 as CONFIG error, reserve default 50000 (SIFTLY_CREDIT_RESERVE). Review MEDIUM applied: fail-closed paths logger.warn.
+- T-W3-2 cost-estimate gate (lib/cost-estimate.ts, scripts/ingest.ts): --confirm required for non-dry full backfill, --incremental skips gate. runIngestCli extracted (injectable deps).
+- T-W3-3 402 resumable-stop (lib/xurl-ingest.ts): persist cursor + onCreditsDepleted-once + resumable; 429 unchanged. Review CRITICAL applied: added resumeFromCursor opt (default true). Daily INCREMENTAL must pass resumeFromCursor:false — X paginates newest->older, auto-resume would skip new top-of-list bookmarks. Regression test added. LOW declined (persist-before-alert is correct).
+- Verified by Apollo (not worker self-report): tsc clean; new tests 18/18; full suite 83 pass/6 skip; real-vec e2e 8/8.
+- **PROVISIONING GAP (do before first live daily run):** siftly-ace has NO app-only bearer configured (`xurl auth status` -> siftly-ace bearer: -). The guard's default `xurl --app siftly-ace --auth app /2/usage/tweets` 401s today (even forge's bearer 401s now). Fix: mint+set bearer via `xurl --app siftly-ace auth app --bearer-token <token>` (token from the app's client id/secret). Until then the guard fail-closes and the daily run aborts+alerts (safe, but won't ingest). Phase-0 read the meter once; it's not readable now.
