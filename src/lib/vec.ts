@@ -45,7 +45,7 @@ interface SqliteVecMeta {
 
 const EMBEDDING_TABLE = 'bookmark_embeddings'
 const SQLITE_VEC_TABLE = 'bookmark_vec'
-const SQLITE_VEC_ROWIDS_TABLE = 'bookmark_vec_rowids'
+const SQLITE_VEC_ROWIDS_TABLE = 'bookmark_vec_idmap'
 const SQLITE_VEC_META_TABLE = 'bookmark_vec_meta'
 const SQLITE_VEC_META_KEY = 'active'
 
@@ -283,11 +283,16 @@ class BetterSqliteVectorStore implements VectorStore {
     `).get(bookmarkId) as { rowid: number } | undefined
     if (!row) throw new Error(`missing sqlite-vec rowid for bookmark ${bookmarkId}`)
 
-    this.db.prepare(`DELETE FROM ${SQLITE_VEC_TABLE} WHERE rowid = ?`).run(row.rowid)
+    // sqlite-vec's vec0 virtual table requires a true INTEGER rowid. better-sqlite3
+    // binds plain JS numbers as float64, which vec0 rejects ("Only integers are
+    // allowed for primary key values"), silently demoting the store to brute-force.
+    // Bind as BigInt so the value arrives as a SQLite integer.
+    const rowid = BigInt(row.rowid)
+    this.db.prepare(`DELETE FROM ${SQLITE_VEC_TABLE} WHERE rowid = ?`).run(rowid)
     this.db.prepare(`
       INSERT INTO ${SQLITE_VEC_TABLE} (rowid, embedding)
       VALUES (?, ?)
-    `).run(row.rowid, JSON.stringify(vector))
+    `).run(rowid, JSON.stringify(vector))
   }
 
   private sqliteVecTableMatches(model: string, dimensions: number): boolean {
@@ -330,7 +335,7 @@ class BetterSqliteVectorStore implements VectorStore {
       ORDER BY v.distance
     `).all({
       embedding: JSON.stringify(vector),
-      limit,
+      limit: BigInt(limit),
       model,
       dimensions: vector.length,
     }) as { bookmarkId: string; distance: number }[]
