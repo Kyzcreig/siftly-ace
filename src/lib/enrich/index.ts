@@ -552,20 +552,28 @@ async function freshMediaImageTags(db: VideoEnrichDb, mediaItemId: string): Prom
   return existing.imageTags
 }
 
-export async function runOcrForMediaItems(db: VideoEnrichDb, mediaItems: EnrichMediaItemInput[], timeoutMs = 30_000): Promise<{ attempted: number; succeeded: number }> {
+export async function runOcrForMediaItems(db: VideoEnrichDb, mediaItems: EnrichMediaItemInput[], timeoutMs = 30_000): Promise<{ attempted: number; succeeded: number; failed: number }> {
   let attempted = 0
   let succeeded = 0
+  let failed = 0
   for (const item of mediaItems) {
     const target = item.type === 'video' ? (item.thumbnailUrl ?? item.url) : item.url
     if (!target) continue
     attempted++
-    const result = await runLocalOcr({ url: target, timeoutMs })
-    const existingImageTags = await freshMediaImageTags(db, item.id)
-    const imageTags = mergeOcrImageTags(existingImageTags, result.text)
-    await db.mediaItem.update({ where: { id: item.id }, data: { imageTags } })
-    if (result.text) succeeded++
+    try {
+      const result = await runLocalOcr({ url: target, timeoutMs })
+      const existingImageTags = await freshMediaImageTags(db, item.id)
+      const imageTags = mergeOcrImageTags(existingImageTags, result.text)
+      await db.mediaItem.update({ where: { id: item.id }, data: { imageTags } })
+      if (result.text) succeeded++
+    } catch (err) {
+      // A single bad image (404/timeout/oversized/decode failure) must not abort the
+      // whole batch and lose progress on every later item. Log, count, continue.
+      failed++
+      console.warn(`OCR failed for media ${item.id}: ${(err as Error).message}`)
+    }
   }
-  return { attempted, succeeded }
+  return { attempted, succeeded, failed }
 }
 
 const DEFAULT_CAPTION_MODEL = 'gpt-4o-mini'

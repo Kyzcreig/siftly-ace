@@ -130,7 +130,7 @@ async function main(): Promise<void> {
 
   const factual = await enrichBookmarkRows(prisma as unknown as EnrichDb, bookmarks)
 
-  let ocr = { attempted: 0, succeeded: 0 }
+  let ocr = { attempted: 0, succeeded: 0, failed: 0 }
   if (options.vision) {
     if (enforceVisionCostGate(estimate, { confirm: options.confirm, dryRun: options.dryRun })) {
       ocr = await runOcrForMediaItems(prisma as unknown as VideoEnrichDb, ocrCandidates)
@@ -155,6 +155,7 @@ async function main(): Promise<void> {
       `factual=${factual.enriched}`,
       `ocr-attempted=${ocr.attempted}`,
       `ocr-succeeded=${ocr.succeeded}`,
+      `ocr-failed=${ocr.failed}`,
       `caption-attempted=${caption.attempted}`,
       `caption-succeeded=${caption.succeeded}`,
       `caption-failed=${caption.failed}`,

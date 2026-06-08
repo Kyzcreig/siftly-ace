@@ -260,6 +260,34 @@ describe('Phase 3 enrichment', () => {
     expect(parsed.video_transcript).toBe('spoken transcript')
   }, 60_000)
 
+  it('continues the OCR batch when a single image hard-fails (404/timeout/decode)', async () => {
+    // A good image AFTER a broken one must still be processed: one bad item
+    // must not abort the run and lose progress on every later candidate.
+    const goodPath = path.join(tmp, 'ocr-resilient-good.png')
+    await createTextImage(goodPath, 'SURVIVES')
+    const badPath = path.join(tmp, 'does-not-exist-ocr-input.png') // no file -> tesseract throws
+
+    const db = new MemoryVideoDb(['bad-media', 'good-media'])
+
+    const result = await runOcrForMediaItems(
+      db,
+      [
+        { id: 'bad-media', type: 'photo', url: badPath, thumbnailUrl: null, imageTags: null },
+        { id: 'good-media', type: 'photo', url: goodPath, thumbnailUrl: null, imageTags: null },
+      ],
+      30_000,
+    )
+
+    expect(result.attempted).toBe(2)
+    expect(result.failed).toBe(1)
+    expect(result.succeeded).toBe(1)
+    // The good item AFTER the failure was still written.
+    const parsed = JSON.parse(db.mediaItems.get('good-media')!.imageTags!) as { text_ocr?: string[] }
+    expect(normalize((parsed.text_ocr ?? []).join(' '))).toContain('survives')
+    // The failed item was left untouched (no partial/garbage write).
+    expect(db.mediaItems.get('bad-media')!.imageTags).toBeNull()
+  }, 60_000)
+
   it('validates video source URLs before queueing and before transcription', async () => {
     const queuePath = path.join(tmp, 'video-queue-invalid-url.jsonl')
     await expect(enqueueVideoItems([videoBookmark({}, { url: 'https://evil.example/video.mp4' })], { queuePath })).rejects.toThrow(/allowlist/i)

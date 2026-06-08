@@ -62,7 +62,7 @@ describe('siftly-ace pipeline e2e', () => {
       expect(enrichResult).toEqual({ enriched: 6 })
 
       const ocrResult = await runOcrForMediaItems(adapter, selectMediaForOcr(db), 30_000)
-      expect(ocrResult).toEqual({ attempted: 1, succeeded: 1 })
+      expect(ocrResult).toEqual({ attempted: 1, succeeded: 1, failed: 0 })
       const memeTags = parseImageTags(mediaImageTags(db, 'media-meme'))
       expect(normalizeText(String((memeTags.text_ocr as string[]).join(' ')))).toContain('pineapple meme')
 
