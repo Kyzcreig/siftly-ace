@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:e2e": "vitest run --dir e2e",
     "siftly": "tsx cli/siftly.ts",
     "ingest": "tsx scripts/ingest.ts"
   },

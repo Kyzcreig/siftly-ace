@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -603,6 +603,12 @@ interface VideoQueueLockOwner {
   createdAt?: string
 }
 
+interface VideoQueueLockIdentity {
+  dev: number
+  ino: number
+  mtimeMs: number
+}
+
 function videoQueueLockPath(queuePath: string): string {
   return `${queuePath}.lock`
 }
@@ -641,8 +647,9 @@ function isPidAlive(pid: number): boolean {
 }
 
 function staleVideoQueueLockReason(owner: VideoQueueLockOwner | null, staleMs: number, nowMs: number): string | null {
-  if (!owner) return null
-  const createdAtMs = owner.createdAt ? Date.parse(owner.createdAt) : Number.NaN
+  if (!owner || owner.pid === undefined || !owner.createdAt) return null
+  const createdAtMs = Date.parse(owner.createdAt)
+  if (!Number.isFinite(createdAtMs)) return null
   if (Number.isFinite(createdAtMs) && nowMs - createdAtMs > staleMs) {
     return `owner createdAt ${owner.createdAt} is older than ${staleMs}ms`
   }
@@ -657,11 +664,55 @@ function describeVideoQueueLockOwner(owner: VideoQueueLockOwner | null): string 
   return `owner pid=${owner.pid ?? 'unknown'} createdAt=${owner.createdAt ?? 'unknown'}`
 }
 
+async function videoQueueLockIdentity(lockPath: string): Promise<VideoQueueLockIdentity | null> {
+  try {
+    const lockStat = await stat(lockPath)
+    if (!lockStat.isDirectory()) return null
+    return { dev: lockStat.dev, ino: lockStat.ino, mtimeMs: lockStat.mtimeMs }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
+}
+
+function sameVideoQueueLockIdentity(a: VideoQueueLockIdentity | null, b: VideoQueueLockIdentity | null): boolean {
+  return Boolean(a && b && a.dev === b.dev && a.ino === b.ino && a.mtimeMs === b.mtimeMs)
+}
+
 async function reclaimStaleVideoQueueLock(lockPath: string, staleMs: number): Promise<boolean> {
+  const observedIdentity = await videoQueueLockIdentity(lockPath)
+  if (!observedIdentity) return false
   const owner = await readVideoQueueLockOwner(lockPath)
   const reason = staleVideoQueueLockReason(owner, staleMs, Date.now())
   if (!reason) return false
-  await rm(lockPath, { recursive: true, force: true })
+
+  const preRenameIdentity = await videoQueueLockIdentity(lockPath)
+  if (!sameVideoQueueLockIdentity(observedIdentity, preRenameIdentity)) return false
+
+  const reclaimPath = `${lockPath}.reclaiming-${process.pid}-${Date.now()}`
+  try {
+    await rename(lockPath, reclaimPath)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
+  }
+
+  const reclaimedIdentity = await videoQueueLockIdentity(reclaimPath)
+  if (!sameVideoQueueLockIdentity(observedIdentity, reclaimedIdentity)) {
+    try {
+      await rename(reclaimPath, lockPath)
+    } catch (err) {
+      // Best effort only: never delete a directory whose identity no longer
+      // matches the stale lock we observed. Surface the orphaned reclaim path
+      // so a leaked `.reclaiming-*` directory is operationally visible.
+      console.warn(
+        `video queue lock reclaim rollback failed; orphaned ${reclaimPath}: ${(err as Error).message}`,
+      )
+    }
+    return false
+  }
+
+  await rm(reclaimPath, { recursive: true, force: true })
   return true
 }
 
