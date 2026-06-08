@@ -38,3 +38,10 @@ Two bugs fixed in src/lib/vec.ts that were silently demoting every real run to b
 2. better-sqlite3 binds JS numbers as float64; vec0 rejects non-integer rowid/k → bind as BigInt.
 
 Verification: `embed --limit 5 --force` → `vec=sqlite-vec`; known-item query "Hermes language model new release" returns row cmq4gxpoj0004hoyydhm3wsfe (Teknium "Hermes v0.16.0 is out now!") as #1, every vec hit `mode=sqlite-vec` (not fallback). Suite 59/59, tsc clean.
+
+## E2E hard-fail gate — DONE (2026-06-08), commit 19331da (pushed)
+- `e2e/` suite (pipeline + vec-migration), `npm run test:e2e`. Closes the systemic gap that hid Aegis's vec0 bug: vec0 tests now HARD-FAIL (throw) instead of silently skipping when `SIFTLY_SQLITE_VEC_EXTENSION_PATH` is set and the store demotes to brute-force.
+- Gate mechanic: `realVecIt = path ? it : it.skip`; `assertRealVecStore` throws on `mode !== 'sqlite-vec'`. Proof: bogus `.dylib` path -> 3 e2e fail (exit 1), not skip.
+- Covers fresh-DB pipeline, legacy `bookmark_vec_rowids` self-heal, dim/provider swap, brute-force fallback correctness, video drain (OCR-preserve, dedupe compaction, stale-TTL + dead-pid reclaim, partial-owner lock timeout, live-embed missing-key hard-fail).
+- Also hardened video-queue stale-lock reclaim (TOCTOU): inode-identity verified pre/post rename, rollback-on-drift, logs orphaned `.reclaiming-*` on rollback failure.
+- Verified: tsc clean; 65 pass/6 skip (vec unset); 8/8 real-vec all mode=sqlite-vec. Opus pass-2 APPROVE_WITH_CHANGES (F2 applied; F1/F3 declined).
