@@ -45,10 +45,13 @@ describe('x-feed-cache helpers', () => {
     expect(minId([a, b])).toBe(a)
     // cross-digit-length: a 20-digit id is numerically larger than a 19-digit id
     expect(idIsNewer('10000000000000000000', a)).toBe(true)
-    // REGRESSION (B1.2): lexicographic compare would call a shorter-but-larger-prefix id
-    // "older"; BigInt gets it right. '900...'(18d) < '1000...'(19d) numerically.
-    expect(idIsNewer('1000000000000000000', '999999999999999999')).toBe(true)
-    expect(idIsNewer('999999999999999999', '1000000000000000000')).toBe(false)
+    // REGRESSION (B1.2) — DISCRIMINATING: length-then-lex would get these WRONG (it calls
+    // the 20-char string "newer" purely on length); BigInt compares numeric VALUE. A
+    // 20-char leading-zero id ('000…001' = 1) is numerically SMALLER than a 19-char one.
+    expect(idIsNewer('00000000000000000001', '9999999999999999999')).toBe(false)
+    expect(idIsNewer('9999999999999999999', '00000000000000000001')).toBe(true)
+    // catch-fallback path: non-numeric ids degrade to length-then-lex without throwing
+    expect(idIsNewer('zzz', 'aaa')).toBe(true)
   })
 
   it('mergeTweets dedupes by id and sorts newest-first', () => {

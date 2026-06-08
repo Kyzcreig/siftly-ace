@@ -154,3 +154,8 @@ Review verdict: **BLOCK** on two real Feature-1 incremental-path bugs + day-key 
 - **RC5** — deterministic precedence: DB provider set-but-unusable AND a different provider's key present -> auto-pick with loud warning + surface resolved provider in response; DB provider unset -> documented fixed order.
 
 **Status:** Feature 1 BLOCK cleared (B1-B3 + RC1 fixed, live-reproven). Features 2 & 3 remain APPROVE-WITH-CHANGES, to be built with RC3/RC4/RC5 baked in.
+
+### Pass-2 follow-ups (APPROVE WITH CHANGES — applied)
+- **B1.2 test made discriminating:** the original regression assertion passed under the old length-then-lex code too (decimal ids without leading zeros compare identically). Replaced with a leading-zero cross-length case (`'000…001'` (20ch, =1) vs 19-char id) that length-then-lex gets WRONG and BigInt gets right, plus a `catch`-fallback assertion. The test now fails if the BigInt fix is reverted.
+- **Documented intended property — bounded intra-day over-inclusion:** anchoring incremental top-ups to the cache's frozen original `meta.since` means a late-day *manual rerun* can retain a window up to ~34h wide vs a fresh sweep's 24h. This is bounded **over-inclusion (extra older tweets), never loss**, and self-resets every morning via the PT-day MISS. The canonical 7:30am PT deliverable is always a fresh MISS, so Ace never sees this drift — it only affects same-day manual test reruns, where keeping a few extra stale tweets is strictly safer than dropping valid ones. Intended tradeoff, not a bug.
+- **Backfill edge:** pre-fix cache files lack `meta.since`; the first post-deploy incremental run on such a file falls back to legacy behavior for that single run, then self-heals at the next PT-day MISS (<24h transient).
