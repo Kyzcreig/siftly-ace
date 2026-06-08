@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Bookmark {
+  id            String    @id @default(cuid())
+  tweetId       String    @unique
+  text          String
+  authorHandle  String
+  authorName    String
+  tweetCreatedAt DateTime?
+  importedAt    DateTime  @default(now())
+  rawJson       String    // full JSON stored as string
+  semanticTags    String?   // JSON array of AI-generated searchable tags
+  entities        String?   // JSON: {hashtags[], urls[], mentions[], tools[], tweetType}
+  enrichedAt      DateTime? // when AI enrichment last ran — drives incremental processing
+  enrichmentMeta  String?   // JSON: {sentiment, people[], companies[]} from batch enrichment
+  source          String    @default("bookmark")  // "bookmark" | "like"
+  mediaItems    MediaItem[]
+  categories    BookmarkCategory[]
+
+  @@index([authorHandle])
+  @@index([tweetCreatedAt])
+  @@index([enrichedAt])
+  @@index([source])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  color       String   @default("#6366f1")
+  description String?
+  isAiGenerated Boolean @default(false)
+  createdAt   DateTime @default(now())
+  bookmarks   BookmarkCategory[]
+}
+
+model BookmarkCategory {
+  bookmarkId  String
+  categoryId  String
+  confidence  Float    @default(1.0)
+  bookmark    Bookmark @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([bookmarkId, categoryId])
+}
+
+model MediaItem {
+  id           String   @id @default(cuid())
+  bookmarkId   String
+  type         String   // photo | video | gif
+  url          String
+  thumbnailUrl String?
+  localPath    String?
+  imageTags    String?  // AI-generated structured JSON visual description
+  bookmark     Bookmark @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+
+  @@index([bookmarkId])
+  @@index([url])
+}
+
+model ImportJob {
+  id             String   @id @default(cuid())
+  filename       String
+  status         String   @default("pending") // pending | processing | done | error
+  totalCount     Int      @default(0)
+  processedCount Int      @default(0)
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Setting {
+  key   String @id
+  value String
+}

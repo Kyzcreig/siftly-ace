@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Floating squares above -->
+  <rect x="28" y="18" width="22" height="22" rx="4" fill="#4A90D9" transform="rotate(-15 39 29)"/>
+  <rect x="130" y="22" width="20" height="20" rx="3" fill="#F5A623" transform="rotate(20 140 32)"/>
+  <circle cx="62" cy="28" r="5" fill="#F5A623" opacity="0.9"/>
+
+  <!-- Sieve top bar -->
+  <rect x="18" y="60" width="150" height="13" rx="6.5" fill="#4A90D9"/>
+
+  <!-- Orange bookmark ribbon -->
+  <path d="M155 60 L177 60 L177 96 L166 88 L155 96 Z" fill="#F5A623"/>
+
+  <!-- Sieve bowl -->
+  <path d="M28 73 Q24 122 60 142 Q85 154 100 154 Q115 154 140 142 Q176 122 172 73 Z" fill="#4A90D9"/>
+  <path d="M40 81 Q37 119 66 136 Q86 146 100 146 Q114 146 134 136 Q163 119 160 81 Z" fill="#3A7ABF"/>
+
+  <!-- Holes — white for visibility at small sizes -->
+  <circle cx="70" cy="102" r="5.5" fill="white" opacity="0.7"/>
+  <circle cx="90" cy="102" r="5.5" fill="white" opacity="0.7"/>
+  <circle cx="110" cy="102" r="5.5" fill="white" opacity="0.7"/>
+  <circle cx="130" cy="102" r="5.5" fill="white" opacity="0.7"/>
+  <circle cx="80" cy="118" r="5.5" fill="white" opacity="0.7"/>
+  <circle cx="100" cy="118" r="5.5" fill="white" opacity="0.7"/>
+  <circle cx="120" cy="118" r="5.5" fill="white" opacity="0.7"/>
+
+  <!-- Bottom output squares -->
+  <rect x="58" y="164" width="24" height="20" rx="4" fill="#4A90D9"/>
+  <rect x="88" y="164" width="24" height="20" rx="4" fill="#F5A623"/>
+  <rect x="118" y="164" width="24" height="20" rx="4" fill="#4A90D9" opacity="0.5"/>
+</svg>

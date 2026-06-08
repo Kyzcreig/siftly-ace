@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+  /* Siftly brand */
+  --brand-blue: #4A90D9;
+  --brand-orange: #F5A623;
+  --brand-navy: #1E3A6E;
+  --color-indigo-600: #2563EB;
+  --color-indigo-500: #3B82F6;
+  --color-indigo-400: #60A5FA;
+}
+
+/* ── Light mode: invert the zinc scale ────────────────────────────────────── */
+html.light {
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --color-zinc-950: #ffffff;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-800: #e2e2e5;
+  --color-zinc-700: #c4c4cc;
+  --color-zinc-600: #71717a;
+  --color-zinc-500: #52525b;
+  --color-zinc-400: #3f3f46;
+  --color-zinc-300: #27272a;
+  --color-zinc-200: #1c1c1f;
+  --color-zinc-100: #09090b;
+  --color-zinc-50: #f8f8f9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Bookmark grid ─────────────────────────────────────────────────────────── */
+
+.masonry-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .masonry-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .masonry-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.masonry-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbar styling ────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #a1a1aa;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
+/* ── React Flow custom styles ─────────────────────────────────────────────── */
+
+.react-flow__node {
+  border-radius: 12px;
+}
+
+/* Fix invisible controls on dark background */
+.react-flow__controls {
+  background: rgba(24, 24, 27, 0.92) !important;
+  border: 1px solid #3f3f46 !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+}
+
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid #3f3f46 !important;
+  fill: #a1a1aa !important;
+  color: #a1a1aa !important;
+  transition: background 0.15s !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(63, 63, 70, 0.5) !important;
+  fill: #e4e4e7 !important;
+}
+
+.react-flow__minimap {
+  background: rgba(24, 24, 27, 0.92) !important;
+  border: 1px solid #3f3f46 !important;
+  border-radius: 12px !important;
+}
+
+/* ── React Flow light mode overrides ──────────────────────────────────────── */
+
+html.light .react-flow__controls {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid #c4c4cc !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+
+html.light .react-flow__controls-button {
+  border-bottom: 1px solid #c4c4cc !important;
+  fill: #52525b !important;
+  color: #52525b !important;
+}
+
+html.light .react-flow__controls-button:hover {
+  background: rgba(196, 196, 204, 0.4) !important;
+  fill: #09090b !important;
+}
+
+html.light .react-flow__minimap {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid #c4c4cc !important;
+}

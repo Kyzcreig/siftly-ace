@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Floating squares above sieve -->
+  <rect x="28" y="18" width="22" height="22" rx="4" fill="#4A90D9" transform="rotate(-15 39 29)"/>
+  <rect x="78" y="8" width="18" height="18" rx="3" fill="#4A90D9" opacity="0.7" transform="rotate(10 87 17)"/>
+  <rect x="130" y="22" width="20" height="20" rx="3" fill="#F5A623" transform="rotate(20 140 32)"/>
+  <circle cx="62" cy="28" r="4" fill="#F5A623" opacity="0.8"/>
+  <circle cx="148" cy="48" r="3.5" fill="#4A90D9" opacity="0.6"/>
+
+  <!-- Sieve bar (top horizontal bar) -->
+  <rect x="18" y="60" width="150" height="12" rx="6" fill="#4A90D9"/>
+
+  <!-- Orange bookmark ribbon -->
+  <path d="M155 60 L175 60 L175 95 L165 88 L155 95 Z" fill="#F5A623"/>
+
+  <!-- Sieve bowl body -->
+  <path d="M28 72 Q24 120 60 140 Q85 152 100 152 Q115 152 140 140 Q176 120 172 72 Z" fill="#4A90D9"/>
+  <!-- Bowl highlight/inner -->
+  <path d="M38 80 Q35 118 65 134 Q85 144 100 144 Q115 144 135 134 Q165 118 162 80 Z" fill="#3A7ABF"/>
+
+  <!-- Holes in sieve (dots pattern) -->
+  <circle cx="68" cy="100" r="5" fill="#1E3A6E"/>
+  <circle cx="88" cy="100" r="5" fill="#1E3A6E"/>
+  <circle cx="108" cy="100" r="5" fill="#1E3A6E"/>
+  <circle cx="128" cy="100" r="5" fill="#1E3A6E"/>
+  <circle cx="78" cy="116" r="5" fill="#1E3A6E"/>
+  <circle cx="98" cy="116" r="5" fill="#1E3A6E"/>
+  <circle cx="118" cy="116" r="5" fill="#1E3A6E"/>
+  <circle cx="88" cy="86" r="4.5" fill="#1E3A6E"/>
+  <circle cx="108" cy="86" r="4.5" fill="#1E3A6E"/>
+
+  <!-- Downward arrows -->
+  <g fill="#1E3A6E">
+    <path d="M72 160 L72 176 L66 170 L72 176 L78 170 Z" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="72" y1="155" x2="72" y2="174" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round"/>
+    <path d="M72 174 L66 168 M72 174 L78 168" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g fill="#1E3A6E">
+    <line x1="100" y1="155" x2="100" y2="174" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round"/>
+    <path d="M100 174 L94 168 M100 174 L106 168" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g fill="#1E3A6E">
+    <line x1="128" y1="155" x2="128" y2="174" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round"/>
+    <path d="M128 174 L122 168 M128 174 L134 168" stroke="#1E3A6E" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Bottom squares (filtered output) -->
+  <rect x="56" y="178" width="22" height="18" rx="3" fill="#4A90D9"/>
+  <rect x="89" y="178" width="22" height="18" rx="3" fill="#F5A623"/>
+  <rect x="122" y="178" width="22" height="18" rx="3" fill="#8B9CB0" opacity="0.7"/>
+</svg>
