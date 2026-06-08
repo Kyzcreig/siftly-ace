@@ -3,6 +3,7 @@ import { drainVideoQueue, resolveVideoQueuePath, type VideoEnrichDb } from '../s
 
 interface CliOptions {
   limit: number
+  workers?: number
   queuePath?: string
   scriptPath?: string
   timeoutMs: number
@@ -10,9 +11,9 @@ interface CliOptions {
 
 function usage(): string {
   return [
-    'Usage: npx tsx scripts/video-enrich.ts [--limit N] [--queue-path PATH] [--script PATH] [--timeout-ms N]',
+    'Usage: npx tsx scripts/video-enrich.ts [--limit N] [--workers N] [--queue-path PATH] [--script PATH] [--timeout-ms N]',
     '',
-    'Drains the out-of-band video transcription queue. This is intentionally separate from scripts/enrich.ts and the daily cron budget.',
+    'Drains the out-of-band video transcription queue with per-item leases and 2-3 parallel download workers. This is intentionally separate from scripts/enrich.ts and the daily cron budget.',
   ].join('\n')
 }
 
@@ -33,6 +34,10 @@ function parseArgs(argv: string[]): CliOptions {
         process.exit(0)
       case '--limit':
         options.limit = parsePositiveInt(argv[++i], '--limit')
+        break
+      case '--workers':
+        options.workers = parsePositiveInt(argv[++i], '--workers')
+        if (options.workers > 3) throw new Error('--workers must be 1, 2, or 3 (per-card max_inflight stays 1)')
         break
       case '--queue-path':
         options.queuePath = argv[++i]
@@ -60,6 +65,7 @@ async function main(): Promise<void> {
     db: prisma as unknown as VideoEnrichDb,
     queuePath,
     limit: options.limit,
+    workers: options.workers,
     scriptPath: options.scriptPath,
     timeoutMs: options.timeoutMs,
   })
@@ -67,6 +73,7 @@ async function main(): Promise<void> {
   console.log(
     [
       'video-enrich complete',
+      `workers=${options.workers ?? 'auto'}`,
       `processed=${result.processed}`,
       `transcribed=${result.transcribed}`,
       `failed=${result.failed}`,

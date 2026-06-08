@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3'
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -10,7 +11,7 @@ const execFileAsync = promisify(execFile)
 
 export type Segment = 'brief-relevant' | 'everything-else'
 export type TweetFormat = 'thread' | 'single' | 'quote' | 'reply'
-export type QueueStatus = 'pending' | 'done' | 'error'
+export type QueueStatus = 'pending' | 'leasing' | 'done' | 'error'
 export const DEFAULT_VIDEO_MAX_ATTEMPTS = 3
 
 export interface EnrichMediaItemInput {
@@ -94,6 +95,7 @@ export interface VideoEnrichDb {
     findUnique: (args: { where: { id: string }; select: { imageTags: true } }) => Promise<{ imageTags: string | null } | null>
     update: (args: { where: { id: string }; data: { imageTags: string } }) => Promise<unknown>
   }
+  $executeRawUnsafe?: (query: string, ...values: unknown[]) => Promise<unknown>
 }
 
 export interface VideoQueueRecord {
@@ -108,6 +110,8 @@ export interface VideoQueueRecord {
   updatedAt?: string
   transcriptChars?: number
   error?: string
+  owner?: string
+  leasedAt?: string
 }
 
 interface RawTweetShape {
@@ -923,31 +927,221 @@ async function withVideoQueueLock<T>(queuePath: string, fn: () => Promise<T>, op
   }
 }
 
-async function writeVideoQueueState(queuePath: string, records: Map<string, VideoQueueRecord>): Promise<void> {
+interface VideoQueueSqlRow {
+  id: number
+  key: string
+  status: QueueStatus
+  bookmarkId: string
+  tweetId: string
+  mediaItemId: string
+  sourceUrl: string
+  attempts: number
+  enqueuedAt: string
+  updatedAt: string | null
+  transcriptChars: number | null
+  error: string | null
+  owner: string | null
+  leasedAt: string | null
+}
+
+interface LeasedVideoQueueRecord extends VideoQueueRecord {
+  id: number
+  owner: string
+  leasedAt: string
+}
+
+const VIDEO_QUEUE_LEASE_TTL_MS = 15 * 60_000
+const DEFAULT_VIDEO_DRAIN_WORKERS = 2
+const MAX_VIDEO_DRAIN_WORKERS = 3
+
+function resolveVideoQueueSqlitePath(queuePath: string): string {
+  return /\.(db|sqlite|sqlite3)$/i.test(queuePath) ? queuePath : `${queuePath}.sqlite`
+}
+
+function ensureVideoQueueSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'leasing', 'done', 'error')),
+      bookmarkId TEXT NOT NULL,
+      tweetId TEXT NOT NULL,
+      mediaItemId TEXT NOT NULL,
+      sourceUrl TEXT NOT NULL,
+      attempts INTEGER NOT NULL,
+      enqueuedAt TEXT NOT NULL,
+      updatedAt TEXT,
+      transcriptChars INTEGER,
+      error TEXT,
+      owner TEXT,
+      leasedAt TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS queue_tweet_id_unique ON queue(tweetId);
+    CREATE INDEX IF NOT EXISTS queue_status_id_idx ON queue(status, id);
+    CREATE INDEX IF NOT EXISTS queue_lease_idx ON queue(status, leasedAt);
+  `)
+}
+
+function rowToVideoQueueRecord(row: VideoQueueSqlRow): VideoQueueRecord {
+  return {
+    key: row.key,
+    status: row.status,
+    bookmarkId: row.bookmarkId,
+    tweetId: row.tweetId,
+    mediaItemId: row.mediaItemId,
+    sourceUrl: row.sourceUrl,
+    attempts: row.attempts,
+    enqueuedAt: row.enqueuedAt,
+    updatedAt: row.updatedAt ?? undefined,
+    transcriptChars: row.transcriptChars ?? undefined,
+    error: row.error ?? undefined,
+    owner: row.owner ?? undefined,
+    leasedAt: row.leasedAt ?? undefined,
+  }
+}
+
+function rowToLeasedRecord(row: VideoQueueSqlRow): LeasedVideoQueueRecord {
+  return {
+    ...rowToVideoQueueRecord(row),
+    id: row.id,
+    owner: row.owner ?? '',
+    leasedAt: row.leasedAt ?? '',
+  }
+}
+
+function normalizeQueueStatus(value: unknown): QueueStatus {
+  return value === 'pending' || value === 'leasing' || value === 'done' || value === 'error' ? value : 'pending'
+}
+
+function normalizeVideoQueueRecord(value: unknown): VideoQueueRecord | null {
+  const parsed = value as Partial<VideoQueueRecord> | null
+  if (!parsed || typeof parsed.key !== 'string' || typeof parsed.bookmarkId !== 'string' || typeof parsed.tweetId !== 'string' || typeof parsed.mediaItemId !== 'string' || typeof parsed.sourceUrl !== 'string') return null
+  const attempts = Number(parsed.attempts)
+  return {
+    key: parsed.key,
+    status: normalizeQueueStatus(parsed.status),
+    bookmarkId: parsed.bookmarkId,
+    tweetId: parsed.tweetId,
+    mediaItemId: parsed.mediaItemId,
+    sourceUrl: parsed.sourceUrl,
+    attempts: Number.isInteger(attempts) && attempts > 0 ? attempts : 1,
+    enqueuedAt: typeof parsed.enqueuedAt === 'string' ? parsed.enqueuedAt : new Date(0).toISOString(),
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : undefined,
+    transcriptChars: typeof parsed.transcriptChars === 'number' ? parsed.transcriptChars : undefined,
+    error: typeof parsed.error === 'string' ? parsed.error : undefined,
+    owner: typeof parsed.owner === 'string' ? parsed.owner : undefined,
+    leasedAt: typeof parsed.leasedAt === 'string' ? parsed.leasedAt : undefined,
+  }
+}
+
+function queueRecordParams(record: VideoQueueRecord): Record<string, unknown> {
+  return {
+    key: record.key,
+    status: record.status,
+    bookmarkId: record.bookmarkId,
+    tweetId: record.tweetId,
+    mediaItemId: record.mediaItemId,
+    sourceUrl: record.sourceUrl,
+    attempts: record.attempts,
+    enqueuedAt: record.enqueuedAt,
+    updatedAt: record.updatedAt ?? null,
+    transcriptChars: record.transcriptChars ?? null,
+    error: record.error ?? null,
+    owner: record.owner ?? null,
+    leasedAt: record.leasedAt ?? null,
+  }
+}
+
+const UPSERT_VIDEO_QUEUE_RECORD_SQL = `
+  INSERT INTO queue (key, status, bookmarkId, tweetId, mediaItemId, sourceUrl, attempts, enqueuedAt, updatedAt, transcriptChars, error, owner, leasedAt)
+  VALUES (@key, @status, @bookmarkId, @tweetId, @mediaItemId, @sourceUrl, @attempts, @enqueuedAt, @updatedAt, @transcriptChars, @error, @owner, @leasedAt)
+  ON CONFLICT(tweetId) DO UPDATE SET
+    key = excluded.key,
+    status = excluded.status,
+    bookmarkId = excluded.bookmarkId,
+    mediaItemId = excluded.mediaItemId,
+    sourceUrl = excluded.sourceUrl,
+    attempts = excluded.attempts,
+    enqueuedAt = excluded.enqueuedAt,
+    updatedAt = excluded.updatedAt,
+    transcriptChars = excluded.transcriptChars,
+    error = excluded.error,
+    owner = excluded.owner,
+    leasedAt = excluded.leasedAt
+`
+
+async function syncVideoQueueMirror(queuePath: string, db: Database.Database): Promise<void> {
+  const sqlitePath = resolveVideoQueueSqlitePath(queuePath)
+  if (path.resolve(sqlitePath) === path.resolve(queuePath)) return
+  const rows = db.prepare(`
+    SELECT id, key, status, bookmarkId, tweetId, mediaItemId, sourceUrl, attempts, enqueuedAt, updatedAt, transcriptChars, error, owner, leasedAt
+    FROM queue
+    ORDER BY enqueuedAt ASC, id ASC
+  `).all() as VideoQueueSqlRow[]
+  const records = rows.map(rowToVideoQueueRecord)
   await ensureParent(queuePath)
-  const rows = [...records.values()].sort((a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt) || a.key.localeCompare(b.key))
-  const content = rows.length > 0 ? `${rows.map((record) => JSON.stringify(record)).join('\n')}\n` : ''
-  const tmpPath = `${queuePath}.${process.pid}.${Date.now()}.tmp`
+  const content = records.length > 0 ? `${records.map((record) => JSON.stringify(record)).join('\n')}\n` : ''
+  const tmpPath = `${queuePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
   await writeFile(tmpPath, content, 'utf8')
   await rename(tmpPath, queuePath)
 }
 
-export async function readVideoQueueState(queuePath = defaultQueuePath()): Promise<Map<string, VideoQueueRecord>> {
-  const records = new Map<string, VideoQueueRecord>()
+async function migrateLegacyVideoQueue(queuePath: string, db: Database.Database): Promise<void> {
+  const existing = db.prepare('SELECT COUNT(*) AS count FROM queue').get() as { count: number }
+  if (existing.count > 0) return
+
   let content = ''
   try {
     content = await readFile(queuePath, 'utf8')
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return records
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
     throw err
   }
+  if (!content.trim().startsWith('{')) return
+
+  const compacted = new Map<string, VideoQueueRecord>()
   for (const line of content.split(/\r?\n/)) {
     if (!line.trim()) continue
-    const parsed = parseJson<VideoQueueRecord | null>(line, null)
-    if (!parsed?.key) continue
-    records.set(parsed.key, parsed)
+    const record = normalizeVideoQueueRecord(parseJson<unknown>(line, null))
+    if (!record) continue
+    compacted.set(record.tweetId, record)
   }
-  return records
+  if (compacted.size === 0) return
+
+  const insert = db.prepare(UPSERT_VIDEO_QUEUE_RECORD_SQL)
+  const txn = db.transaction((records: VideoQueueRecord[]) => {
+    for (const record of records) insert.run(queueRecordParams(record))
+  })
+  txn([...compacted.values()])
+  await syncVideoQueueMirror(queuePath, db)
+}
+
+async function openVideoQueueDb(queuePath: string): Promise<Database.Database> {
+  const sqlitePath = resolveVideoQueueSqlitePath(queuePath)
+  await ensureParent(sqlitePath)
+  const db = new Database(sqlitePath)
+  db.pragma('journal_mode = WAL')
+  db.pragma('busy_timeout = 5000')
+  ensureVideoQueueSchema(db)
+  await migrateLegacyVideoQueue(queuePath, db)
+  return db
+}
+
+export async function readVideoQueueState(queuePath = defaultQueuePath()): Promise<Map<string, VideoQueueRecord>> {
+  const resolvedQueuePath = resolveVideoQueuePath(queuePath)
+  const db = await openVideoQueueDb(resolvedQueuePath)
+  try {
+    const rows = db.prepare(`
+      SELECT id, key, status, bookmarkId, tweetId, mediaItemId, sourceUrl, attempts, enqueuedAt, updatedAt, transcriptChars, error, owner, leasedAt
+      FROM queue
+      ORDER BY enqueuedAt ASC, id ASC
+    `).all() as VideoQueueSqlRow[]
+    const records = new Map<string, VideoQueueRecord>()
+    for (const row of rows) records.set(row.key, rowToVideoQueueRecord(row))
+    return records
+  } finally {
+    db.close()
+  }
 }
 
 function videoTranscriptChars(imageTags: string | null | undefined): number | null {
@@ -981,47 +1175,64 @@ function videoSourceUrl(bookmark: EnrichBookmarkInput, media: EnrichMediaItemInp
   return validateVideoSourceUrl(`https://x.com/${authorHandle}/status/${bookmark.tweetId}`)
 }
 
+function findVideoQueueRecord(db: Database.Database, tweetId: string, key: string): VideoQueueRecord | null {
+  const row = db.prepare(`
+    SELECT id, key, status, bookmarkId, tweetId, mediaItemId, sourceUrl, attempts, enqueuedAt, updatedAt, transcriptChars, error, owner, leasedAt
+    FROM queue
+    WHERE tweetId = @tweetId OR key = @key
+    ORDER BY CASE WHEN tweetId = @tweetId THEN 0 ELSE 1 END, id DESC
+    LIMIT 1
+  `).get({ tweetId, key }) as VideoQueueSqlRow | undefined
+  return row ? rowToVideoQueueRecord(row) : null
+}
+
 export async function enqueueVideoItems(bookmarks: EnrichBookmarkInput[], options: { queuePath?: string; now?: Date; maxAttempts?: number; lockTimeoutMs?: number; lockStaleMs?: number } = {}): Promise<{ enqueued: number; skipped: number }> {
   const queuePath = resolveVideoQueuePath(options.queuePath)
   return withVideoQueueLock(queuePath, async () => {
-    const state = await readVideoQueueState(queuePath)
-    const now = (options.now ?? new Date()).toISOString()
-    const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
-    let enqueued = 0
-    let skipped = 0
+    const db = await openVideoQueueDb(queuePath)
+    try {
+      const insert = db.prepare(UPSERT_VIDEO_QUEUE_RECORD_SQL)
+      const now = (options.now ?? new Date()).toISOString()
+      const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
+      let enqueued = 0
+      let skipped = 0
 
-    for (const bookmark of bookmarks) {
-      for (const media of bookmark.mediaItems) {
-        if (media.type !== 'video') continue
-        const current = state.get(media.id)
-        if (
-          hasVideoTranscript(media.imageTags) ||
-          current?.status === 'pending' ||
-          current?.status === 'done' ||
-          (current?.status === 'error' && current.attempts >= maxAttempts)
-        ) {
-          skipped++
-          continue
+      for (const bookmark of bookmarks) {
+        for (const media of bookmark.mediaItems) {
+          if (media.type !== 'video') continue
+          const current = findVideoQueueRecord(db, bookmark.tweetId, media.id)
+          if (
+            hasVideoTranscript(media.imageTags) ||
+            current?.status === 'pending' ||
+            current?.status === 'leasing' ||
+            current?.status === 'done' ||
+            (current?.status === 'error' && current.attempts >= maxAttempts)
+          ) {
+            skipped++
+            continue
+          }
+          const attempts = (current?.attempts ?? 0) + 1
+          const record: VideoQueueRecord = {
+            key: media.id,
+            status: 'pending',
+            bookmarkId: bookmark.id,
+            tweetId: bookmark.tweetId,
+            mediaItemId: media.id,
+            sourceUrl: videoSourceUrl(bookmark, media),
+            attempts,
+            enqueuedAt: current?.enqueuedAt ?? now,
+            updatedAt: now,
+          }
+          insert.run(queueRecordParams(record))
+          enqueued++
         }
-        const attempts = (current?.attempts ?? 0) + 1
-        const record: VideoQueueRecord = {
-          key: media.id,
-          status: 'pending',
-          bookmarkId: bookmark.id,
-          tweetId: bookmark.tweetId,
-          mediaItemId: media.id,
-          sourceUrl: videoSourceUrl(bookmark, media),
-          attempts,
-          enqueuedAt: current?.enqueuedAt ?? now,
-          updatedAt: now,
-        }
-        state.set(media.id, record)
-        enqueued++
       }
-    }
 
-    if (state.size > 0 || enqueued > 0) await writeVideoQueueState(queuePath, state)
-    return { enqueued, skipped }
+      if (enqueued > 0 || skipped > 0) await syncVideoQueueMirror(queuePath, db)
+      return { enqueued, skipped }
+    } finally {
+      db.close()
+    }
   }, { timeoutMs: options.lockTimeoutMs, staleMs: options.lockStaleMs })
 }
 
@@ -1049,16 +1260,96 @@ export function resolveParakeetScript(env: Record<string, string | undefined> = 
   return null
 }
 
-export async function transcribeWithParakeet(input: string, options: { scriptPath?: string; timeoutMs?: number } = {}): Promise<string> {
+const DEFAULT_PARAKEET_BACKENDS = 'http://192.168.1.216:8923,http://192.168.1.78:8923,http://127.0.0.1:8924'
+
+type ParakeetEnv = Record<string, string | undefined>
+
+function parakeetProcessEnv(overrides: ParakeetEnv | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...overrides }
+  if (!env.PARAKEET_URL && !env.YTNB_ASR_BACKENDS) env.YTNB_ASR_BACKENDS = DEFAULT_PARAKEET_BACKENDS
+  return env
+}
+
+/**
+ * Parse the configured Parakeet backend pool (comma-separated URLs). The bash
+ * wrapper only honors a single PARAKEET_URL per call, so the drain — not the
+ * wrapper — is responsible for fanning records across the fleet GPUs. Source of
+ * truth precedence: SIFTLY_PARAKEET_BACKENDS, then YTNB_ASR_BACKENDS (shared
+ * fleet var), then the 3-card default (ACE-AI Blackwell, ACE-MEDIA 5090, Mac MLX).
+ */
+export function resolveParakeetBackends(env: Record<string, string | undefined> = process.env): string[] {
+  const raw = env.SIFTLY_PARAKEET_BACKENDS ?? env.YTNB_ASR_BACKENDS ?? DEFAULT_PARAKEET_BACKENDS
+  const seen = new Set<string>()
+  const backends: string[] = []
+  for (const part of raw.split(',')) {
+    const url = part.trim().replace(/\/+$/, '')
+    if (url && !seen.has(url)) {
+      seen.add(url)
+      backends.push(url)
+    }
+  }
+  return backends
+}
+
+async function isBackendHealthy(url: string, timeoutMs = 6000): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('curl', ['-sf', '--max-time', String(Math.max(1, Math.ceil(timeoutMs / 1000))), `${url}/health`], {
+      encoding: 'utf8',
+      timeout: timeoutMs + 2000,
+    })
+    return /"status"\s*:\s*"ok"|model_loaded/i.test(stdout)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Health-filter the backend pool so the drain only pins live GPUs. Preserves
+ * config order (primary first). If every health check fails (e.g. transient LAN
+ * blip), returns the first configured backend so a single attempt still happens
+ * and fails through the normal transient-retry path rather than no-op'ing.
+ */
+export async function resolveHealthyParakeetBackends(env: Record<string, string | undefined> = process.env, timeoutMs = 6000): Promise<string[]> {
+  const all = resolveParakeetBackends(env)
+  if (all.length === 0) return []
+  const checks = await Promise.all(all.map(async (url) => [url, await isBackendHealthy(url, timeoutMs)] as const))
+  const healthy = checks.filter(([, ok]) => ok).map(([url]) => url)
+  return healthy.length > 0 ? healthy : all.slice(0, 1)
+}
+
+export async function transcribeWithParakeet(input: string, options: { scriptPath?: string; timeoutMs?: number; env?: ParakeetEnv; backendUrl?: string } = {}): Promise<string> {
   const scriptPath = options.scriptPath ?? resolveParakeetScript()
   if (!scriptPath) throw new Error('parakeet-transcribe skill script not found; set PARAKEET_TRANSCRIBE_SCRIPT')
   const sourceUrl = validateVideoSourceUrl(input)
+  const env = parakeetProcessEnv(options.env)
+  if (options.backendUrl) env.PARAKEET_URL = options.backendUrl
   const { stdout } = await execFileAsync('bash', [scriptPath, '--text', '--no-timestamps', '--', sourceUrl], {
     encoding: 'utf8',
     timeout: options.timeoutMs ?? 30 * 60_000,
     maxBuffer: 10 * 1024 * 1024,
+    env,
   })
   return stdout.trim()
+}
+
+/**
+ * A "terminal" transcription failure is one that re-running cannot fix: the
+ * media has no decodable audio (no-audio stream → ffprobe/yt-dlp postprocess
+ * error) or has audio but no speech (empty transcript). These must NOT consume
+ * the 3x retry budget — each retry re-downloads a multi-MB video for nothing —
+ * so they park immediately. Everything else (backend unreachable, timeout,
+ * network) is transient and retried.
+ */
+const TERMINAL_TRANSCRIPTION_FAILURE_PATTERNS: RegExp[] = [
+  /empty transcript/i,
+  /\bmedia_error\b/i,
+  /no decodable audio/i,
+  /unable to obtain file audio codec/i,
+  /\bno[_\s-]?audio\b/i,
+]
+
+export function isTerminalTranscriptionFailure(message: string): boolean {
+  return TERMINAL_TRANSCRIPTION_FAILURE_PATTERNS.some((re) => re.test(message))
 }
 
 export function mergeVideoTranscriptImageTags(existing: string | null | undefined, transcript: string): string {
@@ -1066,94 +1357,186 @@ export function mergeVideoTranscriptImageTags(existing: string | null | undefine
   return JSON.stringify({ ...parsed, video_transcript: transcript })
 }
 
-export async function drainVideoQueue(options: {
+interface DrainVideoQueueOptions {
   db: VideoEnrichDb
   queuePath?: string
   limit?: number
+  workers?: number
   scriptPath?: string
   timeoutMs?: number
   transcribe?: (sourceUrl: string) => Promise<string>
+  backendUrls?: string[]
   now?: Date
   maxAttempts?: number
+  leaseTtlMs?: number
   lockTimeoutMs?: number
   lockStaleMs?: number
-}): Promise<{ processed: number; transcribed: number; failed: number }> {
-  const queuePath = resolveVideoQueuePath(options.queuePath)
-  return withVideoQueueLock(queuePath, async () => {
-    const state = await readVideoQueueState(queuePath)
-    const pending = [...state.values()]
-      .filter((record) => record.status === 'pending')
-      .sort((a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt))
-      .slice(0, options.limit ?? 5)
-    const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
-    let processed = 0
-    let transcribed = 0
-    let failed = 0
+}
 
-    for (const record of pending) {
-      processed++
-      const now = (options.now ?? new Date()).toISOString()
-      try {
-        const sourceUrl = validateVideoSourceUrl(record.sourceUrl)
-        const existingBeforeTranscribe = await freshMediaImageTags(options.db, record.mediaItemId)
-        const existingTranscriptChars = videoTranscriptChars(existingBeforeTranscribe)
-        if (existingTranscriptChars !== null) {
-          const done: VideoQueueRecord = {
-            key: record.key,
-            status: 'done',
-            bookmarkId: record.bookmarkId,
-            tweetId: record.tweetId,
-            mediaItemId: record.mediaItemId,
-            sourceUrl: record.sourceUrl,
-            attempts: record.attempts,
-            enqueuedAt: record.enqueuedAt,
-            updatedAt: now,
-            transcriptChars: existingTranscriptChars,
-          }
-          state.set(record.key, done)
-          await writeVideoQueueState(queuePath, state)
-          continue
-        }
+function normalizeDrainLimit(limit: number | undefined): number {
+  if (limit === undefined) return 5
+  if (!Number.isFinite(limit)) return 0
+  return Math.max(0, Math.floor(limit))
+}
 
-        const transcript = (options.transcribe ?? ((url: string) => transcribeWithParakeet(url, { scriptPath: options.scriptPath, timeoutMs: options.timeoutMs })))(sourceUrl)
-        const text = (await transcript).trim()
-        if (!text) throw new Error('empty transcript')
-        const existingImageTags = await freshMediaImageTags(options.db, record.mediaItemId)
-        await options.db.mediaItem.update({
-          where: { id: record.mediaItemId },
-          data: { imageTags: mergeVideoTranscriptImageTags(existingImageTags, text) },
-        })
-        const done: VideoQueueRecord = {
-          key: record.key,
-          status: 'done',
-          bookmarkId: record.bookmarkId,
-          tweetId: record.tweetId,
-          mediaItemId: record.mediaItemId,
-          sourceUrl: record.sourceUrl,
-          attempts: record.attempts,
-          enqueuedAt: record.enqueuedAt,
-          updatedAt: now,
-          transcriptChars: text.length,
-        }
-        state.set(record.key, done)
-        await writeVideoQueueState(queuePath, state)
-        transcribed++
-      } catch (err) {
-        const attempts = Math.max(1, record.attempts)
-        const canRetry = attempts < maxAttempts
-        const errored: VideoQueueRecord = {
-          ...record,
-          status: canRetry ? 'pending' : 'error',
-          attempts: canRetry ? attempts + 1 : attempts,
-          updatedAt: now,
-          error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
-        }
-        state.set(record.key, errored)
-        await writeVideoQueueState(queuePath, state)
-        failed++
-      }
+function normalizeDrainWorkers(workers: number | undefined, limit: number): number {
+  const fallback = Math.min(DEFAULT_VIDEO_DRAIN_WORKERS, Math.max(1, limit))
+  const parsed = workers === undefined ? fallback : Math.floor(workers)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(1, Math.min(MAX_VIDEO_DRAIN_WORKERS, parsed))
+}
+
+function reclaimStaleVideoLeases(db: Database.Database, now: Date, leaseTtlMs: number): number {
+  const cutoff = new Date(now.getTime() - leaseTtlMs).toISOString()
+  const updatedAt = now.toISOString()
+  const result = db.prepare(`
+    UPDATE queue
+    SET status='pending', owner=NULL, leasedAt=NULL, updatedAt=@updatedAt
+    WHERE status='leasing' AND leasedAt IS NOT NULL AND leasedAt < @cutoff
+  `).run({ updatedAt, cutoff })
+  return result.changes
+}
+
+function claimVideoQueueLeases(db: Database.Database, limit: number, owner: string, leasedAt: string): LeasedVideoQueueRecord[] {
+  if (limit <= 0) return []
+  // Single atomic claim statement. SQLite's grammar requires RETURNING before
+  // ORDER BY/LIMIT, so this is the supported form of the required
+  // UPDATE queue SET status='leasing' ... WHERE status='pending' ORDER BY id LIMIT N RETURNING id primitive.
+  const rows = db.prepare(`
+    UPDATE queue
+    SET status='leasing', owner=@owner, leasedAt=@leasedAt, updatedAt=@leasedAt
+    WHERE status='pending'
+    RETURNING id, key, status, bookmarkId, tweetId, mediaItemId, sourceUrl, attempts, enqueuedAt, updatedAt, transcriptChars, error, owner, leasedAt
+    ORDER BY id LIMIT @limit
+  `).all({ owner, leasedAt, limit }) as VideoQueueSqlRow[]
+  return rows.map(rowToLeasedRecord)
+}
+
+function releaseVideoLeaseDone(db: Database.Database, record: LeasedVideoQueueRecord, transcriptChars: number, updatedAt: string): void {
+  db.prepare(`
+    UPDATE queue
+    SET status='done', owner=NULL, leasedAt=NULL, updatedAt=@updatedAt, transcriptChars=@transcriptChars, error=NULL
+    WHERE id=@id AND owner=@owner
+  `).run({ id: record.id, owner: record.owner, updatedAt, transcriptChars })
+}
+
+function releaseVideoLeaseFailed(db: Database.Database, record: LeasedVideoQueueRecord, maxAttempts: number, updatedAt: string, error: string): void {
+  const attempts = Math.max(1, record.attempts)
+  // Terminal failures (no decodable audio / no speech) can never succeed on
+  // re-run and each retry re-downloads the whole video — park immediately at
+  // status=error regardless of remaining attempt budget. Transient failures
+  // (backend down, timeout, network) keep the existing retry semantics.
+  const terminal = isTerminalTranscriptionFailure(error)
+  const canRetry = !terminal && attempts < maxAttempts
+  db.prepare(`
+    UPDATE queue
+    SET status=@status, owner=NULL, leasedAt=NULL, updatedAt=@updatedAt, attempts=@attempts, error=@error
+    WHERE id=@id AND owner=@owner
+  `).run({
+    id: record.id,
+    owner: record.owner,
+    status: canRetry ? 'pending' : 'error',
+    attempts: canRetry ? attempts + 1 : (terminal ? maxAttempts : attempts),
+    updatedAt,
+    error,
+  })
+}
+
+async function updateTranscriptFtsKeyed(db: VideoEnrichDb, record: LeasedVideoQueueRecord, mergedImageTags: string): Promise<void> {
+  if (!db.$executeRawUnsafe) return
+  try {
+    await db.$executeRawUnsafe('UPDATE bookmark_fts SET image_tags = ? WHERE bookmark_id = ?', mergedImageTags, record.bookmarkId)
+  } catch {
+    // The drain's durable source of truth is MediaItem.imageTags. FTS may not
+    // exist yet; finalizer/rebuildFts will rebuild it. Never INSERT a second FTS row here.
+  }
+}
+
+async function processLeasedVideoRecord(options: DrainVideoQueueOptions, queueDb: Database.Database, record: LeasedVideoQueueRecord, maxAttempts: number, backendUrl?: string): Promise<'existing' | 'transcribed' | 'failed'> {
+  const updatedAt = (options.now ?? new Date()).toISOString()
+  try {
+    const sourceUrl = validateVideoSourceUrl(record.sourceUrl)
+    const existingBeforeTranscribe = await freshMediaImageTags(options.db, record.mediaItemId)
+    const existingTranscriptChars = videoTranscriptChars(existingBeforeTranscribe)
+    if (existingTranscriptChars !== null) {
+      releaseVideoLeaseDone(queueDb, record, existingTranscriptChars, updatedAt)
+      return 'existing'
     }
 
-    return { processed, transcribed, failed }
-  }, { timeoutMs: options.lockTimeoutMs, staleMs: options.lockStaleMs })
+    const transcript = (options.transcribe ?? ((url: string) => transcribeWithParakeet(url, { scriptPath: options.scriptPath, timeoutMs: options.timeoutMs, backendUrl })))(sourceUrl)
+    const text = (await transcript).trim()
+    if (!text) throw new Error('empty transcript')
+    const existingImageTags = await freshMediaImageTags(options.db, record.mediaItemId)
+    const mergedImageTags = mergeVideoTranscriptImageTags(existingImageTags, text)
+    await options.db.mediaItem.update({
+      where: { id: record.mediaItemId },
+      data: { imageTags: mergedImageTags },
+    })
+    await updateTranscriptFtsKeyed(options.db, record, mergedImageTags)
+    releaseVideoLeaseDone(queueDb, record, text.length, updatedAt)
+    return 'transcribed'
+  } catch (err) {
+    releaseVideoLeaseFailed(queueDb, record, maxAttempts, updatedAt, err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500))
+    return 'failed'
+  }
+}
+
+async function processLeasedVideoRecords(options: DrainVideoQueueOptions, queueDb: Database.Database, records: LeasedVideoQueueRecord[], workers: number, maxAttempts: number, backends: string[]): Promise<{ processed: number; transcribed: number; failed: number }> {
+  let next = 0
+  let processed = 0
+  let transcribed = 0
+  let failed = 0
+  const workerCount = Math.min(workers, Math.max(1, records.length))
+
+  // Pin each worker to a distinct healthy backend (round-robin). This is the
+  // actual fleet fan-out: the bash wrapper only honors a single PARAKEET_URL,
+  // so parallelism across GPUs has to come from running N workers each pinned
+  // to a different backend URL. When a custom transcribe override is injected
+  // (tests), backends are unused.
+  await Promise.all(Array.from({ length: workerCount }, async (_unused, workerIndex) => {
+    const backendUrl = backends.length > 0 ? backends[workerIndex % backends.length] : undefined
+    while (next < records.length) {
+      const record = records[next++]
+      processed++
+      const outcome = await processLeasedVideoRecord(options, queueDb, record, maxAttempts, backendUrl)
+      if (outcome === 'transcribed') transcribed++
+      if (outcome === 'failed') failed++
+    }
+  }))
+
+  return { processed, transcribed, failed }
+}
+
+export async function drainVideoQueue(options: DrainVideoQueueOptions): Promise<{ processed: number; transcribed: number; failed: number }> {
+  const queuePath = resolveVideoQueuePath(options.queuePath)
+  const limit = normalizeDrainLimit(options.limit)
+  const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_VIDEO_MAX_ATTEMPTS)
+  const leaseTtlMs = normalizeMs(options.leaseTtlMs ?? options.lockStaleMs, VIDEO_QUEUE_LEASE_TTL_MS)
+  const now = options.now ?? new Date()
+  const owner = `${os.hostname()}:${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+
+  // Discover the live backend pool ONCE per drain. With a custom transcribe
+  // override (tests) we skip health discovery entirely and keep the legacy
+  // single-worker default. Otherwise worker count scales to the number of
+  // healthy GPUs (bounded by MAX_VIDEO_DRAIN_WORKERS) so all cards stay busy.
+  const injectedBackends = options.backendUrls?.map((url) => url.trim().replace(/\/+$/, '')).filter(Boolean) ?? null
+  const backends = options.transcribe ? [] : (injectedBackends ?? await resolveHealthyParakeetBackends())
+  const desiredWorkers = options.workers ?? (backends.length > 0 ? backends.length : undefined)
+  const workers = normalizeDrainWorkers(desiredWorkers, limit)
+  const queueDb = await openVideoQueueDb(queuePath)
+
+  try {
+    const reclaimed = reclaimStaleVideoLeases(queueDb, now, leaseTtlMs)
+    const claimed = claimVideoQueueLeases(queueDb, limit, owner, now.toISOString())
+    if (claimed.length === 0) {
+      if (reclaimed > 0) await syncVideoQueueMirror(queuePath, queueDb)
+      return { processed: 0, transcribed: 0, failed: 0 }
+    }
+
+    const result = await processLeasedVideoRecords(options, queueDb, claimed, workers, maxAttempts, backends)
+    await syncVideoQueueMirror(queuePath, queueDb)
+    return result
+  } finally {
+    queueDb.close()
+  }
 }

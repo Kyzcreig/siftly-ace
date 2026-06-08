@@ -14,8 +14,10 @@ import {
   extractFactualEnrichment,
   generateImageCaption,
   isCaptionCandidate,
+  isTerminalTranscriptionFailure,
   mergeCaptionImageTags,
   readVideoQueueState,
+  resolveParakeetBackends,
   runCaptionForMediaItems,
   runLocalOcr,
   runOcrForMediaItems,
@@ -404,6 +406,74 @@ describe('Phase 3 enrichment', () => {
     state = await readVideoQueueState(queuePath)
     expect(state.get('video-media-1')).toMatchObject({ status: 'error', attempts: 3, error: 'temporary network timeout' })
     expect(transcribe).toHaveBeenCalledTimes(3)
+  })
+
+  it('parses Siftly-specific Parakeet backend lists with de-dupe and whitespace trimming', () => {
+    expect(resolveParakeetBackends({
+      SIFTLY_PARAKEET_BACKENDS: ' http://a:8923 , http://b:8923/, http://a:8923 ',
+      YTNB_ASR_BACKENDS: 'http://ignored:8923',
+    })).toEqual(['http://a:8923', 'http://b:8923'])
+  })
+
+  it('parks no-audio and empty-speech videos immediately instead of re-downloading them three times', async () => {
+    const queuePath = path.join(tmp, 'video-queue-terminal-no-audio.jsonl')
+    const record = {
+      key: 'video-media-1',
+      status: 'pending' as const,
+      bookmarkId: 'bookmark-video',
+      tweetId: '9001',
+      mediaItemId: 'video-media-1',
+      sourceUrl: 'https://video.twimg.com/ext_tw_video/demo.mp4',
+      attempts: 1,
+      enqueuedAt: '2026-06-07T12:00:00.000Z',
+    }
+    await writeFile(queuePath, `${JSON.stringify(record)}\n`, 'utf8')
+    const transcribe = vi.fn(async () => {
+      throw new Error('Command failed: yt-dlp -x --audio-format wav\nPostprocessing: WARNING: unable to obtain file audio codec with ffprobe')
+    })
+
+    const result = await drainVideoQueue({ db: new MemoryVideoDb(['video-media-1']), queuePath, transcribe, maxAttempts: 3, now: new Date('2026-06-07T12:00:01Z') })
+
+    expect(result).toMatchObject({ processed: 1, failed: 1 })
+    expect(isTerminalTranscriptionFailure('empty transcript')).toBe(true)
+    expect(isTerminalTranscriptionFailure('Postprocessing: WARNING: unable to obtain file audio codec with ffprobe')).toBe(true)
+    const state = await readVideoQueueState(queuePath)
+    expect(state.get('video-media-1')).toMatchObject({ status: 'error', attempts: 3 })
+    expect(transcribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('fans real Parakeet drain workers across configured backend URLs via PARAKEET_URL', async () => {
+    const queuePath = path.join(tmp, 'video-queue-backend-fanout.jsonl')
+    const scriptPath = path.join(tmp, 'fake-parakeet-backend-fanout.sh')
+    const envLog = path.join(tmp, 'fake-parakeet-backend-fanout.log')
+    await writeFile(scriptPath, `#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' "\${PARAKEET_URL:-missing}" >> ${JSON.stringify(envLog)}\nsleep 0.05\nprintf 'transcript from %s\\n' "\${PARAKEET_URL:-missing}"\n`, 'utf8')
+
+    const bookmarks = ['1', '2', '3'].map((n) => videoBookmark(
+      { id: `bookmark-video-${n}`, tweetId: `900${n}` },
+      { id: `video-media-${n}`, url: `https://video.twimg.com/ext_tw_video/demo-${n}.mp4` },
+    ))
+    const db = new MemoryVideoDb(['video-media-1', 'video-media-2', 'video-media-3'])
+    await enqueueVideoItems(bookmarks, { queuePath, now: new Date('2026-06-07T12:00:00Z') })
+
+    const result = await drainVideoQueue({
+      db,
+      queuePath,
+      limit: 3,
+      workers: 3,
+      scriptPath,
+      backendUrls: ['http://backend-a:8923', 'http://backend-b:8923', 'http://backend-c:8924'],
+      now: new Date('2026-06-07T12:00:01Z'),
+    })
+
+    expect(result).toMatchObject({ processed: 3, transcribed: 3, failed: 0 })
+    const used = (await readFile(envLog, 'utf8')).trim().split(/\r?\n/).sort()
+    expect(used).toEqual(['http://backend-a:8923', 'http://backend-b:8923', 'http://backend-c:8924'])
+    const transcripts = [...db.mediaItems.values()].map((row) => JSON.parse(row.imageTags ?? '{}') as { video_transcript?: string })
+    expect(transcripts.map((row) => row.video_transcript).sort()).toEqual([
+      'transcript from http://backend-a:8923',
+      'transcript from http://backend-b:8923',
+      'transcript from http://backend-c:8924',
+    ])
   })
 
   it('does not re-transcribe when a prior crash already wrote a video transcript but left the queue pending', async () => {

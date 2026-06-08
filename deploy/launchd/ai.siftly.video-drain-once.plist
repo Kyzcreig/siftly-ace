@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  One-shot video transcription drain for the current backfill.
+
+  Safety properties:
+  - RunAtLoad=true, KeepAlive=false: launches once when bootstrapped, does not respawn.
+  - scripts/video-drain-once.sh drains until processed=0, runs finalize-after-drain.sh,
+    then bootout's this label from gui/$UID so it turns itself off when done.
+  - If a batch fails non-zero, the script exits WITHOUT self-unloading so logs and
+    launchctl state remain inspectable.
+
+  Install after Ace approval:
+    cp deploy/launchd/ai.siftly.video-drain-once.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.siftly.video-drain-once.plist
+
+  Status:
+    launchctl print gui/$(id -u)/ai.siftly.video-drain-once
+    tail -f ~/Library/Logs/siftly-video-drain-once.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.siftly.video-drain-once</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alexgierczyk/Projects/siftly-ace/scripts/video-drain-once.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/alexgierczyk/Projects/siftly-ace</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/Users/alexgierczyk/.local/bin:/usr/bin:/bin</string>
+    <key>NEXT_TELEMETRY_DISABLED</key>
+    <string>1</string>
+    <key>SIFTLY_VIDEO_DRAIN_LIMIT</key>
+    <string>50</string>
+    <key>SIFTLY_VIDEO_DRAIN_TIMEOUT_MS</key>
+    <string>1800000</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/alexgierczyk/Library/Logs/siftly-video-drain-once.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/alexgierczyk/Library/Logs/siftly-video-drain-once.log</string>
+</dict>
+</plist>
