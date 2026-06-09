@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
+import { getXOAuthClientCreds } from '@/lib/settings'
 
 interface XTweet {
   id: string
@@ -39,21 +40,20 @@ async function getValidToken(): Promise<string | null> {
     const refreshToken = await prisma.setting.findUnique({ where: { key: 'x_oauth_refresh_token' } })
     if (!refreshToken?.value) return null
 
-    const clientId = await prisma.setting.findUnique({ where: { key: 'x_oauth_client_id' } })
-    const clientSecret = await prisma.setting.findUnique({ where: { key: 'x_oauth_client_secret' } })
-    if (!clientId?.value) return null
+    const { clientId, clientSecret } = await getXOAuthClientCreds()
+    if (!clientId) return null
 
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken.value,
-      client_id: clientId.value,
+      client_id: clientId,
     })
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded',
     }
-    if (clientSecret?.value) {
-      headers['Authorization'] = `Basic ${Buffer.from(`${clientId.value}:${clientSecret.value}`).toString('base64')}`
+    if (clientSecret) {
+      headers['Authorization'] = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
     }
 
     const res = await fetch('https://api.x.com/2/oauth2/token', {

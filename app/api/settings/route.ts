@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
-import { invalidateSettingsCache } from '@/lib/settings'
+import { invalidateSettingsCache, getXOAuthClientCreds } from '@/lib/settings'
 import { validateVaultPath } from '@/lib/obsidian-exporter'
 
 function maskKey(raw: string | null): string | null {
@@ -31,7 +31,7 @@ const ALLOWED_MINIMAX_MODELS = [
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const [anthropic, anthropicModel, provider, openai, openaiModel, minimax, minimaxModel, xClientId, xClientSecret, obsidianVault] = await Promise.all([
+    const [anthropic, anthropicModel, provider, openai, openaiModel, minimax, minimaxModel, xClientId, obsidianVault] = await Promise.all([
       prisma.setting.findUnique({ where: { key: 'anthropicApiKey' } }),
       prisma.setting.findUnique({ where: { key: 'anthropicModel' } }),
       prisma.setting.findUnique({ where: { key: 'aiProvider' } }),
@@ -40,9 +40,12 @@ export async function GET(): Promise<NextResponse> {
       prisma.setting.findUnique({ where: { key: 'minimaxApiKey' } }),
       prisma.setting.findUnique({ where: { key: 'minimaxModel' } }),
       prisma.setting.findUnique({ where: { key: 'x_oauth_client_id' } }),
-      prisma.setting.findUnique({ where: { key: 'x_oauth_client_secret' } }),
       prisma.setting.findUnique({ where: { key: 'obsidianVaultPath' } }),
     ])
+
+    // X OAuth client creds: env (1Password via with-secrets.sh) wins over DB.
+    // The DB plaintext secret was scrubbed 2026-06-09; never surface the raw secret.
+    const xCreds = await getXOAuthClientCreds()
 
     return NextResponse.json({
       provider: provider?.value ?? 'anthropic',
@@ -55,9 +58,10 @@ export async function GET(): Promise<NextResponse> {
       minimaxApiKey: maskKey(minimax?.value ?? null),
       hasMinimaxKey: minimax !== null,
       minimaxModel: minimaxModel?.value ?? 'MiniMax-M2.7',
-      xOAuthClientId: maskKey(xClientId?.value ?? null),
-      xOAuthClientSecret: maskKey(xClientSecret?.value ?? null),
-      hasXOAuth: !!xClientId?.value,
+      xOAuthClientId: maskKey(xCreds.clientId),
+      xOAuthClientSecret: maskKey(xCreds.clientSecret),
+      hasXOAuth: !!xCreds.clientId,
+      xOAuthSource: process.env.X_OAUTH_CLIENT_ID?.trim() ? '1password-env' : (xClientId?.value ? 'db' : 'none'),
       obsidianVaultPath: obsidianVault?.value ?? null,
     })
   } catch (err) {
@@ -235,11 +239,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ saved: true })
   }
 
-  // Save X OAuth credentials if provided
+  // Save X OAuth credentials if provided.
+  // The client SECRET is never persisted to the DB anymore — it lives in 1Password
+  // and is injected as X_OAUTH_CLIENT_SECRET by scripts/with-secrets.sh (scrubbed
+  // from sqlite 2026-06-09). The non-sensitive client_id may still be stored in DB
+  // as a fallback, but env wins at read time (see getXOAuthClientCreds).
   const { xOAuthClientId, xOAuthClientSecret } = body
+  if (xOAuthClientSecret !== undefined && xOAuthClientSecret.trim() !== '') {
+    return NextResponse.json(
+      {
+        error:
+          'The X OAuth client secret is managed in 1Password (Engineering › "X API App — siftly-ace" › oauth2_client_secret) and injected via with-secrets.sh. It is not stored in the database. Update it in 1Password instead.',
+      },
+      { status: 400 },
+    )
+  }
   const xKeys: { key: string; value: string | undefined }[] = [
     { key: 'x_oauth_client_id', value: xOAuthClientId },
-    { key: 'x_oauth_client_secret', value: xOAuthClientSecret },
   ]
   const xToSave = xKeys.filter((k) => k.value !== undefined && k.value.trim() !== '')
   if (xToSave.length > 0) {

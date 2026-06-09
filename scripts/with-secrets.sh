@@ -63,6 +63,22 @@ if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   exit 1
 fi
 
+# X OAuth2 client credentials for the webapp's interactive "Connect X" import flow.
+# Canonical copy lives in 1Password (Engineering item n32tdp5kpvb7i4pga2thzatqwy,
+# fields oauth2_client_id / oauth2_client_secret). The DB Setting rows were scrubbed
+# (2026-06-09) so no OAuth client secret is stored in plaintext sqlite; the routes now
+# prefer these env vars and fall back to DB only if unset.
+X_OAUTH_ID_REF="op://Engineering/n32tdp5kpvb7i4pga2thzatqwy/oauth2_client_id"
+X_OAUTH_SECRET_REF="op://Engineering/n32tdp5kpvb7i4pga2thzatqwy/oauth2_client_secret"
+if X_OAUTH_CLIENT_ID="$(op read "$X_OAUTH_ID_REF" 2>/dev/null)" \
+   && X_OAUTH_CLIENT_SECRET="$(op read "$X_OAUTH_SECRET_REF" 2>/dev/null)" \
+   && [[ -n "$X_OAUTH_CLIENT_ID" && -n "$X_OAUTH_CLIENT_SECRET" ]]; then
+  export X_OAUTH_CLIENT_ID X_OAUTH_CLIENT_SECRET
+  echo "with-secrets.sh: X_OAUTH_CLIENT_ID loaded (len=${#X_OAUTH_CLIENT_ID}); X_OAUTH_CLIENT_SECRET loaded (len=${#X_OAUTH_CLIENT_SECRET})" >&2
+else
+  echo "with-secrets.sh: X OAuth2 client creds not loaded from 1Password (webapp Connect-X flow will fall back to DB if present)" >&2
+fi
+
 # Default the real sqlite-vec extension so the live path is used, not the brute-force fallback.
 if [[ -z "${SIFTLY_SQLITE_VEC_EXTENSION_PATH:-}" && -f "$REPO_ROOT/.local/vec0.dylib" ]]; then
   export SIFTLY_SQLITE_VEC_EXTENSION_PATH="$REPO_ROOT/.local/vec0.dylib"

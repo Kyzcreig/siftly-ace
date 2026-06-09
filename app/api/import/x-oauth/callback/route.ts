@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
+import { getXOAuthClientCreds } from '@/lib/settings'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -24,10 +25,9 @@ export async function GET(req: NextRequest) {
   }
 
   const codeVerifier = await prisma.setting.findUnique({ where: { key: 'x_oauth_code_verifier' } })
-  const clientId = await prisma.setting.findUnique({ where: { key: 'x_oauth_client_id' } })
-  const clientSecret = await prisma.setting.findUnique({ where: { key: 'x_oauth_client_secret' } })
+  const { clientId, clientSecret } = await getXOAuthClientCreds()
 
-  if (!codeVerifier?.value || !clientId?.value) {
+  if (!codeVerifier?.value || !clientId) {
     return NextResponse.redirect(`${importPage}?x_error=missing_config`)
   }
 
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     code,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier.value,
-    client_id: clientId.value,
+    client_id: clientId,
   })
 
   const headers: Record<string, string> = {
@@ -47,8 +47,8 @@ export async function GET(req: NextRequest) {
   }
 
   // If client secret is set, use Basic auth (confidential client)
-  if (clientSecret?.value) {
-    headers['Authorization'] = `Basic ${Buffer.from(`${clientId.value}:${clientSecret.value}`).toString('base64')}`
+  if (clientSecret) {
+    headers['Authorization'] = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
   }
 
   const tokenRes = await fetch('https://api.x.com/2/oauth2/token', {

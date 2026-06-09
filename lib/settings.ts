@@ -93,6 +93,34 @@ export async function getActiveModelFor(
 }
 
 /**
+ * Resolve the X OAuth2 client credentials for the webapp's interactive
+ * "Connect X" import flow.
+ *
+ * Precedence: process.env (X_OAUTH_CLIENT_ID / X_OAUTH_CLIENT_SECRET, injected by
+ * scripts/with-secrets.sh from 1Password) FIRST, then the DB Setting rows as a
+ * fallback. The DB plaintext copy of the client secret was scrubbed 2026-06-09;
+ * the canonical secret lives only in 1Password. If you ever re-seed the DB rows
+ * via the settings UI, they still work — env just wins when present.
+ */
+export async function getXOAuthClientCreds(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ clientId: string | null; clientSecret: string | null }> {
+  const envId = env.X_OAUTH_CLIENT_ID?.trim()
+  const envSecret = env.X_OAUTH_CLIENT_SECRET?.trim()
+  if (envId) {
+    return { clientId: envId, clientSecret: envSecret || null }
+  }
+  const [idRow, secretRow] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: 'x_oauth_client_id' } }),
+    prisma.setting.findUnique({ where: { key: 'x_oauth_client_secret' } }),
+  ])
+  return {
+    clientId: idRow?.value?.trim() || null,
+    clientSecret: secretRow?.value?.trim() || null,
+  }
+}
+
+/**
  * Clear all settings caches (call after settings are changed).
  */
 export function invalidateSettingsCache(): void {

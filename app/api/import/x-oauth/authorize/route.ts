@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import crypto from 'crypto'
+import { getXOAuthClientCreds } from '@/lib/settings'
 
 export async function GET(req: NextRequest) {
-  const clientId = await prisma.setting.findUnique({ where: { key: 'x_oauth_client_id' } })
-  if (!clientId?.value) {
+  const { clientId } = await getXOAuthClientCreds()
+  if (!clientId) {
     return NextResponse.json({ error: 'X OAuth Client ID not configured' }, { status: 400 })
   }
 
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   const params = new URLSearchParams({
     response_type: 'code',
-    client_id: clientId.value,
+    client_id: clientId,
     redirect_uri: redirectUri,
     scope: 'bookmark.read tweet.read users.read offline.access',
     state,
