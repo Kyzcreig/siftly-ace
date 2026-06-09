@@ -143,7 +143,7 @@ Review verdict: **BLOCK** on two real Feature-1 incremental-path bugs + day-key 
 - **B1.1 (FIXED)** — incremental top-up no longer re-trims the merged cache against a per-run-recomputed `since` (which silently shrank the window by deleting still-valid cached tweets). The cache stores its **original sweep `since`** in `meta.since`; incremental runs anchor to that window, keep ALL existing cached tweets, and only window-check newly-fetched pages. Regression test proves a 23h->25h-old cached tweet survives a rerun.
 - **B2/B3 (FIXED)** — cache day key is now **America/Los_Angeles (PT)**, matching the cron's PT schedule and the seen-list's PT dates. The daily 7:30am PT run is the **first run of its PT day -> always a fresh MISS**, so the canonical daily run never depends on the incremental path. No `--force` needed in the prompt (it would defeat free same-morning test reruns). Regression test proves an evening-before rerun keys to the prior PT day.
 - **RC1 (DONE)** — regression tests added: incremental window-preservation, cross-digit-length id, PT-day boundary, 20-page ceiling on the incremental path. Suite now 148 unit + 10 e2e green; live re-proven cold=1/warm=0.
-- **RC2 (DESCOPED)** — `search/recent` caching is **not built**; explicitly a follow-up. The 3 interest searches (~$0.30) remain inline.
+- **RC2 (NOW BUILT — 2026-06-09)** — `search/recent` interest-search caching shipped: `lib/x-search-cache.ts` + `scripts/x-search-fetch.ts`, read-through PT-day cache keyed by a hash of the sorted query set (editing a query auto-invalidates → no stale wrong-query results), 90-min TTL, `--force`/`--no-cache` escape hatches, API errors throw (never poison the cache). Wired into the x-feed-brief prompt Step 1 (backup `*.bak.20260609-071015-pre-rc2`). 10 unit tests. The 3 interest searches (~$0.30/run) are now free on same-day reruns.
 - **RC6 (CLARIFIED)** — Feature 1's prompt edit (G-W5-1) is **DONE & approved** this session (`.bak.20260608-163534-pre-cache` exists). No longer a pending gate.
 
 ### Carried into Feature 2 build (not yet built)
@@ -219,3 +219,10 @@ Review verdict: **BLOCK** on two real Feature-1 incremental-path bugs + day-key 
 
 **Verification:** `npm run verify` green — 156 unit + 10 e2e (typecheck + lint
 ≤14-warning baseline). Python: 12/12 (pf-score 6 + pf-audit 6).
+
+
+### Post-build hardening (2026-06-09)
+- **AI-search route-level e2e** (`__tests__/ai-search-route.test.ts`, 4 tests) — drives the real `POST` handler with mocked boundaries and asserts the WIRING the pure resolver test can't: DB provider=anthropic + only OPENAI key → resolves via OpenAI SDK, 200, and the codex/claude CLI is **never called**; no usable key → fast 400 naming the provider, CLI never called; empty query → fast 400. This is the route-level proof that the 90s CLI hang path is unreachable on the hardened paths.
+- **RC2 interest-search cache** built (see RC2 line above): `lib/x-search-cache.ts` + `scripts/x-search-fetch.ts` + `__tests__/x-search-cache.test.ts` (10 tests incl. the query-set-change → MISS safety property and error-not-cached). Wired into x-feed-brief Step 1.
+- **siftly-ace app-only bearer** re-verified live (bearer ✓, `/2/usage/tweets` 200, cap 2,000,000) — the old AGENTS.md provisioning gap is resolved.
+- **verify** green: 170 unit + 10 e2e + 12 Python.
