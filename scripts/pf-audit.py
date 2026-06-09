@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Personal-fit audit wrapper for Siftly brief crons — Wave 5 Feature 2.
+
+Wraps `pf-score.py` so a brief run leaves DURABLE PROOF of whether personal-fit
+actually fired and how it scored each item. Closes the "should have fired" gap:
+the per-run /tmp/*-pf-score.json was ephemeral and the timeout case (helper killed)
+left no JSON at all.
+
+Pipeline (one invocation per brief, replaces the bare pf-score call):
+  1. Run pf-score.py as a subprocess under our own timeout.
+  2. Classify the outcome precisely:
+       - subprocess timed out / killed        -> fired=false, reason="timeout"
+       - returned ok:false (ran, declined)    -> fired=false, reason=<sentinel reason>
+       - returned ok:true but PF_WEIGHT==0     -> fired=false, reason="kill-switch (PF_WEIGHT=0)"
+       - returned ok:true with weight          -> fired=true
+  3. Persist a durable per-run artifact (RC3: id + scores + top-2 signals ONLY;
+     NO raw tweet text/title/url — the Obsidian archive already holds the tweets).
+  4. Append a one-line summary to log.jsonl.
+  5. Prune per-run artifacts + log lines older than --prune-days (default 7),
+     mirroring the seen-list retention so PII doesn't accumulate unbounded.
+  6. Re-emit pf-score's ORIGINAL stdout JSON to our stdout (unless --no-emit) so
+     the brief's downstream scoring logic is unchanged.
+
+Like pf-score, this NEVER blocks the load-bearing brief: any internal failure
+still emits a fail-safe sentinel and exits 0.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+DEFAULT_AUDIT_DIR = Path.home() / ".hermes/state/x-bookmarks/pf-audit"
+DEFAULT_PF_SCORE = Path(__file__).resolve().parent / "pf-score.py"
+DEFAULT_TIMEOUT = 30.0
+DEFAULT_PRUNE_DAYS = 7
+SIGNAL_KEYS = ("topic_score", "author_score", "format_score", "downrank_score")
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _stamp(dt: datetime) -> str:
+    # e.g. 2026-06-08T1314Z  (filesystem-safe, minute resolution)
+    return dt.strftime("%Y-%m-%dT%H%MZ")
+
+
+def top_signals(signals: dict[str, Any], n: int = 2) -> list[dict[str, Any]]:
+    """Return the n signals with the largest absolute magnitude."""
+    scored = []
+    for key in SIGNAL_KEYS:
+        val = signals.get(key)
+        if isinstance(val, (int, float)):
+            scored.append({"name": key, "score": round(float(val), 4)})
+    scored.sort(key=lambda s: abs(s["score"]), reverse=True)
+    return scored[:n]
+
+
+def run_pf_score(pf_score: Path, input_arg: str | None, profile: str, config: str,
+                 timeout: float) -> tuple[str, bool]:
+    """Run pf-score.py; return (stdout_text, timed_out)."""
+    cmd = [sys.executable, str(pf_score)]
+    if input_arg:
+        cmd.append(input_arg)
+    cmd += ["--profile", profile, "--config", config]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        return proc.stdout, False
+    except subprocess.TimeoutExpired as e:
+        partial = e.stdout
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf-8", "replace")
+        return (partial or ""), True
+
+
+def classify(raw_stdout: str, timed_out: bool) -> tuple[dict[str, Any], bool, str]:
+    """Parse pf-score output and classify. Returns (parsed, fired, reason)."""
+    if timed_out:
+        return {"ok": False, "items": []}, False, "timeout"
+    text = (raw_stdout or "").strip()
+    if not text:
+        return {"ok": False, "items": []}, False, "empty-output"
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {"ok": False, "items": []}, False, "unparseable-output"
+    if not isinstance(parsed, dict):
+        return {"ok": False, "items": []}, False, "unexpected-shape"
+
+    if not parsed.get("ok", False):
+        reason = str(parsed.get("reason") or "declined")
+        return parsed, False, reason
+
+    weight = parsed.get("pf_weight", 0)
+    try:
+        weight_num = float(weight)
+    except (TypeError, ValueError):
+        weight_num = 0.0
+    if weight_num == 0:
+        return parsed, False, "kill-switch (PF_WEIGHT=0)"
+    return parsed, True, "fired"
+
+
+def build_audit(parsed: dict[str, Any], brief: str, ts: datetime, fired: bool,
+                reason: str) -> dict[str, Any]:
+    items = parsed.get("items") or []
+    audit_items: list[dict[str, Any]] = []
+    n_positive = 0
+    n_negative = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        delta = it.get("personal_fit_delta", 0) or 0
+        try:
+            delta_num = float(delta)
+        except (TypeError, ValueError):
+            delta_num = 0.0
+        if delta_num > 0:
+            n_positive += 1
+        elif delta_num < 0:
+            n_negative += 1
+        # RC3: id + scores + top-2 signals ONLY. Drop raw text/title/url.
+        audit_items.append({
+            "id": it.get("id"),
+            "personal_fit_affinity": it.get("personal_fit_affinity"),
+            "personal_fit_raw": it.get("personal_fit_raw"),
+            "personal_fit_delta": it.get("personal_fit_delta"),
+            "top_signals": top_signals(it.get("signals") or {}),
+        })
+    return {
+        "ts": ts.isoformat(),
+        "brief": brief,
+        "fired": fired,
+        "reason": reason,
+        "ok": bool(parsed.get("ok", False)),
+        "pf_weight": parsed.get("pf_weight"),
+        "pf_baseline": parsed.get("pf_baseline"),
+        "n_items": len(audit_items),
+        "n_positive": n_positive,
+        "n_negative": n_negative,
+        "items": audit_items,
+    }
+
+
+def prune(audit_dir: Path, brief: str, prune_days: int, now: datetime) -> None:
+    """Delete per-run artifacts + trim log lines older than prune_days."""
+    cutoff = now - timedelta(days=prune_days)
+    cutoff_ts = cutoff.timestamp()
+    # Per-run JSON files (heavy; carry per-item data).
+    for f in audit_dir.glob(f"{brief}-*.json"):
+        try:
+            if f.stat().st_mtime < cutoff_ts:
+                f.unlink()
+        except OSError:
+            pass
+    # Trim log.jsonl to entries within the window.
+    log_path = audit_dir / "log.jsonl"
+    if not log_path.exists():
+        return
+    try:
+        kept: list[str] = []
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                rec_ts = datetime.fromisoformat(rec["ts"])
+                if rec_ts.tzinfo is None:
+                    rec_ts = rec_ts.replace(tzinfo=timezone.utc)
+                if rec_ts >= cutoff:
+                    kept.append(line)
+            except (json.JSONDecodeError, KeyError, ValueError):
+                kept.append(line)  # keep unparseable lines rather than lose data
+        log_path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Personal-fit audit wrapper for Siftly briefs")
+    ap.add_argument("input", nargs="?", help="candidate JSON path; omit or '-' for stdin")
+    ap.add_argument("--brief", required=True, help="brief name, e.g. x-feed-brief or morning-digest")
+    ap.add_argument("--profile", default=str(Path.home() / ".hermes/state/x-bookmarks/preference-profile.json"))
+    ap.add_argument("--config", default=str(Path.home() / ".hermes/state/x-bookmarks/brief-config.json"))
+    ap.add_argument("--pf-score", default=str(DEFAULT_PF_SCORE))
+    ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
+    ap.add_argument("--audit-dir", default=str(DEFAULT_AUDIT_DIR))
+    ap.add_argument("--prune-days", type=int, default=DEFAULT_PRUNE_DAYS)
+    ap.add_argument("--no-emit", action="store_true", help="do not echo pf-score JSON to stdout (tests)")
+    args = ap.parse_args()
+
+    now = _utc_now()
+    audit_dir = Path(args.audit_dir)
+
+    try:
+        # stdin can only be consumed once; if input is stdin, buffer it so we can
+        # both feed pf-score and (implicitly) not need it again.
+        input_arg = args.input
+        raw_stdout, timed_out = run_pf_score(
+            Path(args.pf_score), input_arg, args.profile, args.config, args.timeout
+        )
+        parsed, fired, reason = classify(raw_stdout, timed_out)
+
+        audit = build_audit(parsed, args.brief, now, fired, reason)
+
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        artifact = audit_dir / f"{args.brief}-{_stamp(now)}.json"
+        artifact.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        summary = {
+            "ts": audit["ts"],
+            "brief": args.brief,
+            "ok": audit["ok"],
+            "pf_weight": audit["pf_weight"],
+            "pf_baseline": audit["pf_baseline"],
+            "n_items": audit["n_items"],
+            "n_positive": audit["n_positive"],
+            "n_negative": audit["n_negative"],
+            "fired": fired,
+            "reason": reason,
+        }
+        with (audit_dir / "log.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(summary, ensure_ascii=False) + "\n")
+
+        prune(audit_dir, args.brief, args.prune_days, now)
+
+        # Re-emit pf-score's original JSON so the brief's downstream is unchanged.
+        if not args.no_emit:
+            if timed_out or not raw_stdout.strip():
+                # Provide a fail-safe sentinel the brief already knows how to handle.
+                print(json.dumps({
+                    "ok": False, "base_score_only": True, "reason": reason, "items": [],
+                }, ensure_ascii=False))
+            else:
+                sys.stdout.write(raw_stdout if raw_stdout.endswith("\n") else raw_stdout + "\n")
+        return 0
+    except Exception as e:  # never block the brief
+        if not args.no_emit:
+            print(json.dumps({
+                "ok": False, "base_score_only": True, "reason": f"pf-audit error: {e}", "items": [],
+            }, ensure_ascii=False))
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -188,8 +188,12 @@ describe('preference profile', () => {
       const result = await writePreferenceArtifacts(profile, { jsonPath, obsidianDir })
       const after = await stat(dbPath)
 
-      expect(rows).toHaveLength(3547)
-      expect(profile.corpus_size).toEqual({ bookmarks: 2635, likes: 912 })
+      // Corpus grows with daily ingest, so assert structural invariants rather
+      // than brittle exact counts: non-trivial corpus, and bookmarks+likes == rows.
+      expect(rows.length).toBeGreaterThan(3000)
+      expect(profile.corpus_size.bookmarks).toBeGreaterThan(0)
+      expect(profile.corpus_size.likes).toBeGreaterThan(0)
+      expect(profile.corpus_size.bookmarks + profile.corpus_size.likes).toBe(rows.length)
       await expect(readFile(result.jsonPath, 'utf8')).resolves.toContain('"corpus_size"')
       await expect(readFile(result.markdownPath, 'utf8')).resolves.toContain('Ace Bookmark Preference Profile')
       expect(after.mtimeMs).toBe(before.mtimeMs)

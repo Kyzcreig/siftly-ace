@@ -77,6 +77,17 @@ export async function getMiniMaxModel(): Promise<string> {
  */
 export async function getActiveModel(): Promise<string> {
   const provider = await getProvider()
+  return getActiveModelFor(provider)
+}
+
+/**
+ * Get the model for an EXPLICIT provider (Wave 5 F3): the search route may use a
+ * provider different from the DB-configured one (auto-pick), so model selection
+ * must follow the resolved provider, not getProvider().
+ */
+export async function getActiveModelFor(
+  provider: 'anthropic' | 'openai' | 'minimax',
+): Promise<string> {
   if (provider === 'minimax') return getMiniMaxModel()
   return provider === 'openai' ? getOpenAIModel() : getAnthropicModel()
 }

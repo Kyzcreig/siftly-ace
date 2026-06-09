@@ -71,3 +71,8 @@ promo-video/
 *.swo
 *~
 .local/
+
+# Local agent scratch + python cache
+.hermes/
+__pycache__/
+*.pyc

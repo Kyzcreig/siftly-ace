@@ -153,9 +153,69 @@ Review verdict: **BLOCK** on two real Feature-1 incremental-path bugs + day-key 
 - **RC4** — provider/key guard must key off **actual env-key presence at request time** and bypass/invalidate `getProvider()`'s in-process `_cachedProvider` TTL. Bound CLI path to <=25s (confirmed `timeoutMs: 90_000` at `route.ts` ~378/388).
 - **RC5** — deterministic precedence: DB provider set-but-unusable AND a different provider's key present -> auto-pick with loud warning + surface resolved provider in response; DB provider unset -> documented fixed order.
 
-**Status:** Feature 1 BLOCK cleared (B1-B3 + RC1 fixed, live-reproven). Features 2 & 3 remain APPROVE-WITH-CHANGES, to be built with RC3/RC4/RC5 baked in.
+**Status:** Feature 1 BLOCK cleared (B1-B3 + RC1 fixed, live-reproven). **Features 2 & 3 now BUILT (2026-06-09) with RC3/RC4/RC5 baked in** — see section 9.
 
 ### Pass-2 follow-ups (APPROVE WITH CHANGES — applied)
 - **B1.2 test made discriminating:** the original regression assertion passed under the old length-then-lex code too (decimal ids without leading zeros compare identically). Replaced with a leading-zero cross-length case (`'000…001'` (20ch, =1) vs 19-char id) that length-then-lex gets WRONG and BigInt gets right, plus a `catch`-fallback assertion. The test now fails if the BigInt fix is reverted.
 - **Documented intended property — bounded intra-day over-inclusion:** anchoring incremental top-ups to the cache's frozen original `meta.since` means a late-day *manual rerun* can retain a window up to ~34h wide vs a fresh sweep's 24h. This is bounded **over-inclusion (extra older tweets), never loss**, and self-resets every morning via the PT-day MISS. The canonical 7:30am PT deliverable is always a fresh MISS, so Ace never sees this drift — it only affects same-day manual test reruns, where keeping a few extra stale tweets is strictly safer than dropping valid ones. Intended tradeoff, not a bug.
 - **Backfill edge:** pre-fix cache files lack `meta.since`; the first post-deploy incremental run on such a file falls back to legacy behavior for that single run, then self-heals at the next PT-day MISS (<24h transient).
+
+
+---
+
+## 9. Features 2 & 3 — Build Record (2026-06-09)
+
+### Feature 2 — Personal-Fit Audit Trail (BUILT)
+- **`scripts/pf-audit.py`** (new) wraps `pf-score.py`: runs it as a subprocess under a
+  timeout, then classifies the outcome precisely —
+  `fired` / `timeout` (killed, no JSON) / `kill-switch (PF_WEIGHT=0)` / `declined`
+  (`ok:false` sentinel) / `empty-output` / `unparseable-output`. It always exits 0 and
+  re-emits pf-score's original stdout JSON (or a `base_score_only` sentinel on
+  timeout/failure), so the brief's downstream scoring is byte-for-byte unchanged.
+- **Durable artifact** `~/.hermes/state/x-bookmarks/pf-audit/<brief>-<ts>.json` —
+  **RC3 honored**: per-item record is `id` + `personal_fit_affinity/raw/delta` +
+  **top-2 signals only**, NO raw tweet text/title/url (the Obsidian archive already
+  holds the tweets). Summary line appended to `pf-audit/log.jsonl`
+  (`fired`, `reason`, counts, `pf_weight`, `pf_baseline`).
+- **7-day prune** (mirrors the seen-list retention): old per-run JSON files and
+  log.jsonl lines beyond `--prune-days` (default 7) are removed each run.
+- **timeout vs declined distinguished** in `reason` (RC3 requirement).
+- **Prompt wiring (G-W5-2, config-gate):** both `x-feed-brief/prompt.md` Step 4.5 and
+  `morning-digest/prompt.md` Step 3.5 now call `pf-audit.py … --brief <name>` instead
+  of the bare `pf-score.py`, and record `personal_fit_fired/pf_weight/pf_baseline` in
+  the archive frontmatter. Backups: `*.bak.20260609-061734-pre-pfaudit`.
+- **Tests:** `scripts/__tests__/pf_audit_test.py` — fired, RC3-no-raw-text, kill-switch,
+  declined (missing profile), timeout (distinct reason + sentinel still emitted), prune.
+  6/6 green (12/12 with pf-score's existing 6).
+- **Live dry-run proof:** wrapper run exactly as the prompt invokes it over the live
+  3,547-item profile → stdout identical to pf-score; durable artifact written with
+  `fired:true`, correct +1/−2 signal split; grep confirms no raw title leaked.
+
+### Feature 3 — AI-Search Hardening (BUILT)
+- **`lib/ai-provider-resolve.ts`** (new, PURE) — `resolveProvider(preferred, availability)`
+  implements RC5 deterministic precedence: use the DB-preferred provider if its key is
+  present (`db-preferred`); else auto-pick by fixed order **openai > anthropic > minimax**
+  with a loud warning (`auto-picked`); else `no-usable-key` → caller returns a fast clear
+  400 (never the 90s CLI hang).
+- **`app/api/search/ai/route.ts`** — at request time, `probeKeyAvailability()` reads
+  actual key presence (DB key OR env key OR proxy base_url) for all three providers,
+  **bypassing `getProvider()`'s 5-min in-process cache** (RC4). The resolved provider then
+  drives model + client selection via new `resolveAIClientForProvider()` /
+  `getActiveModelFor()` (so an auto-pick can't be contradicted by a cached getProvider()).
+  The CLI agentic fallback timeout is cut **90s → 25s** (`CLI_TIMEOUT_MS`), and error JSON
+  now surfaces the resolved `provider`/`model`.
+- **`app/ai-search/page.tsx`** — elapsed-seconds indicator: after 3s a
+  "Searching … ~10–15s … (Ns)" hint renders so the box never *looks* frozen. The interval
+  owns all setState (no synchronous setState-in-effect; lint-clean).
+- **Tests:** `__tests__/ai-provider-resolve.test.ts` — db-preferred, the real
+  anthropic-preferred-but-only-openai-key bug → auto-picks openai (never null),
+  precedence ordering, no-usable-key → null, determinism. 8/8 green.
+
+### Incidental fix
+- `scripts/__tests__/profile.test.ts` real-DB test hardcoded exact corpus counts
+  (`3547` / `{2635,912}`) that drift with every daily ingest (was already red on clean
+  HEAD at 3548). Replaced with structural invariants: corpus > 3000 and
+  `bookmarks + likes === rows`, keeping the non-mutation + novelty-disabled checks.
+
+**Verification:** `npm run verify` green — 156 unit + 10 e2e (typecheck + lint
+≤14-warning baseline). Python: 12/12 (pf-score 6 + pf-audit 6).

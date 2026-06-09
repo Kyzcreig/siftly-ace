@@ -35,6 +35,18 @@ export default function AISearchPage() {
   const [imageStats, setImageStats] = useState<ImageStats | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [pipelineRunning, setPipelineRunning] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+
+  // Wave 5 F3: tick an elapsed-seconds counter while a search is in flight so the
+  // box never *looks* frozen during the ~10s SDK call. The interval owns all
+  // setState (no synchronous setState in the effect body); `elapsed` is reset to 0
+  // by handleSearch() when a new search starts.
+  useEffect(() => {
+    if (!loading) return
+    const start = Date.now()
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [loading])
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -83,6 +95,7 @@ export default function AISearchPage() {
   async function handleSearch() {
     if (!query.trim() || loading) return
     setLoading(true)
+    setElapsed(0)
     setError('')
     setResults([])
     setExplanation('')
@@ -174,6 +187,14 @@ export default function AISearchPage() {
         </button>
       </div>
       <p className="text-xs text-zinc-600 mb-8 text-right">⌘+Enter to search</p>
+
+      {/* Wave 5 F3: progress hint so the box never looks permanently stuck */}
+      {loading && elapsed >= 3 && (
+        <div className="flex items-center justify-center gap-2 -mt-6 mb-8 text-xs text-zinc-500">
+          <Loader2 size={12} className="animate-spin" />
+          <span>Searching your bookmarks with AI — this usually takes ~10–15s… ({elapsed}s)</span>
+        </div>
+      )}
 
       {/* Image analysis status — hidden while main pipeline is running (it handles vision internally) */}
       {imageStats !== null && !pipelineRunning && (

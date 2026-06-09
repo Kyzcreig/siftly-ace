@@ -142,7 +142,18 @@ export async function resolveAIClient(options: {
   dbKey?: string
 } = {}): Promise<AIClient> {
   const provider = await getProvider()
+  return resolveAIClientForProvider(provider, options)
+}
 
+/**
+ * Resolve an AIClient for an EXPLICIT provider (Wave 5 F3): the search route may
+ * resolve a provider different from the DB-configured one (auto-pick), so it must
+ * not let resolveAIClient re-read getProvider() and contradict the resolution.
+ */
+export async function resolveAIClientForProvider(
+  provider: 'anthropic' | 'openai' | 'minimax',
+  options: { overrideKey?: string; dbKey?: string } = {},
+): Promise<AIClient> {
   if (provider === 'minimax') {
     const client = resolveMiniMaxClient(options)
     return new MiniMaxAIClient(client)

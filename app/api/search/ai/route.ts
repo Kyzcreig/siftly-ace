@@ -1,11 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { ftsSearch } from '@/lib/fts'
-import { AIClient, resolveAIClient } from '@/lib/ai-client'
-import { getActiveModel, getProvider } from '@/lib/settings'
+import { AIClient, resolveAIClientForProvider } from '@/lib/ai-client'
+import { getActiveModelFor, getProvider } from '@/lib/settings'
 import { extractKeywords } from '@/lib/search-utils'
 import { getCliAvailability, claudePrompt, modelNameToCliAlias } from '@/lib/claude-cli-auth'
 import { getCodexCliAvailability, codexPrompt } from '@/lib/codex-cli'
+import {
+  resolveProvider,
+  type AIProvider,
+  type ProviderKeyAvailability,
+} from '@/lib/ai-provider-resolve'
+
+// Wave 5 F3: bound the CLI agentic fallback so an interactive search box can never
+// hang for 90s. 25s is a UI-friendly ceiling; the fast SDK path is always preferred.
+const CLI_TIMEOUT_MS = 25_000
+
+/**
+ * Probe — at request time, bypassing getProvider()'s 5-min in-process cache (RC4) —
+ * which providers have a usable SDK key visible RIGHT NOW. A provider is usable if it
+ * has a non-empty DB key OR an env key OR a configured proxy base_url.
+ */
+async function probeKeyAvailability(): Promise<ProviderKeyAvailability> {
+  const [anthropicDb, openaiDb, minimaxDb] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: 'anthropicApiKey' } }),
+    prisma.setting.findUnique({ where: { key: 'openaiApiKey' } }),
+    prisma.setting.findUnique({ where: { key: 'minimaxApiKey' } }),
+  ])
+  const has = (v: string | null | undefined) => !!v && v.trim().length > 0
+  return {
+    openai:
+      has(openaiDb?.value) ||
+      has(process.env.OPENAI_API_KEY) ||
+      has(process.env.OPENAI_BASE_URL),
+    anthropic:
+      has(anthropicDb?.value) ||
+      has(process.env.ANTHROPIC_API_KEY) ||
+      has(process.env.ANTHROPIC_CLI_KEY) ||
+      has(process.env.ANTHROPIC_BASE_URL),
+    minimax:
+      has(minimaxDb?.value) ||
+      has(process.env.MINIMAX_API_KEY) ||
+      has(process.env.MINIMAX_BASE_URL),
+  }
+}
+
+async function getDbKeyForProvider(provider: AIProvider): Promise<string> {
+  const keyName =
+    provider === 'openai' ? 'openaiApiKey' : provider === 'minimax' ? 'minimaxApiKey' : 'anthropicApiKey'
+  const setting = await prisma.setting.findUnique({ where: { key: keyName } })
+  return setting?.value?.trim() ?? ''
+}
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 interface CacheEntry { results: unknown; expiresAt: number }
@@ -24,21 +69,9 @@ function setCache(key: string, results: unknown): void {
 }
 
 // ─── Module-level caches (avoid DB roundtrips on every search) ────────────────
-let _apiKey: string | null = null
-let _apiKeyExpiry = 0
 let _categoriesCache: { slug: string; name: string; description: string | null }[] | null = null
 let _categoriesCacheExpiry = 0
 
-async function getDbApiKey(): Promise<string> {
-  if (_apiKey !== null && Date.now() < _apiKeyExpiry) return _apiKey
-  const provider = await getProvider()
-  const keyName = provider === 'openai' ? 'openaiApiKey' : 'anthropicApiKey'
-  const setting = await prisma.setting.findUnique({ where: { key: keyName } })
-  const fromDb = setting?.value?.trim() ?? ''
-  _apiKey = fromDb
-  _apiKeyExpiry = Date.now() + 60_000
-  return _apiKey
-}
 async function getAllCategories() {
   if (_categoriesCache && Date.now() < _categoriesCacheExpiry) return _categoriesCache
   _categoriesCache = await prisma.category.findMany({ select: { slug: true, name: true, description: true } })
@@ -193,20 +226,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { query, category } = body
   if (!query?.trim()) return NextResponse.json({ error: 'Query required' }, { status: 400 })
 
-  const apiKey = await getDbApiKey()
-
   const cacheKey = `${query.trim().toLowerCase()}::${category ?? ''}`
   const cached = getCached(cacheKey)
   if (cached) return NextResponse.json(cached)
 
+  // ── Provider resolution (Wave 5 F3 / RC4+RC5) ─────────────────────────────
+  // Key off ACTUAL key presence at request time (bypasses the 5-min getProvider
+  // cache), then deterministically resolve which provider to actually use. This
+  // prevents the silent fall-through to the 90s CLI agentic path when the
+  // DB-configured provider has no usable key in this process.
+  const preferredProvider = (await getProvider()) as AIProvider
+  const availability = await probeKeyAvailability()
+  const resolution = resolveProvider(preferredProvider, availability)
+
+  if (resolution.provider === null) {
+    // No provider has a usable key — fast, clear error (never hang the box).
+    return NextResponse.json(
+      {
+        error:
+          `No usable AI provider key found. Configured provider "${preferredProvider}" has no key, ` +
+          `and no other provider key is present. Add an API key in Settings.`,
+        provider: preferredProvider,
+      },
+      { status: 400 },
+    )
+  }
+
+  if (resolution.reason === 'auto-picked' && resolution.warning) {
+    console.warn(resolution.warning)
+  }
+
+  const provider = resolution.provider
+  const dbKey = await getDbKeyForProvider(provider)
+  const model = await getActiveModelFor(provider)
+
   let client: AIClient | null = null
   try {
-    client = await resolveAIClient({ dbKey: apiKey })
+    client = await resolveAIClientForProvider(provider, { dbKey })
   } catch {
-    // SDK not available — will try CLI path
+    // SDK not available — will try (bounded) CLI path
   }
-  const model = await getActiveModel()
-  const provider = await getProvider()
 
   const categoryFilter = category
     ? { categories: { some: { category: { slug: category } } } }
@@ -375,7 +434,7 @@ Constraints:
     let cliSucceeded = false
     if (provider === 'openai' && await getCodexCliAvailability()) {
       try {
-        const result = await codexPrompt(prompt, { timeoutMs: 90_000 })
+        const result = await codexPrompt(prompt, { timeoutMs: CLI_TIMEOUT_MS })
         if (result.success && result.data) {
           aiResponse = parseSearchResponse(result.data)
           cliSucceeded = true
@@ -384,7 +443,7 @@ Constraints:
     } else if (provider === 'anthropic' && await getCliAvailability()) {
       try {
         const cliModel = modelNameToCliAlias(model)
-        const result = await claudePrompt(prompt, { model: cliModel, timeoutMs: 90_000 })
+        const result = await claudePrompt(prompt, { model: cliModel, timeoutMs: CLI_TIMEOUT_MS })
         if (result.success && result.data) {
           aiResponse = parseSearchResponse(result.data)
           cliSucceeded = true
@@ -395,8 +454,10 @@ Constraints:
     if (!cliSucceeded) {
       return NextResponse.json(
         { error: client
-          ? 'AI search failed: the AI provider did not return a usable response. Check your API key/model in Settings.'
-          : 'No API key configured and no CLI available. Add an API key in Settings or install Codex/Claude CLI.' },
+          ? `AI search failed: provider "${provider}" (model ${model}) did not return a usable response within ${CLI_TIMEOUT_MS / 1000}s. Check your API key/model in Settings.`
+          : `No usable API client for provider "${provider}" and no CLI available within ${CLI_TIMEOUT_MS / 1000}s. Add an API key in Settings or install Codex/Claude CLI.`,
+          provider,
+          model },
         { status: client ? 500 : 400 },
       )
     }
