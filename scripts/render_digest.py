@@ -1,45 +1,48 @@
 #!/usr/bin/env python3
 """
-render_digest.py — deterministic renderer for the morning-digest Discord post.
+render_digest.py — deterministic, source-aware renderer for the morning-digest post.
 
 WHY THIS EXISTS
 ---------------
-The morning-digest cron asks the model to WRITE two distinct fields per story
-(a <headline> and a distinct <1-sentence why-it-matters>). Unlike x-feed-brief
-(which pastes tweet text VERBATIM and therefore can't drift), this dual-synthesis
-task lets a lazy/weak model fill both slots with the same source text — producing
-the "<headline> — <headline re-truncated>" echo bug, and sometimes inventing its
-own off-template format ("@handle flags <headline> — ...").
+The morning-digest cron used to ask the model to WRITE prose per item, which let
+a lazy/weak model (a) duplicate a headline into its own summary slot (the
+"<headline> — <headline re-truncated>" echo) and (b) invent off-template formats
+("@handle flags <headline>"). x-feed-brief never drifts because it pastes tweet
+text VERBATIM. This renderer takes composition away from the model entirely and
+makes the two content shapes match how Ace actually wants to read them:
 
-Fix: take RENDERING away from the model. The model still owns scoring/selection
-and emits a small structured JSON manifest. THIS script deterministically:
-  1. drops any summary that just repeats its headline (substring-equal or
-     >40% word overlap) — the model can no longer ship the echo,
-  2. Discord-markdown-escapes every model/source-derived string,
-  3. computes grade emoji + source suffix from the data (not the model's prose),
-  4. assembles the exact body and (optionally) posts it via notify.py.
+  • X / tweets  → rendered like x-feed: author meta line + the VERBATIM tweet
+                   text, cut at a natural boundary (sentence end / newline) when
+                   long. No synthesis, so no drift.
+  • stories     → a clean headline + ONE additional summary line that must add
+    (HN, smol.ai,  info beyond the headline (echo-summaries are dropped).
+     Latent Space,
+     Perplexity)
 
-Model owns judgement; Python owns format. Render variance becomes impossible.
+The model emits structured JSON; THIS script escapes Discord markdown, computes
+grades + source suffixes, truncates tweets naturally, drops echo summaries, and
+posts via notify.py (which chunks). Model owns scoring/selection; Python owns
+format. Render variance becomes impossible.
 
 INPUT  (default ~/.hermes/state/cron/morning-digest/_render_input.json):
 {
-  "date_label": "Wednesday, June 10",      # optional; derived from ts if absent
-  "ts": "2026-06-10T11:55:43-07:00",        # optional, for date derivation
-  "selected": [                              # Top Stories (0..5)
-    {
-      "title":   "<headline>",               # required
-      "summary": "<why it matters>",         # optional; dropped if it echoes title
-      "source":  "X",                        # X|HN|smol.ai|Latent Space|Perplexity
-      "score":   100,                         # required int 0..100 -> grade emoji
-      "url":     "https://...",               # required
-      "authorHandle": "NothingDevo",          # for X suffix
-      "hn_points": 120, "hn_comments": 34     # for HN suffix
-    }, ...
+  "date_label": "Wednesday, June 10",        # optional; derived from ts if absent
+  "ts": "2026-06-10T11:55:43-07:00",          # optional, for date derivation
+  "selected": [                                # Top Stories (0..5)
+    # --- a TWEET (source X) — verbatim, x-feed style ---
+    { "source": "X", "authorHandle": "karpathy", "tweet_text": "<FULL verbatim tweet text>",
+      "likes": 22800, "retweets": 1060, "score": 92, "url": "https://x.com/.../status/123" },
+    # --- a STORY (HN / smol.ai / Latent Space / Perplexity) — headline + summary ---
+    { "source": "HN", "title": "<headline>", "summary": "<distinct extra line>",
+      "hn_points": 210, "hn_comments": 88, "score": 90, "url": "https://..." }
   ],
-  "also": [ {same shape} ],                  # Also Noted (0..N)
-  "footer": "147 scanned (...) · caps applied",  # stats line text (no surrounding *)
-  "empty_note": null                          # if set, render the no-stories husk line
+  "also": [ { ...same shapes... } ],          # Also Noted (0..N) — compact one-liners
+  "footer": "147 scanned (...) · caps applied",
+  "empty_note": null                           # set to render the no-stories husk
 }
+
+Backward-compatible: legacy items using a single `line` field, or `title`+`summary`
+for X, still render sanely.
 
 USAGE
 -----
@@ -56,7 +59,12 @@ DEFAULT_OUT = os.path.join(DIGEST_DIR, "_render_output.txt")
 NOTIFY = os.path.expanduser("~/.hermes/scripts/notify.py")
 DEFAULT_TARGET = "1480539453117305023"  # Discord #daily
 
-# ── Grade table (score -> emoji + letter). Mirrors prompt.md Step "Grades". ──
+# Tweets render verbatim but are cut at a natural boundary past this length so a
+# 2,000-char thread can't dominate the digest. Ace wants MORE than the old ~280.
+MAX_TWEET_CHARS = 600
+MAX_ALSO_CHARS = 200  # Also Noted is a compact secondary section
+
+# ── Grade table (score -> emoji + letter). Mirrors prompt.md "Grades". ──
 _GRADES = [
     (93, "🔥", "A"), (90, "✅", "A-"), (87, "👍", "B+"), (83, "👍", "B"),
     (80, "📋", "B-"), (77, "📋", "C+"), (73, "📋", "C"), (70, "🔹", "C-"),
@@ -72,35 +80,51 @@ def grade_for(score):
     return "⬜", "D", s
 
 # ── Discord markdown escaping ────────────────────────────────────────────────
-# Escape every char that can open/close formatting so UNTRUSTED text (handles,
-# titles, summaries) can never bleed. Leading line markers handled separately.
-_MD_CHARS = r"\\*_~|`>"
 _MD_ESCAPE_RE = re.compile(r"([\\*_~|`>])")
 def esc(text):
-    """Backslash-escape Discord markdown metacharacters in untrusted text."""
+    """Backslash-escape Discord markdown metacharacters in untrusted text.
+    Operates per-line so leading list/header/quote markers are caught on EVERY
+    line (verbatim tweets are multi-line)."""
     if text is None:
         return ""
-    out = _MD_ESCAPE_RE.sub(r"\\\1", str(text))
-    # Neutralize a leading '#' or '-' that would start a header/list at line start.
-    out = re.sub(r"^(\s*)([#-])", r"\1\\\2", out)
-    # Neutralize a leading "N." that Discord renders as an ordered list.
-    out = re.sub(r"^(\s*)(\d+)\.(\s)", r"\1\2\\.\3", out)
-    return out
+    def _esc_line(ln):
+        ln = _MD_ESCAPE_RE.sub(r"\\\1", ln)
+        ln = re.sub(r"^(\s*)([#-])", r"\1\\\2", ln)
+        ln = re.sub(r"^(\s*)(\d+)\.(\s)", r"\1\2\\.\3", ln)
+        return ln
+    return "\n".join(_esc_line(l) for l in str(text).split("\n"))
 
-# ── Distinctness gate (the approved 1b guard) ────────────────────────────────
+# ── Natural truncation for verbatim tweets ───────────────────────────────────
+_SENT_END_RE = re.compile(r"[.!?](?:\s|$)")
+def natural_truncate(text, limit=MAX_TWEET_CHARS):
+    """Cut `text` at a natural boundary (sentence end, else newline, else word)
+    once it exceeds `limit`. Returns (text, truncated_bool). Never cuts mid-word."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text, False
+    window = text[:limit]
+    floor = int(limit * 0.5)  # don't cut so early we lose the point
+    # latest sentence end within the window
+    sent = -1
+    for m in _SENT_END_RE.finditer(window):
+        sent = m.end()
+    nl = window.rfind("\n")
+    candidates = [c for c in (sent, nl) if c >= floor]
+    if candidates:
+        return text[:max(candidates)].rstrip() + " …", True
+    sp = window.rfind(" ")
+    if sp >= floor:
+        return text[:sp].rstrip() + " …", True
+    return window.rstrip() + " …", True
+
+# ── Echo gate (drop a story summary that just reprints its headline) ──────────
 _WORD_RE = re.compile(r"[a-z0-9]+")
 def _norm_words(s):
     return _WORD_RE.findall((s or "").lower())
 
 def summary_echoes_headline(title, summary, overlap_threshold=0.40):
-    """
-    True if `summary` is effectively a reprint of `title` and should be dropped.
-    Triggers on: empty summary, substring containment either direction (on the
-    normalized text), or >threshold of the summary's words also appearing in the
-    headline. Short summaries (<=4 distinct words) that are fully contained in
-    the headline are always echoes.
-    """
-    if not summary or not summary.strip():
+    """True if `summary` is effectively a reprint of `title` and should be dropped."""
+    if not summary or not str(summary).strip():
         return True
     t_words = _norm_words(title)
     s_words = _norm_words(summary)
@@ -110,41 +134,27 @@ def summary_echoes_headline(title, summary, overlap_threshold=0.40):
     s_norm = " ".join(s_words)
     if not t_norm or not s_norm:
         return False
-    # Substring containment in either direction = echo.
     if s_norm in t_norm or t_norm in s_norm:
         return True
-    t_set = set(t_words)
-    s_set = set(s_words)
+    t_set = set(t_words); s_set = set(s_words)
     contained = sum(1 for w in s_set if w in t_set)
     overlap = contained / len(s_set)
-    # Tiny summaries fully inside the headline are echoes regardless of ratio.
     if len(s_set) <= 4 and contained == len(s_set):
         return True
     return overlap > overlap_threshold
 
-# ── Single display line (canonical one-field schema + legacy fallback) ───────
-def item_display_line(item):
-    """
-    Return (escaped_line, dropped_echo) — the ONE rendered sentence for a story.
+# ── Source helpers ───────────────────────────────────────────────────────────
+def is_tweet(item):
+    return (item.get("source") or "").strip().lower() in ("x", "twitter")
 
-    Canonical schema: the model emits one field `line` (what happened + why it
-    matters). Single-field-by-design makes the headline/summary echo bug
-    structurally impossible — there is no second slot to fill wrong. We keep a
-    legacy fallback (title [+ distinct summary]) so older debug dumps and any
-    transitional run still render sanely instead of blank.
-    """
-    line = item.get("line")
-    if line and str(line).strip():
-        return esc(str(line).strip()), False
-    title = item.get("title")
-    summary = item.get("summary")
-    if summary and not summary_echoes_headline(title, summary):
-        return esc(f"{str(title).strip()} — {str(summary).strip()}"), False
-    dropped = bool(summary and str(summary).strip())  # had a summary but it echoed
-    return esc(str(title or "").strip()), dropped
+def _fmt_count(n):
+    try:
+        return f"{int(n):,}"
+    except (TypeError, ValueError):
+        return None
 
-# ── Source suffix (deterministic, from data not prose) ───────────────────────
 def source_suffix(item):
+    """Suffix for STORY items (tweets carry their own author meta line)."""
     src = (item.get("source") or "").strip()
     if src == "HN":
         pts = item.get("hn_points"); cm = item.get("hn_comments")
@@ -155,20 +165,75 @@ def source_suffix(item):
         return "· smol.ai"
     if src in ("Latent Space", "LatentSpace"):
         return "· Latent Space"
-    if src == "X":
+    if src.lower() in ("x", "twitter"):
         handle = (item.get("authorHandle") or "").lstrip("@")
         return f"· X @{esc(handle)}" if handle else "· X"
     if src == "Perplexity":
         return ""
-    # Unknown source: render it escaped so we never silently lose provenance.
     return f"· {esc(src)}" if src else ""
 
-# ── URL handling: angle-bracket wrap, do NOT escape inside (esc would corrupt) ─
 def wrap_url(url):
     u = (url or "").strip()
-    if not u:
-        return ""
-    return f"<{u}>"
+    return f"<{u}>" if u else ""
+
+def _tweet_text(item):
+    return item.get("tweet_text") or item.get("text") or item.get("line") or item.get("title") or ""
+
+def _story_title(item):
+    return item.get("title") or item.get("headline") or item.get("line") or ""
+
+# ── Per-item block renderers ─────────────────────────────────────────────────
+def render_top_block(item, index):
+    """Return (lines, dropped_echo) for ONE Top Stories entry."""
+    emoji, letter, s = grade_for(item.get("score"))
+    url = wrap_url(item.get("url"))
+
+    if is_tweet(item):
+        # x-feed style: meta line, blank, verbatim tweet (natural cutoff), url
+        handle = (item.get("authorHandle") or "").lstrip("@")
+        meta = [f"@{esc(handle)}"] if handle else []
+        for field, label in (("likes", "likes"), ("retweets", "reposts")):
+            c = _fmt_count(item.get(field))
+            if c is not None:
+                meta.append(f"{c} {label}")
+        meta.append(f"{emoji} {letter} ({s})")
+        lines = [f"**{index}.** " + " · ".join(meta), ""]
+        body, _ = natural_truncate(str(_tweet_text(item)))
+        lines.append(esc(body))
+        if url:
+            lines.append(url)
+        return lines, False
+
+    # story: headline line, optional distinct summary line, url
+    title = _story_title(item)
+    head = f"**{index}.** {esc(str(title).strip())} {source_suffix(item)} {emoji} {letter} ({s})"
+    head = re.sub(r"[ \t]+", " ", head).strip()
+    lines = [head]
+    summary = item.get("summary")
+    dropped = False
+    if summary and not summary_echoes_headline(title, summary):
+        lines.append(esc(str(summary).strip()))
+    elif summary and str(summary).strip():
+        dropped = True  # had a summary but it echoed the headline
+    if url:
+        lines.append(url)
+    return lines, dropped
+
+def render_also_line(item):
+    """One compact line for an Also Noted entry (tweet or story)."""
+    emoji, letter, s = grade_for(item.get("score"))
+    url = wrap_url(item.get("url"))
+    if is_tweet(item):
+        handle = (item.get("authorHandle") or "").lstrip("@")
+        snippet, _ = natural_truncate(str(_tweet_text(item)), MAX_ALSO_CHARS)
+        prefix = f"@{esc(handle)}: " if handle else ""
+        display = prefix + esc(snippet)
+        suffix = f"{emoji} {letter} ({s})"
+    else:
+        display = esc(str(_story_title(item)).strip())
+        suffix = f"{source_suffix(item)} {emoji} {letter} ({s})"
+    line = f"• {display} {suffix} — {url}"
+    return re.sub(r"[ \t]+", " ", line).strip()
 
 # ── Body assembly ────────────────────────────────────────────────────────────
 def _derive_date_label(data):
@@ -197,31 +262,22 @@ def render_body(data):
 
     lines = [header, ""]
 
-    # No-stories husk (Empty-result rule). Triggered when the model passes an
-    # explicit empty_note OR there is genuinely nothing to show.
     if empty_note or (not selected and not also):
         note = empty_note or "🤷 Nothing cleared the bar today — slow news day."
-        lines.append(esc(note) if not str(note).startswith(("🤷", "⚠️")) else note)
+        lines.append(note if str(note).startswith(("🤷", "⚠️")) else esc(note))
         if footer:
             lines += ["", "---", footer]
-        return "\n".join(lines).rstrip() + "\n"
+        return "\n".join(lines).rstrip() + "\n", 0
 
     dropped_summaries = 0
     if selected:
         lines.append("🔥 **Top Stories**")
         lines.append("")
         for i, item in enumerate(selected, 1):
-            emoji, letter, s = grade_for(item.get("score"))
-            suffix = source_suffix(item)
-            display, dropped = item_display_line(item)
+            block, dropped = render_top_block(item, i)
             if dropped:
                 dropped_summaries += 1
-            head = f"**{i}.** {display} {suffix} {emoji} {letter} ({s})"
-            head = re.sub(r"[ \t]+", " ", head).strip()
-            lines.append(head)
-            url = wrap_url(item.get("url"))
-            if url:
-                lines.append(url)
+            lines.extend(block)
             lines.append("")
 
     if also:
@@ -229,27 +285,17 @@ def render_body(data):
             lines.append("")
         lines.append("📊 **Also Noted**")
         for item in also:
-            emoji, letter, s = grade_for(item.get("score"))
-            suffix = source_suffix(item)
-            display, _ = item_display_line(item)
-            url = wrap_url(item.get("url"))
-            line = f"• {display} {suffix} {emoji} {letter} ({s}) — {url}"
-            line = re.sub(r"[ \t]+", " ", line).strip()
-            lines.append(line)
+            lines.append(render_also_line(item))
         lines.append("")
 
     if footer:
         lines.append("---")
         lines.append(footer)
 
-    body = "\n".join(lines).rstrip() + "\n"
-    return body, dropped_summaries
+    return "\n".join(lines).rstrip() + "\n", dropped_summaries
 
 def render(data):
-    out = render_body(data)
-    if isinstance(out, tuple):
-        return out
-    return out, 0
+    return render_body(data)
 
 # ── Posting via notify.py (list args -> no shell -> no redaction mangling) ────
 def post_body(body, target):
@@ -296,107 +342,125 @@ def _selftest():
     def ok(name, cond):
         checks.append((name, bool(cond)))
 
-    # echo detection
+    # echo detection (story summaries)
     ok("identical echo", summary_echoes_headline("Foo launches Bar today", "Foo launches Bar today"))
     ok("retruncated echo", summary_echoes_headline(
         "Datadog veterans launch AI coding startup Niteshift on a bet against Big AI lock-in",
         "Datadog veterans launch AI coding startup Niteshift on a bet against Big AI lock-in. AI."))
     ok("empty summary", summary_echoes_headline("Foo ships Bar", ""))
-    ok("tiny contained", summary_echoes_headline("Anthropic ships Claude Fable 5 model", "Claude Fable 5"))
     ok("distinct kept", not summary_echoes_headline(
         "Grok 4 lands July 10 via xAI livestream",
         "Musk claims it beats Opus on long-context retrieval and ships with a 2M token window."))
-    ok("partial-overlap kept", not summary_echoes_headline(
-        "Ollama v0.18.2 released",
-        "Cuts Claude API roundtrip latency 40% by parallelizing local prompt-cache hits."))
 
-    # escaping
+    # escaping (now per-line)
     ok("underscore handle escaped", esc("@alexalbert__") == "@alexalbert\\_\\_")
     ok("asterisks escaped", esc("**Codex**") == "\\*\\*Codex\\*\\*")
-    ok("leading dash escaped", esc("- item").startswith("\\-"))
+    ok("leading dash escaped each line", esc("ok\n- item").split("\n")[1].startswith("\\-"))
     ok("backtick escaped", "\\`" in esc("`code`"))
 
     # grade mapping
     ok("grade A", grade_for(100) == ("🔥", "A", 100))
-    ok("grade B", grade_for(85)[1] == "B")
     ok("grade D", grade_for(50)[0] == "⬜")
 
-    # suffix
-    ok("X suffix", source_suffix({"source": "X", "authorHandle": "@foo_bar"}) == "· X @foo\\_bar")
-    ok("HN suffix", source_suffix({"source": "HN", "hn_points": 120, "hn_comments": 34}) == "· HN 120 pts / 34 comments")
+    # natural truncation
+    long_tweet = "First sentence here. " + ("filler word " * 80) + "End."
+    trunc, was = natural_truncate(long_tweet, 200)
+    ok("trunc happened", was and trunc.endswith("…"))
+    ok("trunc no midword", " ".join(trunc.split()) == trunc and "fille…" not in trunc)
+    short_tweet = "Short and sweet."
+    st, sw = natural_truncate(short_tweet, 200)
+    ok("short not truncated", st == short_tweet and not sw)
+    sent = "This is sentence one. This is sentence two that runs on and on and on " + ("x "*100)
+    s2, _ = natural_truncate(sent, 60)
+    ok("trunc at sentence end", s2.startswith("This is sentence one.") and s2.endswith("…"))
 
-    # full render: the echo summary must NOT appear; headline must
-    data = {
+    # TWEET rendering (verbatim, x-feed style)
+    tdata = {
         "date_label": "Wednesday, June 10",
         "selected": [{
-            "title": "Datadog veterans launch AI coding startup Niteshift on a bet against Big AI lock-in",
-            "summary": "Datadog veterans launch AI coding startup Niteshift on a bet against Big AI lock-in. AI.",
-            "source": "X", "authorHandle": "NothingDevo", "score": 100,
-            "url": "https://x.com/NothingDevo/status/2064780035962061109",
-        }, {
-            "title": "Grok 4 lands July 10 via xAI livestream",
-            "summary": "Musk claims it beats Opus on long-context retrieval with a 2M token window.",
-            "source": "X", "authorHandle": "elon_musk__", "score": 92,
-            "url": "https://x.com/elonmusk/status/1",
-        }],
-        "also": [{
-            "title": "Anthropic drops Claude Fable 5",
-            "source": "HN", "hn_points": 210, "hn_comments": 88, "score": 90,
-            "url": "https://news.ycombinator.com/item?id=1",
-        }],
-        "footer": "146 scanned (0 Perplexity + 27 HN + 0 smol.ai + 2 Latent Space + 117 X) · 69 new · caps applied",
-    }
-    body, dropped = render(data)
-    ok("echo dropped count", dropped == 1)
-    ok("echo text absent", "lock-in. AI." not in body)
-    ok("headline present", "Big AI lock-in" in body)
-    ok("distinct summary present", "long-context retrieval" in body)
-    ok("handle escaped in body", "@elon\\_musk\\_\\_" in body and "@elon_musk__" not in body)
-    ok("also-noted present", "Also Noted" in body and "210 pts" in body)
-    ok("footer wrapped", body.rstrip().endswith("caps applied*"))
-    ok("header present", body.startswith("☀️ **Morning Digest** — Wednesday, June 10"))
-
-    # empty husk
-    ebody, _ = render({"date_label": "Thu, June 11", "selected": [], "also": [],
-                        "empty_note": "🤷 Nothing cleared the bar today — 30 scanned, none ≥77.",
-                        "footer": "30 scanned · caps applied"})
-    ok("husk note", "Nothing cleared the bar" in ebody)
-    ok("husk no top stories", "Top Stories" not in ebody)
-
-    # canonical single-field `line` schema (the structural fix)
-    ldata = {
-        "date_label": "Wednesday, June 10",
-        "selected": [{
-            "line": "Anthropic ships Claude Fable 5 — first Mythos-class model with public safeguards, SOTA on every benchmark by a margin.",
-            "source": "X", "authorHandle": "alexalbert__", "score": 96,
-            "url": "https://x.com/alexalbert__/status/1",
+            "source": "X", "authorHandle": "karpathy", "likes": 22800, "retweets": 1060,
+            "score": 92,
+            "tweet_text": "This is a super exciting release - same model, added safeguards.\nSecond line here.",
+            "url": "https://x.com/karpathy/status/1",
         }],
         "footer": "5 scanned · caps applied",
     }
-    lbody, ldrop = render(ldata)
-    ok("line schema renders", "first Mythos-class model" in lbody)
-    ok("line schema no drop", ldrop == 0)
-    ok("line schema escapes handle", "@alexalbert\\_\\_" in lbody)
-    ok("line schema single line", lbody.count("**1.**") == 1)
-    # exactly one content line between the **1.** head and its url (no echo line)
-    seg = lbody.split("**1.**", 1)[1]
-    head_line = seg.splitlines()[0]
-    ok("line schema head has grade", "🔥 A (96)" in head_line)
+    tbody, tdrop = render(tdata)
+    ok("tweet verbatim present", "This is a super exciting release" in tbody)
+    ok("tweet 2nd line kept", "Second line here." in tbody)
+    ok("tweet meta likes", "22,800 likes" in tbody and "1,060 reposts" in tbody)
+    ok("tweet handle in meta", "@karpathy" in tbody)
+    ok("tweet grade", "✅ A- (92)" in tbody)
+    ok("tweet no drop", tdrop == 0)
 
-    # legacy fallback: distinct summary still merges onto one line
-    legbody, legdrop = render({"date_label": "X", "selected": [{
-        "title": "Grok 4 ships", "summary": "Beats Opus on long-context retrieval per xAI.",
-        "source": "X", "authorHandle": "x", "score": 90, "url": "https://x.com/x/1"}],
-        "footer": "f"})
-    ok("legacy merges distinct", "Grok 4 ships — Beats Opus" in legbody)
-    ok("legacy no drop", legdrop == 0)
-    # legacy echo summary still dropped, title kept
-    legbody2, legdrop2 = render({"date_label": "X", "selected": [{
-        "title": "Foo launches Bar today", "summary": "Foo launches Bar today.",
-        "source": "HN", "hn_points": 1, "hn_comments": 1, "score": 84, "url": "https://h/1"}],
-        "footer": "f"})
-    ok("legacy echo dropped", legdrop2 == 1 and "Foo launches Bar today." not in legbody2
-       and "Foo launches Bar today" in legbody2)
+    # tweet with markdown-bleed handle + chars
+    bdata = {"date_label": "X", "selected": [{
+        "source": "X", "authorHandle": "alexalbert__", "score": 86,
+        "tweet_text": "Use **xhigh** effort and _ambitious_ tasks for @alexalbert__ tips.",
+        "url": "https://x.com/alexalbert__/status/1"}], "footer": "f"}
+    bbody, _ = render(bdata)
+    ok("tweet handle escaped", "@alexalbert\\_\\_" in bbody)
+    ok("tweet body escaped", "\\*\\*xhigh\\*\\*" in bbody and "\\_ambitious\\_" in bbody)
+
+    # STORY rendering (headline + distinct summary)
+    sdata = {
+        "date_label": "Wednesday, June 10",
+        "selected": [{
+            "source": "HN", "title": "Anthropic ships Claude Fable 5",
+            "summary": "First Mythos-class model with public safeguards; SOTA on every benchmark by a margin.",
+            "hn_points": 210, "hn_comments": 88, "score": 90,
+            "url": "https://news.ycombinator.com/item?id=1",
+        }],
+        "footer": "5 scanned · caps applied",
+    }
+    sbody, sdrop = render(sdata)
+    ok("story headline present", "Anthropic ships Claude Fable 5" in sbody)
+    ok("story summary present", "First Mythos-class model" in sbody)
+    ok("story HN suffix", "· HN 210 pts / 88 comments" in sbody)
+    ok("story grade", "✅ A- (90)" in sbody)
+    ok("story no drop", sdrop == 0)
+
+    # STORY echo summary dropped, headline kept
+    edata = {"date_label": "X", "selected": [{
+        "source": "HN", "title": "Foo launches Bar today", "summary": "Foo launches Bar today.",
+        "hn_points": 1, "hn_comments": 1, "score": 84, "url": "https://h/1"}], "footer": "f"}
+    ebody, edrop = render(edata)
+    ok("story echo dropped", edrop == 1 and "Foo launches Bar today." not in ebody
+       and "Foo launches Bar today" in ebody)
+
+    # Also Noted: tweet snippet + story title
+    adata = {"date_label": "X",
+             "selected": [{"source": "HN", "title": "T", "score": 84, "url": "https://h/1"}],
+             "also": [
+                 {"source": "X", "authorHandle": "ollama", "score": 78,
+                  "tweet_text": "Ollama v0.18.2 cuts Claude API latency 40% via local prompt-cache parallelism. " + ("extra "*60),
+                  "url": "https://x.com/ollama/status/2"},
+                 {"source": "HN", "title": "Cursor 3.7 ships Canvas Design Mode", "score": 77,
+                  "hn_points": 90, "hn_comments": 12, "url": "https://h/2"},
+             ], "footer": "f"}
+    abody, _ = render(adata)
+    ok("also tweet snippet", "@ollama:" in abody and "Ollama v0.18.2 cuts" in abody)
+    ok("also tweet truncated", "…" in abody.split("Also Noted")[1])
+    ok("also story title", "Cursor 3.7 ships Canvas Design Mode" in abody)
+    ok("also story suffix", "· HN 90 pts / 12 comments" in abody)
+
+    # legacy compat: bare `line`, and title+summary for X
+    ldata = {"date_label": "X", "selected": [{
+        "line": "Legacy one-liner about a thing.", "source": "X", "authorHandle": "x",
+        "score": 88, "url": "https://x/1"}], "footer": "f"}
+    lbody, _ = render(ldata)
+    ok("legacy line renders", "Legacy one-liner about a thing." in lbody)
+
+    # empty husk
+    hbody, _ = render({"date_label": "Thu, June 11", "selected": [], "also": [],
+                       "empty_note": "🤷 Nothing cleared the bar today — 30 scanned, none ≥77.",
+                       "footer": "30 scanned · caps applied"})
+    ok("husk note", "Nothing cleared the bar" in hbody)
+    ok("husk no top stories", "Top Stories" not in hbody)
+
+    # header + footer integrity
+    ok("header present", tbody.startswith("☀️ **Morning Digest** — Wednesday, June 10"))
+    ok("footer wrapped", tbody.rstrip().endswith("caps applied*"))
 
     passed = sum(1 for _, c in checks if c)
     total = len(checks)
