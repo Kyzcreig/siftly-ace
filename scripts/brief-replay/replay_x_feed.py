@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 
@@ -94,8 +95,32 @@ def build_funnel(scored: dict, gate_top: int, gate_quick: int) -> dict:
     }
 
 
+def _unbalanced_md_tokens(text: str) -> list[str]:
+    """Return the Discord formatting tokens that appear an ODD (unbalanced)
+    number of times outside code spans — these bleed formatting across a message
+    (the 2026-06-10 '@alexalbert__' underline bug). Empty list = balanced.
+    """
+    if not text:
+        return []
+    # strip code spans first (their contents are literal)
+    stripped = re.sub(r"```[\s\S]*?```", "", text)
+    stripped = re.sub(r"`[^`]+`", "", stripped)
+    bad = []
+    for tok in ("__", "**", "~~", "||"):
+        cnt = len([m for m in re.finditer(re.escape(tok), stripped)
+                   if m.start() == 0 or stripped[m.start() - 1] != "\\"])
+        if cnt % 2 == 1:
+            bad.append(tok)
+    return bad
+
+
 def detect_anomalies(scored: dict, rendered: dict | None) -> list[str]:
-    """Flag the known failure classes from the Jun-10 incident."""
+    """Flag the known failure classes from the Jun-10 incident.
+
+    Post-chunking (2026-06-10): the Discord post shows the FULL selected set
+    (notify.py chunks to fit), so the render check is a true 1:1 — any selected
+    tweet missing from the render is a REAL drop, not a char-cap artifact.
+    """
     flags = []
     items = scored.get("all_scored", [])
     selected = list(scored.get("selected_top_ids", []))
@@ -105,16 +130,17 @@ def detect_anomalies(scored: dict, rendered: dict | None) -> list[str]:
     if rendered is None:
         flags.append(
             "NO_RENDER_MANIFEST: _last_run_rendered.json absent — cannot verify "
-            "selected==rendered for this run (run predates Step 6.8, or it wasn't written)."
+            "selected==rendered for this run (run predates the render manifest, or it wasn't written)."
         )
     else:
         rendered_top = list(rendered.get("rendered_top_ids", []))
+        # Chunking means Discord shows everything → rendered MUST equal selected (1:1).
         missing = [i for i in selected if i not in rendered_top]
         extra = [i for i in rendered_top if i not in selected]
         if missing:
             flags.append(
                 f"RENDER_DROP: {len(missing)} selected tweet(s) NOT rendered: {missing} "
-                "(selection→render mismatch — Step 6.8 should auto-repair this)."
+                "(real selection→render mismatch — chunking removed the char-cap excuse; auto-repair should re-add)."
             )
         if extra:
             flags.append(f"RENDER_EXTRA: {len(extra)} rendered tweet(s) not in selected_top_ids: {extra}.")
@@ -129,6 +155,15 @@ def detect_anomalies(scored: dict, rendered: dict | None) -> list[str]:
         dup_angles = [a for a, c in angle_counts.items() if c > 1]
         if dup_angles:
             flags.append(f"DUP_VIDEO_ANGLE: idea angle(s) used for >1 tweet: {dup_angles!r}.")
+
+        # 2b. unbalanced markdown in the rendered message body (the underline bug)
+        body = rendered.get("rendered_body") or rendered.get("body") or ""
+        bad = _unbalanced_md_tokens(body)
+        if bad:
+            flags.append(
+                f"UNBALANCED_MARKDOWN: rendered body has odd-count token(s) {bad!r} "
+                "(user text opening formatting that never closes — notify.py linter should escape)."
+            )
 
     # 3. topic starvation: a single topic eating a large share of the high scorers
     #    (the Claude-Fable-5 launch ate 8+ slots on Jun 10).

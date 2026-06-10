@@ -102,6 +102,34 @@ class XFeedFunnel(unittest.TestCase):
         flags = xf.detect_anomalies(clean, rendered)
         self.assertEqual(flags, [], f"expected no flags, got {flags}")
 
+    def test_unbalanced_markdown_flag(self):
+        # rendered body with an orphan '__' (the @alexalbert__ underline bug)
+        clean = _scored_fixture()
+        for it in clean["all_scored"]:
+            if it["topic"] == "Fable5" and it["tweet_id"] != "A":
+                it["topic"] = "uniq-" + it["tweet_id"]
+        rendered = {
+            "run_id": "fixture", "rendered_top_ids": ["A", "B", "C", "D"],
+            "rendered_video_ideas": [{"tweet_id": "A", "title": "t1", "angle": "a1"}],
+            "rendered_body": "**1.** @alexalbert__ posted something and it never closes",
+        }
+        flags = xf.detect_anomalies(clean, rendered)
+        self.assertTrue(any("UNBALANCED_MARKDOWN" in f for f in flags), f"got {flags}")
+
+    def test_balanced_markdown_no_flag(self):
+        # balanced **bold** + code span with '__' inside must NOT flag
+        clean = _scored_fixture()
+        for it in clean["all_scored"]:
+            if it["topic"] == "Fable5" and it["tweet_id"] != "A":
+                it["topic"] = "uniq-" + it["tweet_id"]
+        rendered = {
+            "run_id": "fixture", "rendered_top_ids": ["A", "B", "C", "D"],
+            "rendered_video_ideas": [{"tweet_id": "A", "title": "t1", "angle": "a1"}],
+            "rendered_body": "**1.** clean **bold** and `a__b` literal code",
+        }
+        flags = xf.detect_anomalies(clean, rendered)
+        self.assertEqual(flags, [], f"expected no flags, got {flags}")
+
 
 class MorningDigestFunnel(unittest.TestCase):
     def test_funnel_and_dead_source(self):
