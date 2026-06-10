@@ -36,7 +36,7 @@
 <div class="wrap">
 
 <h1>Spec — Morning Digest: Event Dedup + Engagement Signal</h1>
-<p class="sub">Step 4 / Step 6 selection fix · morning-digest cron · drafted 2026-06-10 · status: <span class="warn">SPEC — awaiting Ace approval before build</span></p>
+<p class="sub">Step 4 / Step 6 selection fix · morning-digest cron · drafted 2026-06-10 · status: <span class="good">SPEC v3 — Pass-2 cleared (gate-driven placement pinned, multi-primary semantics stated); ready to build</span></p>
 
 <div class="panel">
 <h3 style="margin-top:0">The problem (observed, live)</h3>
@@ -109,12 +109,13 @@
     # 1. assign event key: item.event_key or shingle_fallback(text)
     # 2. group by event key
     # 3. within each group pick winner:
-    #      primary/official source > higher (likes+retweets) > longer/more-informative text
-    # 4. keep top `per_event_cap` per event, drop the rest (log dropped_reason="event_dup")
-    # 5. stable re-sort survivors by score desc, engagement desc as tiebreak
-    # returns (kept, dropped[])  — dropped surfaced in debug dump</code></pre>
+    #      is_primary &gt; final_score &gt; engagement &gt; text-len &gt; tweet_id  (RC2 total order)
+    # 4. keep top `per_event_cap` per event, drop the rest (log dropped_reason="event_dup", lost_to_url)
+    # 5. placement is GATE-DRIVEN by each winner's final_score: &gt;=83 -&gt; Top, 77-82 -&gt; Also.
+    #    NOT rank-bucketing — a 78 winner never gets promoted into Top just because Top is underfilled.
+    # returns (kept_top, kept_also, dropped[])  — dropped surfaced in debug dump</code></pre>
 <ul>
-<li>Applies across Top + Also Noted as one pool, then re-splits (so the same event can't appear once in each).</li>
+<li>Applies across Top + Also Noted as one pool (so the same event can't appear once in each), then re-splits <strong>gate-driven</strong> — each surviving winner is placed by its own <code>final_score</code> against the fixed 83/77 gates (≥83→Top, 77–82→Also), never by rank-bucketing into a fixed top-5.</li>
 <li>Everything dropped is logged to <code>_last_run_debug.json</code> with <code>dropped_reason="event_dup"</code> + the winner it lost to — so "why did my tweet get cut?" is always answerable from disk (consistent with existing observability).</li>
 <li>Idempotent + order-stable; no network, no model call.</li>
 </ul>
@@ -123,6 +124,61 @@
 <ul>
 <li>Unit: today's real 5×Fable-5 cluster → collapses to 1 winner (the highest-engagement primary source); distinct events all survive; missing-<code>event_key</code> shingle fallback still groups them; engagement tiebreak orders equal scores.</li>
 <li>Live: force a run, confirm one event = one slot, dropped duplicates logged, digest fills remaining slots with <em>different</em> events.</li>
+</ul>
+
+<h2>v2 — Pass-1 blocker resolutions (ground-truthed)</h2>
+<p class="sub">Opus Pass-1 = APPROVE WITH CHANGES, 3 blockers / 5 required changes. Open Questions probed against live <code>_last_run_debug.json</code> + <code>_render_input.json</code> before revising:</p>
+<table>
+<tr><th>Probe</th><th>Ground truth</th></tr>
+<tr><td>Is <code>source</code> per-handle or literally "X"?</td><td><span class="bad">Literally <code>"X"</code> for every tweet; no <code>is_primary</code> field.</span> Blocker 1 real.</td></tr>
+<tr><td>Does <code>_render_input.json</code> already carry a topic/cluster/event field?</td><td><span class="good">No.</span> <code>event_key</code> is genuinely new — not reinventing.</td></tr>
+<tr><td>Did existing <code>topic_dup</code> fire on today's 5-Fable day?</td><td><span class="bad">No — 0 <code>topic_dup</code> drops.</span> The prose cluster-by-event step is a no-op; that's the whole reason for the deterministic pass.</td></tr>
+<tr><td>Which field gates 83/77?</td><td><code>final_score</code> (not <code>base_score</code>).</td></tr>
+</table>
+
+<h3>RC1 — <code>is_primary</code> defined deterministically (fixes Blocker 1)</h3>
+<p>Belt + suspenders, mirroring D2: <code>is_primary = (item.get("is_primary") is True) or (authorHandle.lower() in PRIMARY_HANDLES)</code>.</p>
+<ul>
+<li><strong>PRIMARY_HANDLES</strong> = a small, <em>version-controlled, reviewable</em> allowlist file (<code>config/primary-handles.txt</code> in the repo, one handle per line, comment-able) — NOT an inline literal in <code>render_digest.py</code> (Config-Drift lens). Seeds: the AI-lab/official accounts (<code>anthropicai, openai, googledeepmind, googleai, meta, mistralai, xai, huggingface, …</code>) plus Ace's existing <code>thought-leaders.txt</code> handles (loaded + unioned at runtime so the list doesn't rot in two places).</li>
+<li>The model MAY also set <code>is_primary: true</code> in the Step-5 schema when it knows a post is the official/origin source; the allowlist is the backstop when it doesn't.</li>
+<li>If neither fires, <code>is_primary=False</code> and the item competes on score→engagement→text — a 0-like genuine launch from an allowlisted handle still wins its cluster, satisfying D4 no-floor.</li>
+</ul>
+
+<h3>RC2 — winner-selection and placement use the SAME score-aware comparator (fixes Blocker 2)</h3>
+<p>The Pass-1 catch: choosing a cluster winner by <code>source&gt;engagement&gt;text</code> could discard the 83+ Top-tier version and bury the event in Also Noted. Fix — one total order, score outranks engagement:</p>
+<pre><code>winner / sort key (descending):
+  1. is_primary            (True &gt; False)
+  2. final_score           (the 83/77 gate field — so the Top-worthy version wins its cluster)
+  3. engagement = likes+retweets
+  4. text length (more informative)
+  5. tweet_id / url ascending   # RC4 total-order tiebreak → fully deterministic/idempotent</code></pre>
+<p><strong>Placement is then derived from the surviving winner's own <code>final_score</code></strong> against the existing 83 (Top) / 77 (Also) gates — never re-derived, never demoted by the dedup step. An event with a Top-worthy member keeps a Top slot.</p>
+<p class="mut"><strong>Multi-primary clusters:</strong> when ≥2 items in a cluster are <code>is_primary</code> (common now that <code>thought-leaders.txt</code> is unioned in — a tracked builder's take + the official post), key-1 ties and <code>final_score</code> (key 2) decides. This is intended: the higher-scored primary wins, whether that's the official launch or a high-signal thought-leader field report. We do NOT force the official-origin post to always beat a better-scored primary take.</p>
+
+<h3>RC3 — shingle fallback gets an explicit similarity threshold + conservative-merge rule (fixes Blocker 3)</h3>
+<p>The real trap is in today's pool: "Anthropic releases <strong>two policy proposals</strong>" (#4) is a DIFFERENT event from "Anthropic ships <strong>Fable 5</strong>" but shares <code>{anthropic, release, …}</code>. Fix:</p>
+<ul>
+<li>Group by exact <code>event_key</code> when present. Only when an item lacks <code>event_key</code>, fall back to a <strong>token-set Jaccard</strong> over significant tokens (lowercased, stopword-stripped, handles/URLs removed) with an explicit <strong>threshold ≥ 0.6</strong>.</li>
+<li><strong>Conservative bias (HARD RULE):</strong> when in doubt, DO NOT merge. A missed duplicate is cosmetic; a false merge silently deletes real news. Below-threshold = distinct events.</li>
+<li>Unit test from today's real pool: Fable-5 items (#1,#3,#5) MUST group; policy-proposals (#4) MUST stay separate.</li>
+</ul>
+
+<h3>RC4 — total-order tiebreak (fixes idempotency gap)</h3>
+<p>Today three items tied at score 89 with 0 likes — score+engagement alone is not a total order. The final <code>tweet_id</code>/<code>url</code> ascending key (key 5 above) makes output fully deterministic and stable across reruns.</p>
+
+<h3>RC5 — reuse existing observability, name the new field (fixes enum drift)</h3>
+<ul>
+<li>The existing <code>dropped_reason</code> enum already has <code>topic_dup</code>. The event-dedup drop reuses a clear value: <strong><code>event_dup</code></strong> is ADDED to the enum (and the debug-dump consumer + self-test fixtures updated) — <code>topic_dup</code> is left for the model's own topic-diversity drops so the two mechanisms stay distinguishable in the debug dump.</li>
+<li>Each dropped duplicate records a new <code>lost_to_url</code> key naming the winner it lost to, so "why was my item cut?" is answerable from <code>_last_run_debug.json</code> (consistent with the 7-day-pruned debug contract).</li>
+</ul>
+
+<h3>QA additions (Pass-1 QA lens)</h3>
+<ul>
+<li>Same-org-different-event: #4 policy-proposals must NOT merge into Fable-5.</li>
+<li>Event spanning Top+Also where the Also-tier member has higher engagement → primary/score still wins, event keeps its Top slot.</li>
+<li>All-items-tie (score+engagement) → deterministic order by tweet_id.</li>
+<li>Empty/degenerate pool → <code>dedup_and_rank([]) == ([],[])</code>, no crash.</li>
+<li>Ordering: <code>dedup_and_rank</code> runs BEFORE the "NO HOLLOW DIGESTS" empty-result check, so if dedup collapses everything below 77 the honest-line husk still triggers.</li>
 </ul>
 
 <h2>What I will NOT do without sign-off</h2>
