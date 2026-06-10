@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec — Morning Digest Event-Dedup + Engagement Signal</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--ink:#e6edf3;--mut:#9da7b3;--accent:#58a6ff;--good:#3fb950;--warn:#d29922;--bad:#f85149;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:40px 24px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  h2{font-size:19px;margin:34px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);color:#fff}
+  h3{font-size:15px;margin:20px 0 6px;color:var(--accent)}
+  .sub{color:var(--mut);margin:0 0 18px}
+  code{background:#1f2630;padding:1.5px 6px;border-radius:5px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d2a8ff}
+  pre{background:#010409;border:1px solid var(--border);border-radius:8px;padding:14px 16px;overflow:auto;font:12.5px/1.55 ui-monospace,Menlo,monospace}
+  pre code{background:none;color:#c9d1d9;padding:0}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#1f2630;color:#fff}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;vertical-align:middle}
+  .t-det{background:#11331f;color:var(--good);border:1px solid #1d5233}
+  .t-model{background:#3a2d10;color:var(--warn);border:1px solid #5a4413}
+  ul{margin:6px 0 6px 0;padding-left:22px}
+  li{margin:3px 0}
+  .mut{color:var(--mut)}
+  .good{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:4px 14px;margin:8px 0}
+  .kv div:nth-child(odd){color:var(--mut)}
+  hr{border:0;border-top:1px solid var(--border);margin:26px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Spec — Morning Digest: Event Dedup + Engagement Signal</h1>
+<p class="sub">Step 4 / Step 6 selection fix · morning-digest cron · drafted 2026-06-10 · status: <span class="warn">SPEC — awaiting Ace approval before build</span></p>
+
+<div class="panel">
+<h3 style="margin-top:0">The problem (observed, live)</h3>
+<p>Today's real run selected <strong>5 near-identical "Anthropic ships Claude Fable 5" tweets</strong> as separate Top Stories — from tiny accounts with <strong>0–1 likes</strong>:</p>
+<pre><code>1. @theshortcut  · 1 like  · A- (91)  "Anthropic releases Claude Fable 5, ... build playable video games"
+3. @parody77647  · 0 likes · B+ (89)  "@sporadica Anthropic: Use our APIs ..."
+4. @techsnif     · 0 likes · B+ (89)  "Anthropic releases two policy proposals ..."
+5. @SOFXnetwork  · 0 likes · B+ (89)  "Anthropic on June 10 released Claude Fable 5 ..."
+   (+ Also Noted: 2 MORE Fable-5 tweets)</code></pre>
+<p>One news event ate the entire digest, told 5–7 times by no-signal accounts. Two root causes:</p>
+<ul>
+<li><strong>No event-level dedup.</strong> Step 4 line 270 already says "cluster by underlying event/topic, keep the best source only" — <em>the model ignores it.</em> Prose instruction alone doesn't hold (same lesson as the echo bug & scoring inflation).</li>
+<li><strong>Engagement is computed but never used.</strong> <code>likes</code>/<code>retweets</code> are already on every X candidate (verified in <code>_last_run_debug.json</code>) — nothing in scoring or selection reads them, so a 0-like rewrite ties a 20k-like primary source.</li>
+</ul>
+</div>
+
+<h2>Design principle</h2>
+<p>We've now proven the pattern three times on this cron (echo bug, format drift, score inflation): <strong>a prose instruction the model reliably ignores must become a deterministic guard.</strong> So the fix is split:</p>
+<table>
+<tr><th>Layer</th><th>What</th><th>Where</th></tr>
+<tr><td><span class="tag t-model">model</span></td><td>Emit an <code>event_key</code> per item + populate <code>likes</code>/<code>retweets</code> it already has. Soft guidance to prefer primary/high-signal sources.</td><td>prompt.md Step 4/5</td></tr>
+<tr><td><span class="tag t-det">deterministic</span></td><td>Collapse same-<code>event_key</code> items to one winner (engagement-weighted), enforce a per-event cap across the whole digest, apply an engagement tiebreak. Runs in the renderer's input path — model can't skip it.</td><td><code>render_digest.py</code> (pre-render pass) or a small <code>select_digest.py</code></td></tr>
+</table>
+<p class="mut">Rationale for putting the hard part in code: the model already had the clustering instruction and didn't follow it. Belt (prompt) + suspenders (code) — and the code is the load-bearing half.</p>
+
+<h2>Decisions needed from Ace</h2>
+<p>This is the judgment-heavy part. My recommended defaults are marked <span class="good">◀ rec</span>; tune any of them.</p>
+
+<h3>D1 — How aggressive is event dedup?</h3>
+<div class="kv">
+<div>Option A</div><div><strong>1 item per event, hard.</strong> Same event → only the single best item survives, everywhere (Top + Also Noted). <span class="good">◀ rec</span></div>
+<div>Option B</div><div>1 in Top Stories, but allow 1 more of the same event in Also Noted if it adds a genuinely different angle.</div>
+<div>Option C</div><div>Max 2 per event in Top Stories (looser).</div>
+</div>
+<p class="mut">Rec A: today proved that "the same news 5 ways" is pure noise. If an event truly deserves two slots, it's rare; start strict, loosen if you miss coverage.</p>
+
+<h3>D2 — How is the "event" identified?</h3>
+<div class="kv">
+<div>Mechanism</div><div>Model emits a short normalized <code>event_key</code> per candidate (e.g. <code>"claude-fable-5-launch"</code>, <code>"gemma-4-release"</code>). Deterministic pass groups by exact <code>event_key</code>.</div>
+<div>Fallback</div><div>If <code>event_key</code> missing, derive a key from a normalized title/tweet-text shingle (lowercased, stopword-stripped, first ~6 significant tokens) so dedup still fires when the model forgets. <span class="good">◀ rec include fallback</span></div>
+</div>
+<p class="mut">Model-supplied key is more accurate; the shingle fallback guarantees the guard never silently no-ops. Both, with key winning.</p>
+
+<h3>D3 — Engagement: signal weight & how it's used</h3>
+<div class="kv">
+<div>As tiebreak only</div><div>Engagement only breaks ties when picking the winner within an event cluster and ordering equal-score items. Does NOT change base score. <span class="good">◀ rec</span></div>
+<div>As a scoring input</div><div>Fold a <code>log10(likes+retweets)</code> bump into the score (e.g. +0 to +6). More impactful, but risks re-introducing inflation and biasing toward virality over substance.</div>
+</div>
+<p class="mut">Rec tiebreak-only: Ace explicitly values substance over virality (a 0-like Karpathy gem should still win). Engagement is a <em>quality prior for picking among near-duplicates</em>, not a popularity contest. Within an event cluster, prefer: primary/official source &gt; higher engagement &gt; more informative text.</p>
+
+<h3>D4 — Low-engagement floor for X?</h3>
+<div class="kv">
+<div>Soft</div><div>No floor; engagement only matters relatively (tiebreak). A 0-like primary-source launch tweet can still be Top if nothing better covers it. <span class="good">◀ rec</span></div>
+<div>Hard</div><div>X items under N (e.g. 25) likes get a score cap (e.g. max 82) unless from a thought-leader/tracked handle. Risks suppressing early-but-important posts.</div>
+</div>
+<p class="mut">Rec soft: a hard floor would have killed the legitimately-useful Karpathy-style low-engagement post. The real problem today was <em>duplication</em>, not low engagement per se — D1+D3 already fix it.</p>
+
+<h2>Proposed implementation</h2>
+
+<h3>1 · Prompt changes (<code>prompt.md</code>, config-class — backed up, diff-shown)</h3>
+<ul>
+<li><strong>Step 4:</strong> require an <code>event_key</code> on every surviving candidate; restate (briefly) that the deterministic pass will collapse duplicates so the model should still try to pick the best source.</li>
+<li><strong>Step 5/7 schema:</strong> add <code>event_key</code>, ensure <code>likes</code>/<code>retweets</code> are carried into <code>_render_input.json</code> (already in pipeline; just thread them through — they're already in the tweet shape).</li>
+<li><strong>Step 6:</strong> note that final event-dedup + engagement tiebreak is enforced downstream, not by hand.</li>
+</ul>
+
+<h3>2 · Deterministic selection pass (code, the load-bearing half)</h3>
+<p>A pure function run over <code>selected</code> + <code>also</code> before render (added to <code>render_digest.py</code>, fully unit-tested like the rest):</p>
+<pre><code>def dedup_and_rank(items, per_event_cap=1):
+    # 1. assign event key: item.event_key or shingle_fallback(text)
+    # 2. group by event key
+    # 3. within each group pick winner:
+    #      primary/official source > higher (likes+retweets) > longer/more-informative text
+    # 4. keep top `per_event_cap` per event, drop the rest (log dropped_reason="event_dup")
+    # 5. stable re-sort survivors by score desc, engagement desc as tiebreak
+    # returns (kept, dropped[])  — dropped surfaced in debug dump</code></pre>
+<ul>
+<li>Applies across Top + Also Noted as one pool, then re-splits (so the same event can't appear once in each).</li>
+<li>Everything dropped is logged to <code>_last_run_debug.json</code> with <code>dropped_reason="event_dup"</code> + the winner it lost to — so "why did my tweet get cut?" is always answerable from disk (consistent with existing observability).</li>
+<li>Idempotent + order-stable; no network, no model call.</li>
+</ul>
+
+<h3>3 · Tests &amp; live verification (closeout gate)</h3>
+<ul>
+<li>Unit: today's real 5×Fable-5 cluster → collapses to 1 winner (the highest-engagement primary source); distinct events all survive; missing-<code>event_key</code> shingle fallback still groups them; engagement tiebreak orders equal scores.</li>
+<li>Live: force a run, confirm one event = one slot, dropped duplicates logged, digest fills remaining slots with <em>different</em> events.</li>
+</ul>
+
+<h2>What I will NOT do without sign-off</h2>
+<ul>
+<li>Add a hard engagement floor (D4) — defaults to soft.</li>
+<li>Fold engagement into base score (D3) — defaults to tiebreak-only.</li>
+<li>Touch x-feed-brief — it already collapses by tweet and is working; this is morning-digest only.</li>
+</ul>
+
+<hr>
+<p class="mut">Files: spec <code>~/Projects/siftly-ace/docs/plans/SPEC-digest-event-dedup-engagement.html</code> · target code <code>scripts/render_digest.py</code> · prompt <code>~/.hermes/state/cron/morning-digest/prompt.md</code> (config-class).<br>
+Approve the D1–D4 defaults (or adjust), and I'll build + test + live-verify + close out in one pass.</p>
+
+</div>
+</body>
+</html>
