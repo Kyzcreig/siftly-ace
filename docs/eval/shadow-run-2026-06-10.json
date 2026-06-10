@@ -1,0 +1,3841 @@
+{
+  "ts": "2026-06-10T23:42:00.395953+00:00",
+  "mode": "shadow",
+  "label_coercion_count": 116,
+  "label_coercion_alert": true,
+  "gates": {
+    "top": 58,
+    "also": 50,
+    "low_reach_cap": 45
+  },
+  "scored": [
+    {
+      "id": "aff31eb69300",
+      "handle": "elonmusk",
+      "old_final": 60.2,
+      "new_final": 65.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 65.0,
+        "low_reach_capped": false,
+        "final": 65.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "39c6b6096d89",
+      "handle": "elonmusk",
+      "old_final": 60.2,
+      "new_final": 65.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 65.0,
+        "low_reach_capped": false,
+        "final": 65.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d74f54157ced",
+      "handle": "elonmusk",
+      "old_final": 60.2,
+      "new_final": 65.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 65.0,
+        "low_reach_capped": false,
+        "final": 65.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "5d111cc7ff57",
+      "handle": "elonmusk",
+      "old_final": 60.2,
+      "new_final": 65.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 65.0,
+        "low_reach_capped": false,
+        "final": 65.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "32009f3dc551",
+      "handle": "elonmusk",
+      "old_final": 60.2,
+      "new_final": 65.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 65.0,
+        "low_reach_capped": false,
+        "final": 65.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c46f41953d21",
+      "handle": "pmarca",
+      "old_final": 55.43,
+      "new_final": 60.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 2,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 60.0,
+        "low_reach_capped": false,
+        "final": 60.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "e504c4b1a831",
+      "handle": "tobi",
+      "old_final": 51.6,
+      "new_final": 59.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 59.0,
+        "low_reach_capped": false,
+        "final": 59.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "e699c1e2253f",
+      "handle": "emollick",
+      "old_final": 52.33,
+      "new_final": 58.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 14,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 58.0,
+        "low_reach_capped": false,
+        "final": 58.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0a3fdac31430",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 58.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 58.0,
+        "low_reach_capped": false,
+        "final": 58.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "95b04c53536b",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 58.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 58.0,
+        "low_reach_capped": false,
+        "final": 58.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c99e8fa99b72",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 58.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 58.0,
+        "low_reach_capped": false,
+        "final": 58.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "2dd004956a7d",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 14,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "b996c8cb0f55",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 14,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d71eca878a7f",
+      "handle": "emollick",
+      "old_final": 49.8,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "30a9ea6d2be6",
+      "handle": "tobi",
+      "old_final": 49.8,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "8170282cdb1b",
+      "handle": "ylecun",
+      "old_final": 49.8,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7647b11264a8",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 56.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 13,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 56.0,
+        "low_reach_capped": false,
+        "final": 56.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "dc0bf7b73ebf",
+      "handle": "emollick",
+      "old_final": 49.8,
+      "new_final": 56.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 14,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 56.0,
+        "low_reach_capped": false,
+        "final": 56.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0a71821d9cc2",
+      "handle": "ylecun",
+      "old_final": 49.8,
+      "new_final": 56.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 14,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 56.0,
+        "low_reach_capped": false,
+        "final": 56.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7faf9ad9ab5e",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 55.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 12,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 55.0,
+        "low_reach_capped": false,
+        "final": 55.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "9d86a6d5dab1",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 54.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 11,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 54.0,
+        "low_reach_capped": false,
+        "final": 54.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "a96d7df9b026",
+      "handle": "pmarca",
+      "old_final": 50.89,
+      "new_final": 54.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 11,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 54.0,
+        "low_reach_capped": false,
+        "final": 54.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "9d5516de2913",
+      "handle": "yoheinakajima",
+      "old_final": 56.7,
+      "new_final": 53.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 53.0,
+        "low_reach_capped": false,
+        "final": 53.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "b17b6d997763",
+      "handle": "yoheinakajima",
+      "old_final": 85.74,
+      "new_final": 52.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 52.0,
+        "low_reach_capped": false,
+        "final": 52.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "9fdfe23d3bfa",
+      "handle": "yoheinakajima",
+      "old_final": 62.0,
+      "new_final": 52.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 52.0,
+        "low_reach_capped": false,
+        "final": 52.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d8aa8471acae",
+      "handle": "deedydas",
+      "old_final": 49.8,
+      "new_final": 51.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 9,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 51.0,
+        "low_reach_capped": false,
+        "final": 51.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "12f68876e2b8",
+      "handle": "ylecun",
+      "old_final": 49.8,
+      "new_final": 51.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 9,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 51.0,
+        "low_reach_capped": false,
+        "final": 51.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "250614fd351d",
+      "handle": "deedydas",
+      "old_final": 55.8,
+      "new_final": 50.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 8,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 50.0,
+        "low_reach_capped": false,
+        "final": 50.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "e985ca64fc45",
+      "handle": "tobi",
+      "old_final": 49.8,
+      "new_final": 50.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 8,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 50.0,
+        "low_reach_capped": false,
+        "final": 50.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "f9cd97dc0927",
+      "handle": "deedydas",
+      "old_final": 49.8,
+      "new_final": 50.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 8,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 50.0,
+        "low_reach_capped": false,
+        "final": 50.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "72a3147f658e",
+      "handle": "ylecun",
+      "old_final": 49.8,
+      "new_final": 50.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 8,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 50.0,
+        "low_reach_capped": false,
+        "final": 50.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "a402e8b1ce98",
+      "handle": "yoheinakajima",
+      "old_final": 62.0,
+      "new_final": 49.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 49.0,
+        "low_reach_capped": false,
+        "final": 49.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0cf27a8b93de",
+      "handle": "yoheinakajima",
+      "old_final": 62.0,
+      "new_final": 49.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 49.0,
+        "low_reach_capped": false,
+        "final": 49.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "af1b334d5985",
+      "handle": "swyx",
+      "old_final": 49.8,
+      "new_final": 49.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 7,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 49.0,
+        "low_reach_capped": false,
+        "final": 49.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "6b2e59a5ad07",
+      "handle": "emollick",
+      "old_final": 49.8,
+      "new_final": 49.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 7,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 49.0,
+        "low_reach_capped": false,
+        "final": 49.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "b1cf29493fcc",
+      "handle": "ylecun",
+      "old_final": 46.8,
+      "new_final": 49.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 11,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 49.0,
+        "low_reach_capped": false,
+        "final": 49.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7194f791cdb4",
+      "handle": "yoheinakajima",
+      "old_final": 60.33,
+      "new_final": 48.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 48.0,
+        "low_reach_capped": false,
+        "final": 48.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "3a1a32a181e0",
+      "handle": "swyx",
+      "old_final": 49.8,
+      "new_final": 48.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 48.0,
+        "low_reach_capped": false,
+        "final": 48.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "28dcb93ced49",
+      "handle": "ston_fi",
+      "old_final": 64.74,
+      "new_final": 47.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 47.0,
+        "low_reach_capped": false,
+        "final": 47.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "56f6edfcfcb2",
+      "handle": "yoheinakajima",
+      "old_final": 48.6,
+      "new_final": 47.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 7,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 47.0,
+        "low_reach_capped": false,
+        "final": 47.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c247a8d6488c",
+      "handle": "aiwire_x",
+      "old_final": 83.77,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 10,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "bef20a86ab89",
+      "handle": "grok",
+      "old_final": 77.86,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 6,
+        "author_tier": "tracked_author",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0f3c4030347f",
+      "handle": "cv_usk",
+      "old_final": 64.74,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "99944d09963a",
+      "handle": "tobi",
+      "old_final": 49.8,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "40da0a198dac",
+      "handle": "swyx",
+      "old_final": 49.8,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "8d473f02ff79",
+      "handle": "swyx",
+      "old_final": 49.8,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c50419b12105",
+      "handle": "yoheinakajima",
+      "old_final": 49.8,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "8c98c98a7e53",
+      "handle": "paulg",
+      "old_final": 47.64,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d78dc9971c69",
+      "handle": "tobi",
+      "old_final": 49.8,
+      "new_final": 44.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 44.0,
+        "low_reach_capped": false,
+        "final": 44.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "03a2b9ade8a5",
+      "handle": "yoheinakajima",
+      "old_final": 49.8,
+      "new_final": 44.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 44.0,
+        "low_reach_capped": false,
+        "final": 44.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0eb9f7f465dc",
+      "handle": "yoheinakajima",
+      "old_final": 49.8,
+      "new_final": 44.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 44.0,
+        "low_reach_capped": false,
+        "final": 44.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "179526f62fcf",
+      "handle": "alexcalish",
+      "old_final": 82.23,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "04fefbe3ed1b",
+      "handle": "skyshark88",
+      "old_final": 82.23,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0648ea506c05",
+      "handle": "s0lanasurvivor",
+      "old_final": 82.23,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "db43df879ff4",
+      "handle": "vasu_devs",
+      "old_final": 77.86,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "6e222b7c87da",
+      "handle": "aakashgupta",
+      "old_final": 67.23,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "da6de70e4ac9",
+      "handle": "cockerillbill",
+      "old_final": 67.06,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "2c62c9a36161",
+      "handle": "danielwhit21874",
+      "old_final": 66.5,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "ab9f55b93768",
+      "handle": "ollobrains",
+      "old_final": 64.63,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "efd1ee864d80",
+      "handle": "paulg",
+      "old_final": 47.64,
+      "new_final": 43.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 43.0,
+        "low_reach_capped": false,
+        "final": 43.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "99de9da646aa",
+      "handle": "swyx",
+      "old_final": 49.8,
+      "new_final": 42.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 42.0,
+        "low_reach_capped": false,
+        "final": 42.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "1e98575f1aaa",
+      "handle": "swyx",
+      "old_final": 49.8,
+      "new_final": 42.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 42.0,
+        "low_reach_capped": false,
+        "final": 42.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "836a2e853557",
+      "handle": "ylecun",
+      "old_final": 49.8,
+      "new_final": 42.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 42.0,
+        "low_reach_capped": false,
+        "final": 42.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0c5890c1e25c",
+      "handle": "yoheinakajima",
+      "old_final": 49.8,
+      "new_final": 42.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 42.0,
+        "low_reach_capped": false,
+        "final": 42.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "ba8490cc59a3",
+      "handle": "comicgo50",
+      "old_final": 85.7,
+      "new_final": 41.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 41.0,
+        "low_reach_capped": false,
+        "final": 41.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7db7af53b826",
+      "handle": "uiheagwazi",
+      "old_final": 79.7,
+      "new_final": 41.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 41.0,
+        "low_reach_capped": false,
+        "final": 41.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c2e75b2892b9",
+      "handle": "tomnowa",
+      "old_final": 77.86,
+      "new_final": 41.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 41.0,
+        "low_reach_capped": false,
+        "final": 41.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "8227d6405462",
+      "handle": "paulosaelias",
+      "old_final": 62.71,
+      "new_final": 41.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 41.0,
+        "low_reach_capped": false,
+        "final": 41.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "76630fab4980",
+      "handle": "perrymetzger",
+      "old_final": 62.71,
+      "new_final": 41.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 41.0,
+        "low_reach_capped": false,
+        "final": 41.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d77c03667d45",
+      "handle": "axtalks",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "a05c2b1696db",
+      "handle": "xpmarket",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "9da3b213d552",
+      "handle": "zaimiri",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "630d976d8e66",
+      "handle": "theahmadosman",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "b50688192752",
+      "handle": "degenrsc",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "3554fd9c5889",
+      "handle": "adrixy0",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "394a8d72cca3",
+      "handle": "vaibhavsisinty",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "86b913709c5b",
+      "handle": "arkhai_io",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "1922b5839b2b",
+      "handle": "sahar__zadeh",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "fc9661a736f6",
+      "handle": "hnshah",
+      "old_final": 49.8,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c601745e4a15",
+      "handle": "z4y5f3",
+      "old_final": 77.86,
+      "new_final": 39.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 39.0,
+        "low_reach_capped": false,
+        "final": 39.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "5b7da2b03712",
+      "handle": "matsu_ai_proc",
+      "old_final": 62.86,
+      "new_final": 39.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 39.0,
+        "low_reach_capped": false,
+        "final": 39.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "90b1120cb1d1",
+      "handle": "anshuc",
+      "old_final": 49.8,
+      "new_final": 39.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 5,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 39.0,
+        "low_reach_capped": false,
+        "final": 39.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7de431ea11b0",
+      "handle": "archlending",
+      "old_final": 49.8,
+      "new_final": 39.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 5,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 39.0,
+        "low_reach_capped": false,
+        "final": 39.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "9d4737137fa1",
+      "handle": "hornswoggle567",
+      "old_final": 77.13,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "0f95d1bad20b",
+      "handle": "",
+      "old_final": 62.13,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "856c793ccdd7",
+      "handle": "",
+      "old_final": 62.13,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "afe1d85c4f57",
+      "handle": "danniel65090878",
+      "old_final": 62.0,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7c494b1af154",
+      "handle": "sumit_a",
+      "old_final": 49.8,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "401d08e13f66",
+      "handle": "0xsha",
+      "old_final": 49.8,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c0784cc6fefb",
+      "handle": "konstoyouralas1",
+      "old_final": 49.8,
+      "new_final": 38.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 38.0,
+        "low_reach_capped": false,
+        "final": 38.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "b8a238d2a019",
+      "handle": "davidvgilmore",
+      "old_final": 49.8,
+      "new_final": 37.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 37.0,
+        "low_reach_capped": false,
+        "final": 37.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "501dd3bd5877",
+      "handle": "rawtreedb",
+      "old_final": 49.8,
+      "new_final": 37.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 37.0,
+        "low_reach_capped": false,
+        "final": 37.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "fe480b82aa55",
+      "handle": "",
+      "old_final": 75.46,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "f451ab387ae0",
+      "handle": "mib_jay",
+      "old_final": 75.33,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c10114951c31",
+      "handle": "grokstudio1",
+      "old_final": 75.33,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "99a47c8211ce",
+      "handle": "finguru1980",
+      "old_final": 67.33,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "f9797939e3a7",
+      "handle": "marvinma12",
+      "old_final": 67.33,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "30fa1a621454",
+      "handle": "aichinanews",
+      "old_final": 52.33,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "e4e8cb921e65",
+      "handle": "",
+      "old_final": 52.31,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "58f85e589bd2",
+      "handle": "alphasignalai",
+      "old_final": 49.8,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "23f30873334f",
+      "handle": "rossmatican",
+      "old_final": 49.8,
+      "new_final": 36.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 36.0,
+        "low_reach_capped": false,
+        "final": 36.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "06cac0713a76",
+      "handle": "frodidaprolipsi",
+      "old_final": 57.8,
+      "new_final": 34.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 34.0,
+        "low_reach_capped": false,
+        "final": 34.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "9bbbcba90ce0",
+      "handle": "zbruceli",
+      "old_final": 49.8,
+      "new_final": 34.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 34.0,
+        "low_reach_capped": false,
+        "final": 34.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "dde7a60e4a38",
+      "handle": "deckeralbert650",
+      "old_final": 49.8,
+      "new_final": 34.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 34.0,
+        "low_reach_capped": false,
+        "final": 34.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "81b2d2f37677",
+      "handle": "sales_insight_m",
+      "old_final": 49.8,
+      "new_final": 34.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 34.0,
+        "low_reach_capped": false,
+        "final": 34.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "579fe4b108b4",
+      "handle": "",
+      "old_final": 47.71,
+      "new_final": 32.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 32.0,
+        "low_reach_capped": false,
+        "final": 32.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "982e16a68277",
+      "handle": "",
+      "old_final": 68.4,
+      "new_final": 31.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 31.0,
+        "low_reach_capped": false,
+        "final": 31.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "020daaeb97be",
+      "handle": "",
+      "old_final": 68.4,
+      "new_final": 31.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 31.0,
+        "low_reach_capped": false,
+        "final": 31.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d61ff5c381b4",
+      "handle": "",
+      "old_final": 62.4,
+      "new_final": 31.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 31.0,
+        "low_reach_capped": false,
+        "final": 31.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "cd986fa97903",
+      "handle": "",
+      "old_final": 47.4,
+      "new_final": 31.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 31.0,
+        "low_reach_capped": false,
+        "final": 31.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "e566f6652882",
+      "handle": "",
+      "old_final": 47.4,
+      "new_final": 31.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 31.0,
+        "low_reach_capped": false,
+        "final": 31.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "7e9369f106be",
+      "handle": "",
+      "old_final": 69.93,
+      "new_final": 30.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 30.0,
+        "low_reach_capped": false,
+        "final": 30.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "d77c8fac155e",
+      "handle": "",
+      "old_final": 44.4,
+      "new_final": 27.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 27.0,
+        "low_reach_capped": false,
+        "final": 27.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "c4cec56315ca",
+      "handle": "",
+      "old_final": 41.4,
+      "new_final": 27.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 27.0,
+        "low_reach_capped": false,
+        "final": 27.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "64154661747c",
+      "handle": "",
+      "old_final": 41.4,
+      "new_final": 27.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 27.0,
+        "low_reach_capped": false,
+        "final": 27.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    },
+    {
+      "id": "81bccfbbd326",
+      "handle": "",
+      "old_final": 65.4,
+      "new_final": 21.0,
+      "breakdown": {
+        "base": 25,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 0,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 21.0,
+        "low_reach_capped": false,
+        "final": 21.0,
+        "labels": {
+          "content_type": "opinion",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": true,
+        "raw_labels": {
+          "content_type": null,
+          "actionability": null,
+          "substance": null,
+          "on_topic": null
+        }
+      }
+    }
+  ]
+}
