@@ -1,0 +1,45 @@
+# PRIMARY_HANDLES — version-controlled allowlist of "primary/official source" X handles.
+# Used by render_digest.py dedup_and_rank() as the load-bearing is_primary signal
+# (source is literally "X" for every tweet; there is no per-handle official flag in the
+# pipeline). A handle here wins its event cluster even at 0 likes (D4 no-floor intent).
+# One handle per line, lowercase, no @. Comments with #. Ace's thought-leaders.txt is
+# UNIONED with this at runtime, so don't duplicate those here.
+#
+# AI labs / official accounts:
+anthropicai
+openai
+googledeepmind
+googleai
+google
+deepmind
+meta
+ai_at_meta
+metaai
+mistralai
+xai
+grok
+huggingface
+nvidia
+nvidiaai
+microsoft
+msftresearch
+cohere
+stabilityai
+perplexity_ai
+perplexityai
+ollama
+langchainai
+llama_index
+runwayml
+midjourney
+suno_ai_
+elevenlabsio
+groqinc
+together_ai
+fireworksai_hq
+replicate
+modal_labs
+weights_biases
+scale_ai
+databricks
+nousresearch
