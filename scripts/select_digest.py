@@ -82,6 +82,33 @@ MAX_EQ_100 = 1
 # still counts as on-topic and keeps its boost — only pure news/politics loses it.
 OFF_TOPIC_LABELS = {"news", "news-and-politics", "politics"}
 
+# Low-reach handling (#3 — base-score inflation guard). The model flat-rates
+# almost every X item at base 80 regardless of quality, so spam bots
+# (@bitnewsbot "#bitcoin #cryptonews") and zero-reach rants clear the gate on
+# inflated base+pf alone (no boost involved). Engagement is the only real
+# quality signal available, so an X post from an UNKNOWN handle (not a
+# thought-leader) with engagement below the floor is CAPPED at a hard ceiling
+# below the Also gate.
+#
+# WHY A CAP, NOT A FIXED SUBTRACTION (review Required #3 / Open-Q1): pf_delta is
+# NOT bounded near 10. pf-score.py: delta = clamp(affinity-baseline,-1,1)*weight,
+# weight normalized to max 60; with affinity 1.0, baseline 0.18 → delta ≈ 0.82*30
+# = 24.6 TODAY (PF_WEIGHT=30), and up to ~49 if PF_WEIGHT is raised toward 60. A
+# flat base-80 + high pf would survive any fixed −N subtraction that races pf. A
+# hard CAP is robust to pf magnitude by construction: a low-reach unknown-handle
+# post can never exceed the ceiling no matter how high base/pf/boost inflate it.
+# Still a DOWN-RANK not a discard (the item keeps its slot if nothing better
+# exists, and is ranked by its real final among other low-reach items).
+#
+# TIMING ASSUMPTION (review Pass-2): the cap leans on "real content earns >=
+# LOW_REACH_ENGAGEMENT_FLOOR engagement". True for the current ~daily ingest
+# (tweets are hours old by scoring time). If the digest ever moves to
+# near-real-time ingest (scoring a tweet seconds after it posts, before
+# engagement accrues), a genuinely good fresh post from an unknown handle could
+# read as zero-reach and be capped — revisit the floor/exemption then.
+LOW_REACH_ENGAGEMENT_FLOOR = 5     # likes+retweets strictly below this = "low reach"
+LOW_REACH_SCORE_CAP = 70           # hard ceiling < ALSO_GATE(77); robust to pf size
+
 
 def _load_list(path):
     out = []
@@ -202,21 +229,79 @@ def _num(v):
         return 0.0
 
 
+def _engagement(item):
+    """likes+retweets. Verified on live data: every X row carries literal `likes`
+    and `retweets` keys (0/98 missing). Defensive fallback to X v2
+    public_metrics if a future ingest nests them, so the low-reach guard can't be
+    silently defeated by a field rename (review Required #1)."""
+    likes = item.get("likes")
+    rts = item.get("retweets")
+    if likes is None and rts is None:
+        pm = item.get("public_metrics")
+        if isinstance(pm, dict):
+            likes = pm.get("like_count")
+            rts = pm.get("retweet_count")
+    return _num(likes) + _num(rts)
+
+
+def _is_x(item):
+    """X/tweet item. Source-driven: a real tweet has source 'x' (or 'twitter').
+    We do NOT infer X from tweet_id/tweet_text alone — non-X rows can carry an id
+    field, and misclassifying a story as X would wrongly subject it to the
+    X-only low-reach penalty."""
+    src = str(item.get("source") or "").lower()
+    if src in ("x", "twitter"):
+        return True
+    # no explicit source: fall back to tweet-shaped fields, but only when there's
+    # NO story-shaped field (title/hn_points) present.
+    if not src:
+        has_story = item.get("title") or item.get("hn_points") is not None
+        return bool((item.get("tweet_text") or item.get("authorHandle")) and not has_story)
+    return False
+
+
+def low_reach_cap(item, tl_handles, tl_aliases):
+    """#3 base-score-inflation guard: an X post from an UNKNOWN handle (not a
+    thought-leader) with engagement below the floor is almost certainly
+    flat-rated spam/noise — cap its final score at LOW_REACH_SCORE_CAP (< the
+    Also gate). Returns (cap_or_None, reason).
+
+    A hard CAP (not a fixed subtraction) so it's robust to pf magnitude: pf_delta
+    can reach ~24 today and ~49 if PF_WEIGHT is raised, which would defeat any
+    fixed −N. Tracked-project mention is deliberately NOT an exemption (spam
+    universally name-drops a big lab — verified on real data: every base≥77
+    unknown-handle zero-engagement item a tracked-exemption would 'save' was junk,
+    none a genuine project update; tracked-projects still get their +8 boost).
+    Thought-leaders, non-X items, and posts with real engagement are exempt
+    (don't suppress a 0-like Karpathy gem)."""
+    if not _is_x(item):
+        return None, None
+    if _is_thought_leader(item, tl_handles, tl_aliases):
+        return None, None
+    if _engagement(item) >= LOW_REACH_ENGAGEMENT_FLOOR:
+        return None, None
+    return LOW_REACH_SCORE_CAP, f"low-reach-cap(eng<{LOW_REACH_ENGAGEMENT_FLOOR},unknown-handle)"
+
+
 def score_item(item, tl_handles, tl_aliases, tracked):
-    """final = base + pf_delta + GATED boost, clamped 0..100. Returns enriched dict."""
+    """final = base + pf_delta + GATED boost, then CAPPED if low-reach. 0..100."""
     base = _num(item.get("base_score"))
     pf = _num(item.get("personal_fit_delta"))
     boost, reasons = compute_boost(item, tl_handles, tl_aliases, tracked)
     final = max(0.0, min(100.0, base + pf + boost))
+    cap, cap_reason = low_reach_cap(item, tl_handles, tl_aliases)
+    capped = False
+    if cap is not None and final > cap:
+        final = float(cap)
+        capped = True
+    if cap_reason:
+        reasons.append(cap_reason)
     out = dict(item)
     out["_boost"] = boost
+    out["_low_reach_capped"] = capped
     out["_boost_reasons"] = reasons
     out["_final"] = final
     return out
-
-
-def _engagement(item):
-    return _num(item.get("likes")) + _num(item.get("retweets"))
 
 
 def apply_forced_distribution(items):
@@ -400,6 +485,12 @@ def build_render_input(data, tl_handles, tl_aliases, tracked, now=None):
             "discarded_bare": sum(1 for d in discarded if d.get("_drop") == "bare_fragment"),
             "discarded_below_gate": sum(1 for d in discarded if d.get("_drop") == "below_gate_or_cap"),
             "discarded_event_dup": sum(1 for d in discarded if d.get("_drop") == "event_dup"),
+            "low_reach_capped": sum(1 for x in (selected + also + discarded)
+                                    if x.get("_low_reach_capped")),
+            # Required #2: instrument the no-source _is_x fallback. On live data
+            # this is 0 (every row has an explicit source); surface it so a future
+            # unsourced slice is visible instead of silently guessed.
+            "unsourced_items": sum(1 for x in pool if not str(x.get("source") or "").strip()),
             "boost_gated_off_topic": [
                 {"handle": _handle(x), "text": _item_text(x)[:60]}
                 for x in (selected + also + [d for d in discarded])
@@ -434,7 +525,8 @@ def main(argv=None):
     print(f"select_digest: pool={aud['pool']} → top={aud['selected']} also={aud['also']} "
           f"| dropped bare={aud['discarded_bare']} event_dup={aud['discarded_event_dup']} "
           f"below_gate={aud['discarded_below_gate']} "
-          f"| boost-gated off-topic={len(aud['boost_gated_off_topic'])}")
+          f"| low-reach capped={aud['low_reach_capped']} unsourced={aud['unsourced_items']} "
+          f"boost-gated off-topic={len(aud['boost_gated_off_topic'])}")
     return 0
 
 
@@ -488,6 +580,50 @@ def _selftest():
     both = dict(on, authorHandle="elonmusk", base_score=70, title="grok openai claude code")
     b_both, _ = compute_boost(both, TL_H, TL_A, TRK)
     check("boost:cap15", b_both == 15)
+
+    # #3 low-reach cap (base-score-inflation guard)
+    spam = {"source": "x", "authorHandle": "bitnewsbot", "base_score": 80, "personal_fit_delta": 0,
+            "tweet_text": "OpenAI Sets IPO Goal, Preps 5.6 Model Release #cryptonews #bitcoin",
+            "likes": 0, "retweets": 0, "signals": {"topic_hits": [{"topic": "ai-ml"}]}}
+    c_spam, r_spam = low_reach_cap(spam, TL_H, TL_A)
+    check("lowreach:spam-capped", c_spam == LOW_REACH_SCORE_CAP)
+    check("lowreach:spam-below-gate", score_item(spam, TL_H, TL_A, TRK)["_final"] < ALSO_GATE)
+    # WORST-CASE pf (review Required #3 / Open-Q1): pf_delta can reach ~24 today
+    # (~49 if PF_WEIGHT raised). A fixed −N subtraction would let high-pf spam
+    # survive; the CAP must hold regardless. base 80 + pf 24.6 + boost 15 = 100.
+    spam_hi_pf = dict(spam, personal_fit_delta=24.6)
+    check("lowreach:worstcase-pf-below-gate",
+          score_item(spam_hi_pf, TL_H, TL_A, TRK)["_final"] < ALSO_GATE)
+    spam_max = dict(spam, base_score=100, personal_fit_delta=49)
+    check("lowreach:absolute-max-below-gate",
+          score_item(spam_max, TL_H, TL_A, TRK)["_final"] <= LOW_REACH_SCORE_CAP)
+    # near-zero engagement (1 rt) still low-reach
+    rant = dict(spam, authorHandle="virtualcity69", likes=0, retweets=1,
+                tweet_text="@DaveShapi And this is a recursively expanding psychosis issue")
+    check("lowreach:near-zero-capped", low_reach_cap(rant, TL_H, TL_A)[0] == LOW_REACH_SCORE_CAP)
+    # thought-leader exempt even at zero engagement (don't suppress a 0-like Karpathy gem)
+    tl_zero = dict(spam, authorHandle="karpathy", likes=0, retweets=0)
+    check("lowreach:tl-exempt", low_reach_cap(tl_zero, TL_H, TL_A)[0] is None)
+    # tracked-project mention does NOT exempt (spam name-drops labs) — still capped
+    trk_zero = dict(spam, authorHandle="nobody", likes=0, retweets=0,
+                    tweet_text="Anthropic ships Claude Code update with new MCP support")
+    check("lowreach:tracked-not-exempt", low_reach_cap(trk_zero, TL_H, TL_A)[0] == LOW_REACH_SCORE_CAP)
+    # real engagement exempt (unknown handle but the crowd validated it)
+    popular = dict(spam, authorHandle="nobody", likes=400, retweets=20)
+    check("lowreach:engaged-exempt", low_reach_cap(popular, TL_H, TL_A)[0] is None)
+    # public_metrics fallback (Required #1): nested metrics still count as reach
+    nested = {"source": "x", "authorHandle": "nobody", "base_score": 80, "personal_fit_delta": 0,
+              "tweet_text": "real post", "public_metrics": {"like_count": 300, "retweet_count": 10},
+              "signals": {"topic_hits": [{"topic": "ai-ml"}]}}
+    check("lowreach:public_metrics-counts", low_reach_cap(nested, TL_H, TL_A)[0] is None)
+    # non-X (HN story) exempt — has its own points/comments meta
+    story = {"source": "HN", "title": "Show HN: a thing", "base_score": 80, "personal_fit_delta": 0,
+             "hn_points": 0, "hn_comments": 0, "signals": {"topic_hits": [{"topic": "ai-ml"}]}}
+    check("lowreach:story-exempt", low_reach_cap(story, TL_H, TL_A)[0] is None)
+    # a low-reach item with a genuinely HIGH model base still survives ABOVE the
+    # other low-reach junk (cap, not discard): capped at 70 but kept, not zeroed.
+    hi_base_lowreach = dict(spam, base_score=95, personal_fit_delta=0)
+    check("lowreach:cap-not-discard", score_item(hi_base_lowreach, TL_H, TL_A, TRK)["_final"] == LOW_REACH_SCORE_CAP)
 
     # END-TO-END: reconstruct the 2026-06-10 incident pool and assert the digest
     # is NOT 7 Elon political tweets.
