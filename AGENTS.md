@@ -137,3 +137,10 @@ Fixes the "one event eats the digest" bug (5 near-identical 0-like "Anthropic sh
 - Off-topic gate = blocklist {news, news-and-politics, politics} on `signals.topic_hits`; empty topics = off-topic (loses TL boost). Tracked-project boost is NOT topic-gated.
 - Self-tests in `--selftest` include an e2e replay of the 2026-06-10 incident pool (asserts not-all-elon, bare frags discarded, good builder content surfaces).
 - Prompt backup: `~/.hermes/state/cron/morning-digest/prompt.md.bak-20260610-142605-pre-select-guard`.
+
+### Update (same day) — guard is the SINGLE selection authority + dedup hardening
+Wiring select_digest.py surfaced 3 follow-on bugs, all fixed in commit f793969:
+1. Two selectors fighting: render_digest's `dedup_and_rank` re-gated everything ≥83 into Top with no MAX_TOP cap, overriding the guard's 5-top/2-also split. Fix: `render_digest.py --no-dedup` renders the guard's buckets AS-GIVEN; the guard now also owns event-dedup (`_collapse_events`/`_guard_event_groups`). **The cron MUST call render with `--no-dedup`** (prompt Step 7 updated).
+2. Model event_keys are unreliable (Fable-5 day → 6 distinct keys for one event). Guard unions by event_key AND runs the distinctive-bigram pass UNCONDITIONALLY (event_key only adds merges, never un-merges).
+3. Unconditional bigram pass exposed weak links in render_digest's shared primitives → tightened: contraction tails (ve/re/ll/s/t/don/doesn/…) + pronouns added to `_STOPWORDS` (killed `('ve','been')` false-merge); generic theme/format words (open/source/api/code/agent/show/hn/github/…) added to `_GENERIC_TOKENS` (killed `('open','source')` and `('show','hn')` over-merges). Conservative restored: only true product-phrase clusters (e.g. `claude fable`) merge.
+Pipeline final: model scores → Step 6.5 debug dump (full pool, verbatim tweet_text + event_key) → Step 6.7 `select_digest.py` (hard-discard bare frags → topic-gated boost → event-collapse → forced-dist → Top/Also) → Step 7 `render_digest.py --post --no-dedup`. Verified live on 2026-06-10 Fable-5 pool: 5 top + 2 also, launch shown once, zero Elon political junk.
