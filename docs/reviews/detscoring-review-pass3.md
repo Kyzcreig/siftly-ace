@@ -1,0 +1,20 @@
+# Deterministic Digest Scoring — Pass 3 Delta
+
+## Verdict
+APPROVE WITH CHANGES
+
+## Delta Check
+1. **PARTIAL** — §4.5#3 + §6 step-2 + §7 + §9 P2-NI1 all correctly re-derive `LOW_REACH_SCORE_CAP` strictly below ALSO_GATE with a `< ALSO_GATE` selftest, and the spec explicitly disowns the inherited 70. BUT the old "70" is still asserted as a live value in §6 step-2's inherited-constant list ("`LOW_REACH_SCORE_CAP=70`") *and* in the Evidence-Pack ground truth — and more importantly the BASE table tops at 70, ALSO_GATE drops below 70, yet **no concrete re-derived cap value is committed in the spec** (only "e.g. ALSO_GATE − 5"). The selftest enforces the *relation*, not a *value*, so the partial-fix trap is: nothing in the spec yet pins the live number, so a builder could re-instantiate 70 and the selftest would catch it only if ALSO_GATE ended up ≤70. Directionally resolved, but no committed value.
+
+2. **RESOLVED** — §4 formula includes `pf_points(personal_fit_delta)` as a named additive term; §4.3a defines `pf_points = clamp(−PF_CAP,+PF_CAP, pf_delta)` with `PF_CAP=12`, kill-switch preserved; §4.4 explicitly states pf is NOT folded away and survives as its own bounded term; §7 has a dedicated checkbox. Dimension preserved, bounded, present in the formula. Clean.
+
+3. **PARTIAL** — `recency_points` is fully committed with values (`≤24h:+10, ≤3d:+6, ≤7d:+3, >7d:0`, §4.6). `media_points` is fully committed (`video/transcript:+4, image:+2, none:0`, §4.6). BUT `BASE` (36 cells, §4.1), `SUBSTANCE_ADJ`, `OFF_TOPIC_PEN`, `recency_points`, `media_points` are committed — while **`engagement_points` K and the two caps are NOT**: §4.2 says "capped at e.g. +15", `ENGAGEMENT_CAP_UNKNOWN=+6` is committed but `K` and the known-handle `+15` are still "e.g." Question (3) as scoped (media + recency) is RESOLVED; flagging engagement K as the adjacent uncommitted constant.
+
+4. **One NEW contradiction introduced by the Pass-2 fixes.** §4 formula and §4.5#1 both route off-topic and hard-discard, but the **off-topic penalty is double-applied against author-tier gating**: §4.3 says the TL bump "only applies when `on_topic != off`" (so off-topic = no +8), AND §4 formula independently subtracts `OFF_TOPIC_PEN[off]=−40`. That's defensible (no bump + penalty). The real contradiction: §4.6's double-count guard says fresh-floor and recency "don't stack" because fresh-floor is a *minimum-base substitute* — but §4.2a now describes fresh-floor as "a small `content_type` floor" that "Ships DARK (constant=0)". A floor of 0 is not a minimum-base substitute, and §4 formula has no fresh-floor term at all. Dark-with-constant-0 is fine for v1, but the §4.6 double-count prose describes a mechanism (minimum-base substitution) that **isn't in the §4 formula** — leftover language from when fresh-floor was additive. Cosmetic but it's exactly the partial-fix residue you asked me to hunt.
+
+## Remaining
+1. **Commit the re-derived `LOW_REACH_SCORE_CAP` value**, not just the relation. The selftest asserts `< ALSO_GATE`; add the committed constant (e.g. `LOW_REACH_SCORE_CAP = ALSO_GATE − 5`, computed not hardcoded) and scrub the bare literal "70" from §6 step-2's inherited list so it reads as the *old wrong* value being replaced, not a live assignment. (delta-1)
+2. **Commit `engagement_points` K and the known-handle cap.** §4.2 still says "capped at e.g. +15" and gives no `K`. Pin both (`ENGAGEMENT_CAP=+15`, `K=…`) at the top of `score_digest.py` like every other constant, or the §7 "all range constants committed" checkbox is unsatisfiable. (delta-3 adjacent)
+3. **Fix the §4.6 fresh-floor double-count prose.** Either (a) restate it as "fresh-floor ships dark (constant 0) so no double-count is possible in v1; when armed it is a minimum-base substitute, not additive" or (b) drop the minimum-base-substitute claim. Right now it describes an additive-era mechanism absent from the §4 formula. (delta-4)
+
+None of these are blockers — they're tighten-before-build. Pin the two missing constant values (1,2) and de-lint the fresh-floor prose (3), then this is **APPROVE for build**.
