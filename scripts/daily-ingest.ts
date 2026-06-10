@@ -66,11 +66,15 @@ export interface DailyIngestRunContext {
 
 export interface DailyIngestStageRunResult {
   sourceRows?: Partial<Record<DailyIngestSourceName, number>>
+  created?: number
+  updated?: number
 }
 
 export interface DailyIngestSuccessSummary {
   bookmarks: number
   likes: number
+  created: number
+  updated: number
 }
 
 export type DailyIngestStageRunner = (
@@ -137,7 +141,7 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
   const wallBudgetMs = normalizePositiveInt(options.wallBudgetMs, config.wallBudgetMs)
   const abortController = new AbortController()
   const stagesRun: DailyIngestStageName[] = []
-  const successSummary: DailyIngestSuccessSummary = { bookmarks: 0, likes: 0 }
+  const successSummary: DailyIngestSuccessSummary = { bookmarks: 0, likes: 0, created: 0, updated: 0 }
   let activeStage: DailyIngestFailureStage = 'pipeline'
   let timedOut = false
 
@@ -166,7 +170,7 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
       activeStage = stage.name
       if (abortController.signal.aborted) throw timeoutFailure(activeStage, wallBudgetMs)
       const stageResult = await runStage(stage, { signal: abortController.signal, cwd: config.cwd, env: config.env })
-      mergeSourceRows(successSummary, stageResult?.sourceRows)
+      mergeSourceRows(successSummary, stageResult)
       stagesRun.push(stage.name)
     }
 
@@ -221,7 +225,7 @@ export async function runStageCommand(
       killProcessGroup: true,
       pipeOutput: captureOutput,
     })
-    if (captureOutput) return { sourceRows: parseIngestSourceRows(result.stdout) }
+    if (captureOutput) return parseIngestSourceRows(result.stdout)
   } catch (err) {
     throw new Error(`${stage.name} failed: ${errorMessage(err)}`)
   }
@@ -285,24 +289,41 @@ function envChannel(value: string | undefined, fallback: string): string {
   return trimmed || fallback
 }
 
-function mergeSourceRows(summary: DailyIngestSuccessSummary, sourceRows: DailyIngestStageRunResult['sourceRows']): void {
-  if (!sourceRows) return
-  summary.bookmarks += normalizeNonNegativeInt(sourceRows.bookmark)
-  summary.likes += normalizeNonNegativeInt(sourceRows.like)
+function mergeSourceRows(summary: DailyIngestSuccessSummary, stageResult: DailyIngestStageRunResult | void): void {
+  if (!stageResult) return
+  if (stageResult.sourceRows) {
+    summary.bookmarks += normalizeNonNegativeInt(stageResult.sourceRows.bookmark)
+    summary.likes += normalizeNonNegativeInt(stageResult.sourceRows.like)
+  }
+  summary.created += normalizeNonNegativeInt(stageResult.created)
+  summary.updated += normalizeNonNegativeInt(stageResult.updated)
 }
 
-function parseIngestSourceRows(output: string): DailyIngestStageRunResult['sourceRows'] {
+function parseIngestSourceRows(output: string): DailyIngestStageRunResult {
   const sourceRows: Partial<Record<DailyIngestSourceName, number>> = {}
+  let created: number | undefined
+  let updated: number | undefined
   for (const line of output.split(/\r?\n/)) {
-    const match = /^(bookmark|like):\s+.*\brows=(\d+)\b/.exec(line)
-    if (!match) continue
-    sourceRows[match[1] as DailyIngestSourceName] = Number(match[2])
+    const sourceMatch = /^(bookmark|like):\s+.*\brows=(\d+)\b/.exec(line)
+    if (sourceMatch) {
+      sourceRows[sourceMatch[1] as DailyIngestSourceName] = Number(sourceMatch[2])
+      continue
+    }
+    // Aggregate net-new counts from the "xurl-ingest complete ... created=N updated=M" summary line.
+    const createdMatch = /\bcreated=(\d+)\b/.exec(line)
+    if (createdMatch) created = Number(createdMatch[1])
+    const updatedMatch = /\bupdated=(\d+)\b/.exec(line)
+    if (updatedMatch) updated = Number(updatedMatch[1])
   }
-  return sourceRows
+  return { sourceRows, created, updated }
 }
 
 function formatHeartbeatMessage(summary: DailyIngestSuccessSummary): string {
-  return `✅ siftly daily ingest: +${summary.bookmarks} bookmarks, +${summary.likes} likes`
+  // Headline = net-new rows actually inserted (created). The per-source counts are
+  // tweets FETCHED from the API this run (mostly already-seen → deduped), so they are
+  // shown as context, not as "new saves" (which caused the misleading +180/+198 on 2026-06-10).
+  const seen = summary.bookmarks + summary.likes
+  return `✅ siftly daily ingest: +${summary.created} new (${summary.updated} updated) · scanned ${seen} (${summary.bookmarks} bookmarks + ${summary.likes} likes)`
 }
 
 function numberFromEnv(value: string | undefined): number | undefined {

@@ -99,7 +99,7 @@ describe('daily ingest Discord routing', () => {
   it('routes success heartbeats to the verified logs channel by default', async () => {
     mockNotifyExits([0])
 
-    await sendDiscordHeartbeat('✅ siftly daily ingest: +7 bookmarks, +11 likes', { bookmarks: 7, likes: 11 }, testEnv())
+    await sendDiscordHeartbeat('✅ siftly daily ingest: +5 new (1 updated) · scanned 18 (7 bookmarks + 11 likes)', { bookmarks: 7, likes: 11, created: 5, updated: 1 }, testEnv())
 
     const args = spawnMock.mock.calls[0][1] as string[]
     expect(args).toEqual(expect.arrayContaining(['--channel', 'discord', '--target', DEFAULT_LOG_CHANNEL_ID]))
@@ -109,7 +109,7 @@ describe('daily ingest Discord routing', () => {
     mockNotifyExits([0, 0])
 
     await sendDiscordAlert('boom', failure, testEnv({ SIFTLY_ALERT_CHANNEL: 'alert-override' }))
-    await sendDiscordHeartbeat('ok', { bookmarks: 1, likes: 2 }, testEnv({ SIFTLY_LOG_CHANNEL: 'log-override' }))
+    await sendDiscordHeartbeat('ok', { bookmarks: 1, likes: 2, created: 0, updated: 0 }, testEnv({ SIFTLY_LOG_CHANNEL: 'log-override' }))
 
     const alertArgs = spawnMock.mock.calls[0][1] as string[]
     const logArgs = spawnMock.mock.calls[1][1] as string[]
@@ -134,7 +134,7 @@ describe('daily ingest Discord routing', () => {
     const sendAlert = vi.fn()
     const sendHeartbeat = vi.fn()
     const runStage = vi.fn(async (nextStage: DailyIngestStageCommand) => {
-      if (nextStage.name === 'ingest') return { sourceRows: { bookmark: 7, like: 11 } }
+      if (nextStage.name === 'ingest') return { sourceRows: { bookmark: 7, like: 11 }, created: 5, updated: 1 }
     })
 
     const result = await runDailyIngest({
@@ -150,11 +150,11 @@ describe('daily ingest Discord routing', () => {
     expect(result.ok).toBe(true)
     expect(sendAlert).not.toHaveBeenCalled()
     expect(sendHeartbeat).toHaveBeenCalledTimes(1)
-    expect(sendHeartbeat.mock.calls[0][0]).toBe('✅ siftly daily ingest: +7 bookmarks, +11 likes')
+    expect(sendHeartbeat.mock.calls[0][0]).toBe('✅ siftly daily ingest: +5 new (1 updated) · scanned 18 (7 bookmarks + 11 likes)')
   })
 
-  it('parses ingest stdout into bookmark and like heartbeat counts', async () => {
-    mockStageOutput('xurl-ingest complete created=9\nbookmark: pages=1 rows=7 next-cursor=abc\nlike: pages=1 rows=11 next-cursor=def\n')
+  it('parses ingest stdout into net-new + per-source heartbeat counts', async () => {
+    mockStageOutput('xurl-ingest complete rows-ingested=10 created=9 updated=1 skipped=2\nbookmark: pages=1 rows=7 next-cursor=abc\nlike: pages=1 rows=11 next-cursor=def\n')
 
     const result = await runStageCommand(stage('ingest'), {
       cwd: '/tmp/siftly-test',
@@ -163,6 +163,8 @@ describe('daily ingest Discord routing', () => {
     })
 
     expect(result?.sourceRows).toEqual({ bookmark: 7, like: 11 })
+    expect(result?.created).toBe(9)
+    expect(result?.updated).toBe(1)
   })
 
   it('keeps heartbeat failures non-fatal and still sends failure alerts on failed runs', async () => {
