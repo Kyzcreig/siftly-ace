@@ -98,6 +98,12 @@ _STOPWORDS = {
     "now","has","have","will","you","your","via","about","how","why","what",
     "after","over","than","then","they","their","i","we","our","my","goes","go",
     "can","a","an","single","two","three","four","five",
+    # contraction tails left behind by the [a-z0-9]+ tokenizer ("I've"->i,ve;
+    # "we've"->we,ve; "don't"->don,t) — these are NOT distinctive and were
+    # causing false same-event merges (e.g. ("ve","been")).
+    "ve","re","ll","s","t","m","d","don","doesn","didn","isn","aren","wasn",
+    "weren","won","wouldn","couldn","shouldn","hasn","haven","hadn","im","ive",
+    "been","being","was","were","he","she","his","her","them","not","no","yes",
 }
 # Generic org / launch-verb tokens that must NOT be the sole link between two
 # items — "anthropic releases" is shared by EVERY Anthropic story on a busy day,
@@ -109,6 +115,13 @@ _GENERIC_TOKENS = {
     "released","launch","launches","launched","ships","shipped","shipping",
     "update","updates","updated","public","version","today","first","announces",
     "announced","announcement","introducing","introduces","unveils","unveiled",
+    # generic THEME/movement words — shared by many unrelated stories on a busy
+    # day, so they must not be the sole same-event link (e.g. ("open","source")
+    # wrongly merged an anti-moat rant, an OSS-license take, and a Show HN).
+    "open","source","sources","weights","weight","tier","safety","api","apis",
+    "code","coding","agent","agents","data","cloud","app","apps","tool","tools",
+    "use","using","used","week","year","time","people","price","prices","free",
+    "show","hn","github","blog","post","thread","paper","report","field","guide",
 }
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -531,9 +544,9 @@ def render(data):
     body, dropped_summaries, _ = render_body(data)
     return body, dropped_summaries
 
-def render_full(data):
+def render_full(data, apply_dedup=True):
     """3-tuple (body, echo_dropped_count, event_dropped[]) for the CLI/debug path."""
-    return render_body(data)
+    return render_body(data, apply_dedup=apply_dedup)
 
 # ── Posting via notify.py (list args -> no shell -> no redaction mangling) ────
 def post_body(body, target):
@@ -549,6 +562,9 @@ def main(argv=None):
     ap.add_argument("--post", action="store_true", help="post the body via notify.py")
     ap.add_argument("--target", default=DEFAULT_TARGET, help="Discord channel id")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--no-dedup", dest="no_dedup", action="store_true",
+                    help="render selected/also as-given; do NOT re-run event-dedup or "
+                         "re-gate (use when select_digest.py already owns selection)")
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -556,7 +572,7 @@ def main(argv=None):
 
     with open(args.infile, "r") as f:
         data = json.load(f)
-    body, dropped, event_dropped = render_full(data)
+    body, dropped, event_dropped = render_full(data, apply_dedup=not args.no_dedup)
 
     with open(args.outfile, "w") as f:
         f.write(body)

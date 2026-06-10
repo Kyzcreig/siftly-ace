@@ -46,6 +46,17 @@ USAGE
 from __future__ import annotations
 import argparse, json, os, re, sys, datetime
 
+# Reuse the renderer's TESTED event-dedup primitives so the guard is the single
+# selection authority (event-collapse + boost-gate + select all happen here),
+# and the renderer just renders the buckets as-given (run it with --no-dedup).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from render_digest import _assign_event_groups as _rd_assign_event_groups
+    from render_digest import _distinctive_bigrams, _shared_distinctive
+except Exception:  # pragma: no cover - render_digest should always be importable
+    _rd_assign_event_groups = None
+    _distinctive_bigrams = _shared_distinctive = None
+
 DIGEST_DIR = os.path.expanduser("~/.hermes/state/cron/morning-digest")
 DEFAULT_IN = os.path.join(DIGEST_DIR, "_last_run_debug.json")
 DEFAULT_OUT = os.path.join(DIGEST_DIR, "_render_input.json")
@@ -229,8 +240,88 @@ def apply_forced_distribution(items):
     return items
 
 
+def _guard_event_groups(pool):
+    """Group-ids for the pool, unioning by BOTH (a) exact model event_key AND
+    (b) shared distinctive bigram — the bigram pass runs UNCONDITIONALLY (even on
+    items that already carry an event_key). Rationale: the model assigns event_key
+    UNRELIABLY (Fable-5 launch day → 6 different keys for one event because it
+    slugged each tweet's opening words). event_key can only ADD merges, never
+    un-merge, so layering the tested distinctive-bigram signal on top recovers the
+    real clusters while staying conservative (no shared strong phrase => distinct).
+    Falls back to render_digest's keyless grouping if primitives are unavailable."""
+    n = len(pool)
+    if n == 0:
+        return []
+    if _distinctive_bigrams is None or _shared_distinctive is None:
+        return _rd_assign_event_groups(pool) if _rd_assign_event_groups else list(range(n))
+
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[max(rx, ry)] = min(rx, ry)
+
+    # (a) exact event_key
+    ek_first = {}
+    for i, it in enumerate(pool):
+        ek = (it.get("event_key") or "").strip().lower()
+        if ek:
+            if ek in ek_first:
+                union(ek_first[ek], i)
+            else:
+                ek_first[ek] = i
+
+    # (b) distinctive-bigram, UNCONDITIONAL (all items, keyed or not)
+    bgs = [_distinctive_bigrams(_item_text(pool[i])) for i in range(n)]
+    for i in range(n):
+        if not bgs[i]:
+            continue
+        for j in range(i + 1, n):
+            if bgs[j] and _shared_distinctive(bgs[i], bgs[j]):
+                union(i, j)
+
+    return [find(i) for i in range(n)]
+
+
+def _collapse_events(scored):
+    """Collapse same-event items to ONE winner (highest _final, then engagement,
+    then stable text). Uses guard-local grouping (exact event_key ∪ unconditional
+    distinctive-bigram). Returns (kept, event_dropped)."""
+    if not scored:
+        return scored, []
+    group_ids = _guard_event_groups(scored)
+    groups = {}
+    for gid, it in zip(group_ids, scored):
+        groups.setdefault(gid, []).append(it)
+    kept, dropped = [], []
+    for items in groups.values():
+        ranked = sorted(items, key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+        winner = ranked[0]
+        kept.append(winner)
+        for loser in ranked[1:]:
+            d = dict(loser)
+            d["_drop"] = "event_dup"
+            d["_lost_to"] = winner.get("url")
+            dropped.append(d)
+    # preserve overall desc ordering after collapse
+    kept.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+    return kept, dropped
+
+
 def select(pool, tl_handles, tl_aliases, tracked):
-    """Returns (selected, also, discarded). Pure; no I/O."""
+    """Returns (selected, also, discarded). Pure; no I/O.
+
+    The guard is the SINGLE selection authority: hard-discard → boost-gate →
+    score → event-collapse → forced-distribution → Top/Also gates+caps. The
+    renderer must run with --no-dedup so it does NOT re-gate/re-rank this output.
+    """
     scored, discarded = [], []
     for raw in pool:
         if is_bare_fragment(_item_text(raw)):
@@ -243,6 +334,12 @@ def select(pool, tl_handles, tl_aliases, tracked):
     # Sort by final desc, engagement as tiebreak only (substance > virality already
     # baked into base/boost); stable on text for determinism.
     scored.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+
+    # Collapse duplicate coverage of one event to a single winner BEFORE gating,
+    # so 5 accounts reporting one launch can't fill all 5 Top slots.
+    scored, event_dropped = _collapse_events(scored)
+    discarded.extend(event_dropped)
+
     scored = apply_forced_distribution(scored)
     # forced distribution can reorder by value; re-sort once more for placement
     scored.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
@@ -256,7 +353,7 @@ def select(pool, tl_handles, tl_aliases, tracked):
             also.append(it)
         else:
             d = dict(it)
-            d["_drop"] = "below_gate"
+            d["_drop"] = "below_gate_or_cap"
             discarded.append(d)
     return selected, also, discarded
 
@@ -301,7 +398,8 @@ def build_render_input(data, tl_handles, tl_aliases, tracked, now=None):
             "selected": len(selected),
             "also": len(also),
             "discarded_bare": sum(1 for d in discarded if d.get("_drop") == "bare_fragment"),
-            "discarded_below_gate": sum(1 for d in discarded if d.get("_drop") == "below_gate"),
+            "discarded_below_gate": sum(1 for d in discarded if d.get("_drop") == "below_gate_or_cap"),
+            "discarded_event_dup": sum(1 for d in discarded if d.get("_drop") == "event_dup"),
             "boost_gated_off_topic": [
                 {"handle": _handle(x), "text": _item_text(x)[:60]}
                 for x in (selected + also + [d for d in discarded])
@@ -334,7 +432,8 @@ def main(argv=None):
         json.dump(render_input, f, ensure_ascii=False, indent=2)
     aud = render_input["_select_audit"]
     print(f"select_digest: pool={aud['pool']} → top={aud['selected']} also={aud['also']} "
-          f"| dropped bare={aud['discarded_bare']} below_gate={aud['discarded_below_gate']} "
+          f"| dropped bare={aud['discarded_bare']} event_dup={aud['discarded_event_dup']} "
+          f"below_gate={aud['discarded_below_gate']} "
           f"| boost-gated off-topic={len(aud['boost_gated_off_topic'])}")
     return 0
 
@@ -435,6 +534,34 @@ def _selftest():
           all(h != "elonmusk" or it["_final"] < TOP_GATE for it, h in zip(sel, handles)))
     check("e2e:good-content-surfaces",
           any(_handle(x) in {"michaelaiello", "emollick"} for x in (sel + also)))
+
+    # EVENT-COLLAPSE: 4 accounts reporting ONE launch must not fill 4 Top slots.
+    # (Mirrors the Fable-5 launch day that exposed the two-selectors-fighting bug.)
+    launch = {"all_scored": [
+        {"source": "x", "authorHandle": "acct1", "base_score": 82, "personal_fit_delta": 0,
+         "tweet_text": "Anthropic released Claude Fable 5, the new Mythos-class tier above Opus",
+         "event_key": "claude-fable-5-launch", "tweet_id": "L1", "url": "L1", "likes": 10,
+         "signals": {"topic_hits": [{"topic": "ai-ml"}]}},
+        {"source": "x", "authorHandle": "acct2", "base_score": 82, "personal_fit_delta": 0,
+         "tweet_text": "Claude Fable 5 is impressive, the Mythos-class numbers on SWE-Bench are wild",
+         "event_key": "claude-fable-5-launch", "tweet_id": "L2", "url": "L2", "likes": 8,
+         "signals": {"topic_hits": [{"topic": "ai-ml"}]}},
+        {"source": "x", "authorHandle": "acct3", "base_score": 82, "personal_fit_delta": 0,
+         "tweet_text": "Claude Fable 5 已接入 API, the new Mythos-class coding model from Anthropic",
+         "event_key": "claude-fable-5-launch", "tweet_id": "L3", "url": "L3", "likes": 5,
+         "signals": {"topic_hits": [{"topic": "ai-ml"}]}},
+        # a genuinely different event
+        {"source": "hn", "title": "Gemma 4 released with open weights and a permissive license",
+         "base_score": 84, "personal_fit_delta": 0, "event_key": "gemma-4-release",
+         "tweet_id": "G1", "url": "G1", "signals": {"topic_hits": [{"topic": "ai-ml"}]}},
+    ]}
+    lsel, lalso, ldisc = select(launch["all_scored"], TL_H, TL_A, TRK)
+    fable_in_top = [x for x in lsel if (x.get("event_key") == "claude-fable-5-launch")]
+    check("e2e:event-collapse-one-fable", len(fable_in_top) <= 1)
+    check("e2e:event-dup-dropped",
+          any(d.get("_drop") == "event_dup" for d in ldisc))
+    check("e2e:distinct-event-kept",
+          any(x.get("event_key") == "gemma-4-release" for x in (lsel + lalso)))
 
     if fails:
         print("SELFTEST FAILED:", fails)
