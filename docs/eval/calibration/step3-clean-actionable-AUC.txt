@@ -1,0 +1,5 @@
+TRUE-actionable bookmarks (n=40): {'n': 40, 'min': 7.0, 'p25': 58.0, 'median': 66.0, 'p75': 76.0, 'max': 95.0, 'mean': 62.6}
+opinion/off bookmarks (n=110): {'n': 110, 'min': 0.0, 'p25': 0.0, 'median': 0.0, 'p75': 16.0, 'max': 75.0, 'mean': 9.6}
+AUC(actionable vs hard-neg): 0.951
+AUC(actionable vs opinion-bookmarks): 0.968
+actionable below TOP_GATE(58): 8/40

@@ -114,3 +114,32 @@ Set TOP_GATE / ALSO_GATE / LOW_REACH_SCORE_CAP from where the calibrated positiv
 4. **Taste > virality CONFIRMED.** A low-engagement post Ace would bookmark must be able to beat a high-engagement post he wouldn't. Engagement weight stays bounded; author-tier + content-type carry more weight for "Ace likes this."
 
 EXCLUDE tag set (final): politics, news, meme-humor, funny-memes, health-wellness, entertainment, sports, food-drink, gaming, crypto-web3, finance-crypto. Crypto-with-strong-AI-tag is the one conditional-include.
+
+---
+
+## 9. STEP-3 CONCLUSION (2026-06-11) — measurement done, re-fit NOT needed (yet)
+
+**Finding: the scorer is already well-calibrated to actionable content. The apparent "57% of bookmarks below gate" was a CONTAMINATED positive set, not a scorer defect.**
+
+Evidence (all on real bookmark data):
+| Positive set definition | AUC vs hard-neg | median |
+|---|---|---|
+| semanticTags "productive" (TOPIC filter) | 0.51–0.75 | 33 |
+| **model-labeled ACTIONABLE (substance filter)** | **0.951** | **66** |
+
+- `semanticTags` captures **topic, not substance**: a tweet tagged `startups-business`/`dev-tools` is often an opinion, founder-wisdom, or hot take. ~50–70% of "productive"-tagged bookmarks are model-labeled `opinion`/`off`.
+- When positives are filtered to genuinely actionable saves (model `content_type` ∈ {launch, benchmark, tutorial, field_report, analysis} ∧ on_topic≠off), they score **median 66**, and the scorer separates them from BOTH politics/meme bookmarks (AUC 0.951) AND from Ace's own opinion-saves (AUC 0.968) — near-perfect.
+- This means the scorer **correctly** ranks Ace's opinion/hot-take bookmarks low — which is desired (the digest is for actionable content; tuning to score opinions high would re-introduce the inflation we just removed).
+
+**pf finding (separate, real):** pf_delta is slightly NEGATIVE on productive bookmarks because the pf preference-profile (`~/.hermes/state/x-bookmarks/preference-profile.json`) is built from the WHOLE corpus (politics-heavy: top author @elonmusk 260 saves, top topics include politics/finance). The pf model reflects "everything Ace saves," not "what belongs in a productive digest." This is a pf-profile calibration issue, independent of the base-table scoring.
+
+### Revised recommendation
+1. **Do NOT re-fit the base table to the contaminated set.** It scores actionable content correctly.
+2. **The genuine remaining issues are narrower:**
+   - (a) **8/40 actionable bookmarks below gate (~20%)** — inspect these specific misses; likely the base-table harshness on `analysis`/`field_report` (§5.1) on a SMALL scale, not a wholesale re-spread.
+   - (b) **recency=+10 slab is still dead weight** on a daily brief (§5.2) — demoting it to a tiebreak is still worth doing; it's pure offset, costs nothing to fix, recovers range.
+   - (c) **pf profile is politics-contaminated** — rebuild the pf profile from PRODUCTIVE bookmarks only (or segment it) so pf rewards digest-taste, not whole-corpus-taste.
+3. **Gates are basically right** — 0 hard-negs clear, actionable median 66 sits above TOP=58. Minor: TOP could rise slightly to tighten, but not urgent.
+
+### Decision needed from Ace
+The big re-fit is **not warranted**. The productive, bounded improvements are: (b) recency→tiebreak, (a) inspect/soften base for analysis/field_report, (c) rebuild pf profile from productive saves. Recommend doing (b)+(c) (cheap, clearly correct) and inspecting (a) before any base-table change.
