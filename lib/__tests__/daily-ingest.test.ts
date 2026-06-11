@@ -126,6 +126,11 @@ describe('daily ingest driver', () => {
       runStage,
       sendAlert,
       wallBudgetMs: 10_000,
+      // Override stages to the 4 hard stages: this test asserts the ingest→export
+      // wiring without the soft profile stage (whose provenance assert reads a real
+      // on-disk file the no-op mock can't produce). The profile stage is covered by
+      // daily-ingest-profile-stage.test.ts.
+      stages: buildDailyIngestStages({ ingestMaxPages: 2, pageSize: 100, stageLimit: 500 }).filter((s) => s.name !== 'profile'),
       config: { ingestMaxPages: 2, pageSize: 100, stageLimit: 500 },
     })
 
@@ -143,7 +148,8 @@ describe('daily ingest driver', () => {
   it('builds a bounded incremental stage list by default', () => {
     const stages = buildDailyIngestStages()
 
-    expect(stages.map((nextStage) => nextStage.name)).toEqual(['ingest', 'enrich', 'embed', 'export'])
+    expect(stages.map((nextStage) => nextStage.name)).toEqual(['ingest', 'enrich', 'embed', 'export', 'profile'])
+    expect(stages[stages.length - 1]).toMatchObject({ name: 'profile', soft: true, args: ['tsx', 'scripts/profile.ts', '--brief-relevant-only'] })
     expect(stages[0].args).toContain('--incremental')
     expect(stages[0].args).toContain('--max-pages')
     expect(stages[0].args).not.toContain('--confirm')

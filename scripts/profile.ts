@@ -314,7 +314,12 @@ export async function writePreferenceArtifacts(
 
   await fs.mkdir(path.dirname(jsonPath), { recursive: true })
   await fs.mkdir(path.dirname(markdownPath), { recursive: true })
-  await fs.writeFile(jsonPath, `${JSON.stringify(profile, null, 2)}\n`, 'utf8')
+  // (#1) Atomic JSON write: write to a temp sibling then rename, so a crash
+  // mid-write can't leave a half-written profile that pf-score.py then parses.
+  // The markdown artifact is non-load-bearing and stays a direct write.
+  const jsonTmp = `${jsonPath}.tmp-${process.pid}-${Date.now()}`
+  await fs.writeFile(jsonTmp, `${JSON.stringify(profile, null, 2)}\n`, 'utf8')
+  await fs.rename(jsonTmp, jsonPath)
   await fs.writeFile(markdownPath, buildPreferenceMarkdown(profile), 'utf8')
   return { jsonPath, markdownPath }
 }

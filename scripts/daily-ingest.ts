@@ -1,7 +1,8 @@
 #!/usr/bin/env npx tsx
 import { spawn, type StdioOptions } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkCreditFloor as defaultCheckCreditFloor, type CheckCreditFloorOptions, type CreditFloorResult } from '../lib/credit-guard'
@@ -21,7 +22,7 @@ const NOTIFY_SCRIPT = resolve(homedir(), '.hermes/scripts/notify.py')
 const CRON_ENV_FLAG = 'SIFTLY_DAILY_CRON'
 
 export type DailyIngestSourceName = 'bookmark' | 'like'
-export type DailyIngestStageName = 'ingest' | 'enrich' | 'embed' | 'export'
+export type DailyIngestStageName = 'ingest' | 'enrich' | 'embed' | 'export' | 'profile'
 export type DailyIngestFailureStage = DailyIngestStageName | 'credit-floor' | 'pipeline'
 export type DailyIngestFailureKind = 'credit-floor' | 'stage-failure' | 'timeout'
 
@@ -29,6 +30,15 @@ export interface DailyIngestStageCommand {
   name: DailyIngestStageName
   command: string
   args: string[]
+  // Soft stages (e.g. the pf-profile rebuild) are enhancement-only: a failure is
+  // recorded + alerted but does NOT abort the run or block the load-bearing
+  // export/heartbeat. A wall-budget timeout still wins (never soft-swallowed).
+  soft?: boolean
+}
+
+export interface DailyIngestSoftFailure {
+  stage: DailyIngestStageName
+  reason: string
 }
 
 export interface DailyIngestConfig {
@@ -52,6 +62,7 @@ export interface DailyIngestResult {
   exitCode: number
   stagesRun: DailyIngestStageName[]
   failure?: DailyIngestFailure
+  softFailures?: DailyIngestSoftFailure[]
   alertSent?: boolean
   alertError?: string
   heartbeatSent?: boolean
@@ -102,6 +113,49 @@ class DailyIngestFailureError extends Error {
   }
 }
 
+const SOFT_CLOCK_SKEW_MS = 2000
+
+/**
+ * (#1 B5) Provenance assert for the soft profile stage. Returns an error-reason
+ * string if the just-written profile is not a fresh brief-relevant-only rebuild,
+ * else null. Distinguishable reasons: profile-write-failed | profile-stale |
+ * profile-contaminated. Uses the stage's own captured start time as a monotonic
+ * lower bound (NOT a fixed freshness budget), so a slow rebuild still passes but
+ * yesterday's profile fails.
+ */
+export function checkProfileProvenance(
+  stageStart: number,
+  env: NodeJS.ProcessEnv = process.env,
+  profilePath?: string,
+): string | null {
+  const home = env.HOME || homedir()
+  const path = profilePath ?? join(home, '.hermes', 'state', 'x-bookmarks', 'preference-profile.json')
+  let raw: string
+  try {
+    raw = readFileSync(path, 'utf8')
+  } catch (err) {
+    return `profile-write-failed: cannot read ${path}: ${errorMessage(err)}`
+  }
+  let profile: { updated_at?: string; signal_basis?: { mode?: string } }
+  try {
+    profile = JSON.parse(raw)
+  } catch (err) {
+    return `profile-write-failed: invalid JSON at ${path}: ${errorMessage(err)}`
+  }
+  const mode = profile.signal_basis?.mode
+  if (mode !== 'brief-relevant-only') {
+    return `profile-contaminated: signal_basis.mode='${mode}' (expected 'brief-relevant-only')`
+  }
+  const updatedMs = Date.parse(profile.updated_at ?? '')
+  if (Number.isNaN(updatedMs)) {
+    return `profile-stale: unparseable updated_at='${profile.updated_at}'`
+  }
+  if (updatedMs < stageStart - SOFT_CLOCK_SKEW_MS) {
+    return `profile-stale: updated_at=${profile.updated_at} predates this stage (start=${new Date(stageStart).toISOString()})`
+  }
+  return null
+}
+
 export function buildDailyIngestStages(config: Partial<DailyIngestConfig> = {}): DailyIngestStageCommand[] {
   const ingestMaxPages = normalizePositiveInt(config.ingestMaxPages, DEFAULT_INGEST_MAX_PAGES)
   const pageSize = normalizePositiveInt(config.pageSize, DEFAULT_PAGE_SIZE)
@@ -128,6 +182,15 @@ export function buildDailyIngestStages(config: Partial<DailyIngestConfig> = {}):
       command: 'npx',
       args: ['tsx', 'scripts/export-obsidian.ts', '--limit', String(stageLimit)],
     },
+    {
+      // (#1) Self-maintaining pf profile: rebuild AFTER export, soft (never blocks
+      // the load-bearing export/heartbeat), with --brief-relevant-only baked in so
+      // the de-contamination can't be reverted by forgetting the flag.
+      name: 'profile',
+      command: 'npx',
+      args: ['tsx', 'scripts/profile.ts', '--brief-relevant-only'],
+      soft: true,
+    },
   ]
 }
 
@@ -141,6 +204,7 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
   const wallBudgetMs = normalizePositiveInt(options.wallBudgetMs, config.wallBudgetMs)
   const abortController = new AbortController()
   const stagesRun: DailyIngestStageName[] = []
+  const softFailures: DailyIngestSoftFailure[] = []
   const successSummary: DailyIngestSuccessSummary = { bookmarks: 0, likes: 0, created: 0, updated: 0 }
   let activeStage: DailyIngestFailureStage = 'pipeline'
   let timedOut = false
@@ -169,9 +233,28 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
     for (const stage of stages) {
       activeStage = stage.name
       if (abortController.signal.aborted) throw timeoutFailure(activeStage, wallBudgetMs)
-      const stageResult = await runStage(stage, { signal: abortController.signal, cwd: config.cwd, env: config.env })
-      mergeSourceRows(successSummary, stageResult)
-      stagesRun.push(stage.name)
+      const stageStart = Date.now()
+      try {
+        const stageResult = await runStage(stage, { signal: abortController.signal, cwd: config.cwd, env: config.env })
+        mergeSourceRows(successSummary, stageResult)
+        // (#1 B5) Provenance assert for the soft profile stage: the rebuild must
+        // have produced a fresh brief-relevant-only profile during THIS stage.
+        if (stage.name === 'profile') {
+          const provenance = checkProfileProvenance(stageStart, config.env)
+          if (provenance) throw new Error(provenance)
+        }
+        stagesRun.push(stage.name)
+      } catch (err) {
+        // A real wall-budget timeout always wins and is never soft-swallowed.
+        if (timedOut || (err instanceof DailyIngestFailureError && err.failure.kind === 'timeout')) throw err
+        if (stage.soft) {
+          const reason = errorMessage(err)
+          softFailures.push({ stage: stage.name, reason })
+          console.error(`daily-ingest soft stage '${stage.name}' failed (non-blocking): ${reason}`)
+          continue
+        }
+        throw err
+      }
     }
 
     let heartbeatSent = false
@@ -186,7 +269,29 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
       }
     }
 
-    return { ok: true, exitCode: 0, stagesRun, heartbeatSent, heartbeatError }
+    // (#1) Soft-stage failures don't fail the run, but they must be visible:
+    // route them to the alert channel as a non-fatal warning (best-effort).
+    if (softFailures.length > 0) {
+      try {
+        for (const sf of softFailures) {
+          await sendAlert(
+            formatAlertMessage({ kind: 'stage-failure', stage: sf.stage, reason: `(non-blocking soft failure) ${sf.reason}` }),
+            { kind: 'stage-failure', stage: sf.stage, reason: sf.reason },
+          )
+        }
+      } catch (alertErr) {
+        console.error(`daily-ingest soft-failure alert failed: ${errorMessage(alertErr)}`)
+      }
+    }
+
+    return {
+      ok: true,
+      exitCode: 0,
+      stagesRun,
+      heartbeatSent,
+      heartbeatError,
+      ...(softFailures.length > 0 ? { softFailures } : {}),
+    }
   } catch (err) {
     const failure = timedOut
       ? timeoutFailure(activeStage, wallBudgetMs).failure
