@@ -467,9 +467,16 @@ def _to_render_item(it):
     return out
 
 
-def build_render_input(data, tl_handles, tl_aliases, tracked, now=None):
+def build_render_input(data, tl_handles, tl_aliases, tracked, now=None, engine="legacy"):
     pool = data.get("all_scored") or []
-    selected, also, discarded = select(pool, tl_handles, tl_aliases, tracked)
+    if engine == "deterministic":
+        # CUTOVER (2026-06-11): the deterministic scorer (score_digest.py) owns the
+        # `final`; this module stays the single render-contract authority but its
+        # scoring is swapped. Lazy import avoids the score_digest<->select_digest cycle.
+        import score_digest as _sd  # noqa: E402
+        selected, also, discarded, _meta = _sd.select_shadow(pool, tl_handles, tl_aliases, tracked, now=now)
+    else:
+        selected, also, discarded = select(pool, tl_handles, tl_aliases, tracked)
     now = now or datetime.datetime.now()
     footer = (data.get("footer") or "").strip()
     out = {
@@ -509,6 +516,8 @@ def main(argv=None):
     ap.add_argument("--in", dest="inp", default=DEFAULT_IN)
     ap.add_argument("--out", dest="out", default=DEFAULT_OUT)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--engine", choices=["legacy", "deterministic"], default="legacy",
+                    help="scoring engine: legacy prose base_score, or deterministic (score_digest.py)")
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -518,11 +527,11 @@ def main(argv=None):
         data = json.load(f)
     tl_handles, tl_aliases = _load_thought_leaders()
     tracked = _load_tracked_projects()
-    render_input = build_render_input(data, tl_handles, tl_aliases, tracked)
+    render_input = build_render_input(data, tl_handles, tl_aliases, tracked, engine=args.engine)
     with open(args.out, "w") as f:
         json.dump(render_input, f, ensure_ascii=False, indent=2)
     aud = render_input["_select_audit"]
-    print(f"select_digest: pool={aud['pool']} → top={aud['selected']} also={aud['also']} "
+    print(f"select_digest[{args.engine}]: pool={aud['pool']} → top={aud['selected']} also={aud['also']} "
           f"| dropped bare={aud['discarded_bare']} event_dup={aud['discarded_event_dup']} "
           f"below_gate={aud['discarded_below_gate']} "
           f"| low-reach capped={aud['low_reach_capped']} unsourced={aud['unsourced_items']} "
