@@ -45,6 +45,23 @@ class _ModelHolder:
             if self._model is None:
                 import nemo.collections.asr as nemo_asr
                 self._model = nemo_asr.models.ASRModel.from_pretrained(model_name=MODEL_NAME)
+                # RTX 5090 (sm_120): the TDT greedy CUDA-graph decoder GP-faults
+                # (general protection fault / heap corruption) on every transcribe,
+                # while CPU + the same code on the Blackwell PRO 6000 work. Disable
+                # CUDA graphs in the greedy decoder (known NeMo workaround). The
+                # Blackwell box is unaffected but the patch is harmless there, so
+                # it ships everywhere. Override with PARAKEET_DISABLE_CUDA_GRAPHS=0.
+                if os.environ.get("PARAKEET_DISABLE_CUDA_GRAPHS", "1") not in ("0", "false", ""):
+                    try:
+                        from omegaconf import open_dict
+                        with open_dict(self._model.cfg.decoding):
+                            if "greedy" not in self._model.cfg.decoding:
+                                self._model.cfg.decoding.greedy = {}
+                            self._model.cfg.decoding.greedy.use_cuda_graph_decoder = False
+                            self._model.cfg.decoding.greedy.allow_cuda_graphs = False
+                        self._model.change_decoding_strategy(self._model.cfg.decoding)
+                    except Exception as _e:
+                        print("WARN: could not disable cuda graphs:", _e, flush=True)
             self._last_used = time.time()
             return self._model
 
