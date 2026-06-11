@@ -79,7 +79,7 @@ engine and is still model-prose-scoring, so none of the calibration protections 
 <h3>2.5 Phasing</h3>
 <ol>
 <li><strong>P2.1 (code, safe):</strong> parameterize MAX_TOP/MAX_ALSO/gates in score_digest/select_digest + tests. No behavior change to morning-digest.</li>
-<li><strong>P2.2 (code, safe):</strong> shadow-diff harness + x-feed label-emission prompt change behind a shadow path (compute, don't post).</li>
+<li><strong>P2.2 (code, safe) — BUILT 2026-06-11 (commit 637c269):</strong> shadow-diff harness (<code>scripts/xfeed_shadow.py</code>) + x-feed additive label-emission prompt change (Step 5b) + deterministic shadow compute (Step 6.75, <code>_shadow_deterministic</code>) behind a shadow path (compute, don't post). <code>select_digest</code> CLI gained <code>--max-top/--max-also/--top-gate/--also-gate</code>; <code>_item_text</code> reads x-feed's <code>text_snippet</code> as last-resort fallback (morning-digest byte-identical). Verify gate green (tsc+lint+180 unit+e2e+py selftests); 17 py tests. Live prompt edit backed up (<code>prompt.md.bak-20260611-144234-pre-p22-labels</code>), additive-only so the posted selection is provably unchanged.</li>
 <li><strong>P2.3 (data):</strong> run shadow over a window; re-derive x-feed gates from real pools.</li>
 <li><strong>P2.4 (Hard-Config gate):</strong> flip x-feed live render to the deterministic engine. Ace-gated diff, backup, rollback = revert prompt + drop flag.</li>
 </ol>
