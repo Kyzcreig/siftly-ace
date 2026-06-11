@@ -102,7 +102,15 @@ OFF_TOPIC_PEN = {"core": 0, "adjacent": 0, "off": 40}
 # Engagement (§4.2): log-scaled, capped; unknown handles capped lower (anti-gaming).
 ENGAGEMENT_K = 6
 ENGAGEMENT_CAP = 15            # known / thought-leader / tracked-author handles
-ENGAGEMENT_CAP_UNKNOWN = 6     # no-name accounts: cheap purchased likes can't buy a TOP slot
+# Unknown-author cap raised 6→10 (calibration 2026-06-11). The old 6 throttled a
+# 7000-engagement legit AI field-report to the SAME points as a 53-engagement one,
+# pinning the actionable-bookmark edge cluster below the gate. Raising to 10
+# recovers 4/8 edge misses with ZERO hard-negatives breaching the gate, because
+# the REAL anti-bot guard is low_reach_cap() (hard floor for sub-floor-engagement
+# unknowns) + content/base gating (promo=5, opinion≤40) — NOT this cap. Verified:
+# 50k-like promo spam still scores 0; a 7k-like AI field_report clears. Saturates
+# above 10 (high-eng misses already maxed), so 10 is the knee, not a blank cheque.
+ENGAGEMENT_CAP_UNKNOWN = 10
 
 # Author tier (§4.3): additive, bounded.
 AUTHOR_TL_POINTS = 8
@@ -591,6 +599,22 @@ def _selftest():
     hiE = dict(lowE); hiE["likes"] = 15000; hiE["retweets"] = 2000
     fl, fh = score_item(lowE, tl_h, tl_a, trk)["_final"], score_item(hiE, tl_h, tl_a, trk)["_final"]
     check(fh > fl, f"high-engagement {fh} not > low {fl} on identical labels")
+
+    # --- unknown-author engagement cap (raised 6→10): a 7k-engagement legit AI
+    # field-report from an unknown clears the gate, BUT 50k-like promo spam stays
+    # blocked (base/content gating, not the cap, is the real anti-bot guard). ---
+    unk_real = {"source": "x", "authorHandle": "indie_dev_nobody", "content_type": "field_report",
+                "actionability": "reference", "substance": "concrete", "on_topic": "core",
+                "likes": 7000, "retweets": 300,
+                "tweet_text": "Replaced Anthropic with Kimi K2.5 on my agent stack — latency and cost numbers inside"}
+    check(score_item(unk_real, tl_h, tl_a, trk)["_final"] >= TOP_GATE,
+          f"legit 7k-eng unknown field_report below gate: {score_item(unk_real, tl_h, tl_a, trk)['_final']}")
+    unk_spam = {"source": "x", "authorHandle": "rando_bot_2847", "content_type": "promo",
+                "actionability": "none", "substance": "vague", "on_topic": "adjacent",
+                "likes": 50000, "retweets": 2000,
+                "tweet_text": "BUY NOW limited offer click link in bio crypto pump guaranteed gains"}
+    check(score_item(unk_spam, tl_h, tl_a, trk)["_final"] < ALSO_GATE,
+          f"50k-like promo spam not blocked: {score_item(unk_spam, tl_h, tl_a, trk)['_final']}")
 
     # --- pf preserved but bounded (§4.3a): pf term never exceeds PF_CAP ---
     bd = s(yohei)
