@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>x-feed P2.4 Live Flip — Proposed Prompt Diff (AWAITING ACE APPROVAL)</title>
+<style>
+body{background:#0d1117;color:#c9d1d9;font:15px/1.6 -apple-system,Segoe UI,sans-serif;max-width:980px;margin:0 auto;padding:28px}
+h1{color:#58a6ff;border-bottom:1px solid #30363d;padding-bottom:10px}
+h2{color:#79c0ff;margin-top:28px}
+code{background:#161b22;color:#ffa657;padding:1px 5px;border-radius:4px;font:13px ui-monospace,monospace}
+pre{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;overflow-x:auto;font:12.5px/1.5 ui-monospace,monospace}
+.rm{color:#ff7b72}.add{color:#3fb950}
+.box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 18px;margin:14px 0}
+.warn{border-left:4px solid #d29922;background:#1c1810}
+.ok{border-left:4px solid #3fb950;background:#0f1c12}
+table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #30363d;padding:7px 10px;text-align:left}th{background:#161b22;color:#79c0ff}
+.tag{display:inline-block;background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb;border-radius:20px;padding:1px 10px;font-size:12px}
+</style></head><body>
+
+<h1>x-feed-brief P2.4 — Live Deterministic Flip</h1>
+<p><span class="tag">HARD-CONFIG GATE</span> &nbsp;<strong>This diff is NOT applied.</strong> It changes what the live daily x-feed brief posts. Per Hard-Config rules I need your explicit go on <em>this specific diff</em> before it touches the live <code>prompt.md</code>. Rollback = restore the backup + (the additive Step 5b/6.75 stay; only Step 6's authority reverts).</p>
+
+<div class="box ok">
+<strong>What P2.3 proved (membership evidence, real labeled data — 265 contention tweets):</strong>
+<ul>
+<li><strong>45% of the contention pool (118/265) is off-topic politics/health.</strong> Legacy prose-scoring posted several (VigilantFox ivermectin @59, "AI super-vaccine" @59, nicksortor courthouse @58). The deterministic engine drops all of them.</li>
+<li><strong>Gates don't bind — ranking + dedup do.</strong> 20 tweets clear Top≥60, 30 clear Also≥50, but there are only 5+5 slots. So x-feed <strong>keeps its existing 60/50 product gates</strong>; the quality win comes from the deterministic ranking + event/author collapse, not new gates.</li>
+<li><strong>Membership diff @ 60/50:</strong> deterministic swaps 8 weaker legacy picks for stronger builder content (garrytan 87, levelsio 83, Voxyz_ai codex-skills 81, ibab River API 80, PyTorch Helion 73…), and collapses Voxyz_ai's 5 near-duplicate tweets to 1.</li>
+<li><strong>2 residual human-review drops</strong> (ycombinator VC-opinion @64, ylecun RT-drama @59) — both correct to drop; neither is builder-actionable.</li>
+</ul>
+</div>
+
+<h2>The flip (Step 6 selection authority)</h2>
+<p>Step 5b (labels) and Step 6.75 (shadow compute) already landed in P2.2. P2.4 only <strong>promotes the deterministic selection from shadow to authority</strong>: Step 6 stops ranking by the legacy prose <code>final_score</code> and instead renders the engine's selected/also sets. Video Ideas, the seen-list, archive, and all render-safety steps are unchanged.</p>
+
+<h3>Diff 1 — Step 6 (selection authority)</h3>
+<pre><span class="rm">- ## Step 6 — Select up to 5 top tweets + Quick Hits + Video Ideas</span>
+<span class="rm">- **Top tweets:** select up to 5 tweets by score, each a DIFFERENT topic, only tweets scoring **60 or above**. Rank strictly by the scoring system in Step 5 after dedupe/topic clustering. If fewer than 5 qualify, include fewer.</span>
+<span class="rm">- **Quick Hits:** up to 5 MORE tweets scoring **≥ 50** that didn't make the top-10, each a different topic from the top-10 and from each other...</span>
+<span class="add">+ ## Step 6 — Select via the DETERMINISTIC engine (authority)</span>
+<span class="add">+ Selection is owned by the shared deterministic engine (`score_digest.py` via `select_digest.py --engine deterministic`), the SAME engine the morning-digest posts from. It scores from the 4 enum labels (Step 5b) — NOT the prose `final_score` — and applies event/author collapse + forced distribution + the Top≥60 / Quick-Hits≥50 gates with 5 + 5 slots.</span>
+<span class="add">+</span>
+<span class="add">+ Run it over the scored dump written in Step 6.7:</span>
+<span class="add">+ ```bash</span>
+<span class="add">+ cd /Users/alexgierczyk/Projects/siftly-ace</span>
+<span class="add">+ RECENCY_AS_TIEBREAK=1 python3 scripts/select_digest.py --engine deterministic \</span>
+<span class="add">+   --in  ~/.hermes/state/cron/x-feed-brief/_last_run_scored.json \</span>
+<span class="add">+   --out /tmp/x-feed-select.json \</span>
+<span class="add">+   --max-top 5 --max-also 5 --top-gate 60 --also-gate 50</span>
+<span class="add">+ ```</span>
+<span class="add">+ The returned `selected[]` are the Top tweets (render verbatim, in order); `also[]` are the Quick Hits. Map each back to its full tweet object (by `url`/`tweet_id`) for rendering. The `base_score`/prose ratings remain in the dump for audit only — they no longer drive selection. If the engine call fails, FALL BACK to the legacy prose `final_score` selection (Top≥60 / Quick Hits≥50) so the brief never fails to post; log one line `selection: legacy-fallback (&lt;reason&gt;)`.</span></pre>
+
+<h3>Diff 2 — Step 6.75 (shadow → no-op note)</h3>
+<pre><span class="rm">- ## Step 6.75 — Deterministic SHADOW computation (compute, do NOT post)</span>
+<span class="add">+ ## Step 6.75 — (RETIRED at P2.4) deterministic selection is now LIVE in Step 6</span>
+<span class="add">+ The shadow computation is no longer needed — Step 6 now posts the deterministic selection directly. Keep writing `_shadow_deterministic` is optional; the live selection IS the deterministic one.</span></pre>
+
+<h2>What does NOT change</h2>
+<table>
+<tr><th>Unchanged</th><th>Why it's safe</th></tr>
+<tr><td>Step 5b label emission</td><td>Already live (P2.2); now consumed as authority.</td></tr>
+<tr><td>Step 6.5 Video Ideas</td><td>Independent of selection scorer.</td></tr>
+<tr><td>Step 6.7 scored dump</td><td>Still written; gains nothing new.</td></tr>
+<tr><td>Step 6.8 render manifest + 1:1 self-check</td><td>Still guards selection→render drops.</td></tr>
+<tr><td>Step 4.5 personal-fit</td><td>Still injected as <code>personal_fit_delta</code>; engine consumes it as its bounded pf term (same as morning-digest).</td></tr>
+<tr><td>Steps 7–10 (post, archive, backlog, seen)</td><td>Untouched.</td></tr>
+<tr><td>Gates 60/50, slots 5+5</td><td>P2.3 proved gates don't bind; product shape preserved.</td></tr>
+</table>
+
+<h2>Rollback</h2>
+<p>Restore <code>prompt.md.bak-&lt;ts&gt;-pre-p24-flip</code> (taken at apply time). The engine code and additive labels stay; only Step 6's authority reverts to prose. One-file revert, zero code change.</p>
+
+<div class="box warn">
+<strong>Your call:</strong> approve this diff to apply to the live <code>prompt.md</code> (backed up, takes effect next 5:30am/x-feed run), or tell me to adjust. I will NOT apply it without your explicit go on this diff.
+</div>
+
+</body></html>
