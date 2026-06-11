@@ -339,6 +339,20 @@ OFF_TOPIC_MARKERS = {
 }
 
 
+# Stem prefixes for the on-topic check: an item is on-topic if ANY body token
+# STARTS WITH one of these. Catches inflections the exact-token set misses
+# (code→coded/codebase, extension→extensions, app→apps, build→builder/rebuild
+# is covered by 'build', vibe-coding shorthand 'vibe'). Added 2026-06-11 after
+# the @levelsio "vibe coded ... extension ... SuperLemon" miss: clearly dev
+# content the exact-match set forced off-topic (-40). Stems are deliberately
+# specific (>=4 chars, unambiguously technical) so they don't rescue politics.
+ON_TOPIC_STEMS = (
+    "code", "coded", "coding", "extension", "plugin", "deploy", "compil",
+    "debug", "refactor", "runtime", "backend", "frontend", "fullstack",
+    "endpoint", "webhook", "vibecod", "opensource",
+)
+
+
 def _tokens(text):
     """Lowercase alnum word tokens of the post body (mentions/URLs stripped)."""
     return set(w.lower() for w in _substance(text))
@@ -355,6 +369,12 @@ def python_on_topic(item):
     # @elonmusk "scumbag and traitor" insult carried a bogus topic_hits=['ai']).
     # Only ACTUAL on-topic word tokens in the post body count as a topic signal.
     has_on_topic_token = bool(toks & ON_TOPIC_TOKENS)
+    # Stem fallback: catch dev/AI inflections the exact set misses (code→coded,
+    # extension→extensions). Prefix match, specific technical stems only.
+    if not has_on_topic_token:
+        has_on_topic_token = any(
+            tok.startswith(stem) for tok in toks for stem in ON_TOPIC_STEMS
+        )
     if has_on_topic_token:
         return None, None  # real tech tokens present → let the model label stand
     # zero on-topic signal at all → force off
@@ -629,6 +649,18 @@ def _selftest():
     check(rb["_breakdown"]["effective_on_topic"] == "core",
           f"real AI post wrongly forced off: {rb['_breakdown']['effective_on_topic']}")
     check(rb["_breakdown"]["author"] == AUTHOR_TL_POINTS, "real AI post lost its author bump")
+
+    # --- (3) on-topic stem fallback: dev inflections the exact set misses must
+    # NOT be force-dropped, while politics/insults still are (2026-06-11 @levelsio
+    # "vibe coded ... extension" miss). ---
+    levelsio = {"source": "x", "authorHandle": "levelsio",
+                "tweet_text": "Okay it's been 18 minutes and I've now vibe coded and replaced 3 more extensions into one super extension called SuperLemon"}
+    check(python_on_topic(levelsio)[0] is None,
+          f"dev 'coded/extension' wrongly forced off: {python_on_topic(levelsio)}")
+    # politics must STILL force off even with the stem fallback live
+    pol = {"source": "x", "authorHandle": "x",
+           "tweet_text": "The election was stolen and the deport policy is communist nonsense"}
+    check(python_on_topic(pol)[0] == "off", "stem fallback wrongly rescued politics")
 
     # --- non-X items are exempt from the low-reach cap ---
     story = {"source": "hackernews", "title": "Show HN: a new thing", "content_type": "launch",
