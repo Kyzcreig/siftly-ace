@@ -1,0 +1,38 @@
+
+⚠️ xfeed-scored-pool.json  pool=265 labels=real legacy=recorded
+   volume: legacy=10 det=10 (delta +0; ±1 is sanity floor, not target) | kept=2 added=8 dropped=8
+   + ADDED by deterministic (better-membership candidates):
+       @garrytan [87.0] Here's the instructions on how to get an older version of OpenClaw to use Claude
+       @levelsio [83.0] Okay I spun it off as a Quake 1 web-based multiplayer game + server you can play
+       @IBuzovskyi [83.0] HERMES AGENT JUST SHIPPED A PROFILE BUILDER
+IN THE DASHBOARD.
+
+build a complete 
+       @Voxyz_ai [81.0] steipete open sourced his two codex loop skills:
+
+→ maintainer-orchestrator: wak
+       @ibab [80.0] We are releasing River API, our first product, in early access. The API gives yo
+       @DavidOndrej1 [80.0] Fable 5 keeps rejecting prompts
+
+so I wrote a skill that rewrites any prompt to 
+       @LinusEkenstam [74.0] create super exclusive birthday cards 
+
+1. Open ChatGPT
+2. Upload your Photo
+3. 
+       @PyTorch [73.0] Helion is a PyTorch-native hardware agnostic kernel DSL designed for writing hig
+   - DROPPED (guard fired — the cutover's job; GOOD):
+       @Voxyz_ai (legacy 67) → event/author_collapse(dedupe win) | copy this into claude code and it builds the whole learning repo, any field:
+
+I 
+       @AlexFinn (legacy 64) → low_value(promo), event/author_collapse(dedupe win) | Claude Fable 5 just dropped, and it's the single greatest AI model ever released
+       @VigilantFox (legacy 59) → off_topic(python:no-tech-tokens+offtopic-marker) | Ivermectin is the wonder drug that keeps on giving: It’s now showing promise aga
+       @ibab (legacy 59) → event/author_collapse(dedupe win) | We’re launching River AI, a new AI company with the mission to build AI systems 
+       @VigilantFox (legacy 59) → off_topic(model_label), event/author_collapse(dedupe win) | REPORT: Researchers are now pushing an AI-powered “super-vaccine” designed to “p
+       @nicksortor (legacy 58) → off_topic(python:no-tech-tokens), event/author_collapse(dedupe win) | 🚨 NOW: The Collin County courthouse where Karmelo Anthony was convicted yesterda
+   ⚠️ DROPPED with NO guard reason (HUMAN REVIEW — may be over-tight gate):
+       @ycombinator (legacy 64) | Brex co-founder and CEO Pedro Franceschi believes most people still underestimat
+       @ylecun (legacy 59) | RT @askalphaxiv: As believers of open research, we are disappointed to see Anthr
+
+=== SUMMARY: 1 snapshot(s) | gates top=60 also=50 | 2 unexplained drop(s) across all ===
+⚠️ Unexplained drops present — gates may be too tight, or a real item is being cut. Review before P2.4 flip.

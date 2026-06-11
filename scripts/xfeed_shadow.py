@@ -111,12 +111,11 @@ def _legacy_selection(raw_pool, max_top, max_also, top_gate, also_gate):
         top = [r for r in raw_pool if str(r.get("tweet_id")) in selected_ids]
         also = [r for r in raw_pool if str(r.get("tweet_id")) in qh_ids]
         return top, also, "recorded"
-    # Fallback: rank by legacy final_score, apply the product gates.
-    ranked = sorted(raw_pool, key=lambda r: r.get("final_score", r.get("base_score", 0)),
-                    reverse=True)
+    # Fallback: rank by legacy score, apply the product gates.
+    ranked = sorted(raw_pool, key=_legacy_score, reverse=True)
     top, also = [], []
     for r in ranked:
-        f = r.get("final_score", r.get("base_score", 0))
+        f = _legacy_score(r)
         if f >= top_gate and len(top) < max_top:
             top.append(r)
         elif f >= also_gate and len(also) < max_also:
@@ -138,7 +137,18 @@ def _deterministic_selection(raw_pool, max_top, max_also, top_gate, also_gate):
 def _guard_reason(item):
     """Why would the deterministic engine drop a tweet the legacy path posted?
     Returns a short reason string if a KNOWN guard fires (a 'good' drop), else
-    None (a drop with no guard explanation → human review)."""
+    None (a drop with no guard explanation → human review).
+
+    Guards considered (all are reasons the cutover EXISTS to drop a tweet):
+      - bare fragment (no standalone substance)
+      - python on-topic override (zero tech tokens) — the hard backstop
+      - MODEL on_topic=off — politics/health/insult the model itself flagged; the
+        deterministic engine applies OFF_TOPIC_PEN so it scores below gate. This
+        is a legitimate, explained drop even when python_on_topic leaves the label
+        alone (e.g. an "AI super-vaccine" health tweet carries the token "AI").
+      - MODEL content_type promo/reply_fragment — ad/shill or bare reply.
+      - engagement-gamed unknown author (not a thought-leader, below low-reach floor)
+    """
     import score_digest as S
     import select_digest as SEL
     reasons = []
@@ -148,6 +158,11 @@ def _guard_reason(item):
     py_ot, py_reason = S.python_on_topic(item)
     if py_ot == "off":
         reasons.append(f"off_topic({py_reason})")
+    elif str(item.get("on_topic")).lower() == "off":
+        reasons.append("off_topic(model_label)")
+    ct = str(item.get("content_type")).lower()
+    if ct in ("promo", "reply_fragment"):
+        reasons.append(f"low_value({ct})")
     # engagement-gamed unknown author: not a thought-leader + below low-reach floor
     tl, ta = S._load_thought_leaders()
     if not S._is_thought_leader(item, tl, ta):
@@ -155,6 +170,17 @@ def _guard_reason(item):
         if cap is not None:
             reasons.append(f"low_reach_unknown_author(eng={SEL._engagement(item)})")
     return ", ".join(reasons) if reasons else None
+
+
+def _legacy_score(r):
+    """Legacy posted score, tolerant of both the live dump (final_score) and the
+    backfilled labeled pool (legacy_final_score)."""
+    v = r.get("final_score")
+    if v is None:
+        v = r.get("legacy_final_score")
+    if v is None:
+        v = r.get("base_score", r.get("legacy_base_score", 0))
+    return v
 
 
 def _diff_one(path, max_top, max_also, top_gate, also_gate):
@@ -173,6 +199,14 @@ def _diff_one(path, max_top, max_also, top_gate, also_gate):
     leg_posted = {_key(r): r for r in (leg_top + leg_also)}
     det_posted = {_key(r): r for r in (det_top + det_also)}
 
+    # Map every deterministically-discarded item to the engine's own drop reason
+    # (event_dup = same-event/same-author collapse, below_gate_or_cap, bare_fragment).
+    # A legacy-posted tweet the engine collapsed as a dup is a GOOD drop (the brief
+    # would otherwise carry 2-3 near-duplicate tweets from one author/event).
+    det_drop_reason = {}
+    for d in det_disc:
+        det_drop_reason[_key(d)] = d.get("_drop")
+
     added = [k for k in det_posted if k not in leg_posted]
     removed = [k for k in leg_posted if k not in det_posted]
     kept = [k for k in det_posted if k in leg_posted]
@@ -182,9 +216,15 @@ def _diff_one(path, max_top, max_also, top_gate, also_gate):
     for k in removed:
         item = _prep_pool([leg_posted[k]])[0]
         gr = _guard_reason(item)
+        # Fold in the engine's structural drop reason (event/author collapse is a win).
+        edrop = det_drop_reason.get(k)
+        if edrop == "event_dup":
+            gr = (gr + ", " if gr else "") + "event/author_collapse(dedupe win)"
+        elif edrop == "bare_fragment" and not gr:
+            gr = "bare_fragment"
         rec = {"key": k, "handle": leg_posted[k].get("authorHandle"),
-               "snippet": (leg_posted[k].get("text_snippet") or "")[:80],
-               "legacy_score": leg_posted[k].get("final_score"),
+               "snippet": (leg_posted[k].get("text_snippet") or leg_posted[k].get("tweet_text") or "")[:80],
+               "legacy_score": _legacy_score(leg_posted[k]),
                "guard": gr}
         (good_drops if gr else bad_drops).append(rec)
 
