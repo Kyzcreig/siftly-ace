@@ -57,3 +57,5 @@ gates: TOP=58 ALSO=50 cap=45 | pf=ON model_labeled=100
   pf         : mean= -1.4 stdev= 2.8 range=[-3,5]
   recency    : mean=  0.1 stdev= 0.8 range=[0,6]
   media      : mean=  0.0 stdev= 0.0 range=[0,0]
+
+-> /Users/alexgierczyk/Projects/siftly-ace/scripts/../docs/eval/calibration/step3-report.txt + step3-measurement.json

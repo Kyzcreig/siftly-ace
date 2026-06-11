@@ -18,7 +18,7 @@ USAGE
   calibrate_scoring.py --measure --limit 400
 """
 from __future__ import annotations
-import argparse, json, os, sqlite3, statistics, sys, glob, random
+import argparse, json, os, sqlite3, statistics, sys, glob, random, subprocess, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import score_digest as SD
@@ -172,6 +172,71 @@ def load_soft_negatives(limit=None):
     return soft
 
 
+PF_SCORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pf-score.py")
+
+
+def inject_pf(items):
+    """Run the REAL pf-score.py over the items and merge personal_fit_delta back,
+    so the harness scores with the same pf signal the live digest uses (the offline
+    Step-3 baseline had pf=0 because it was never computed)."""
+    payload = {"candidates": [{"id": str(i), "authorHandle": it.get("authorHandle"),
+                               "tweet_text": it.get("tweet_text"), "source": "x"}
+                              for i, it in enumerate(items)]}
+    try:
+        proc = subprocess.run([sys.executable, PF_SCORE, "-"], input=json.dumps(payload),
+                              capture_output=True, text=True, timeout=120)
+        out = json.loads(proc.stdout)
+        by_id = {str(r["id"]): r.get("personal_fit_delta", 0) for r in out.get("items", [])}
+        for i, it in enumerate(items):
+            it["personal_fit_delta"] = by_id.get(str(i), 0)
+    except Exception as e:
+        print(f"[pf inject failed: {e}; leaving pf=0]", file=sys.stderr)
+    return items
+
+
+def model_label_sample(items, n, bridge_provider="claude-bridge-f2", model="claude-opus-4-8"):
+    """Re-label a sample with a REAL model pass (production-quality labels) to check
+    whether the 0-30 positives cluster is genuine vs a heuristic-labeling artifact.
+    Returns the sample with model labels merged. Batched to keep the prompt bounded."""
+    random.seed(44)
+    sample = random.sample(items, min(n, len(items)))
+    BATCH = 25
+    labeled = []
+    for b in range(0, len(sample), BATCH):
+        chunk = sample[b:b + BATCH]
+        lines = [f"{i}: {(it.get('tweet_text') or '')[:200]}" for i, it in enumerate(chunk)]
+        prompt = ("Label each tweet with EXACTLY these 4 enum fields. Output ONLY a JSON array "
+                  "of objects [{i, content_type, actionability, substance, on_topic}], one per input index.\n"
+                  "content_type: launch|benchmark|tutorial|field_report|analysis|news|opinion|promo|reply_fragment\n"
+                  "actionability: actionable_now|reference|context_only|none\n"
+                  "substance: concrete|mixed|vague\n"
+                  "on_topic: core|adjacent|off (core=AI/agents/building; adjacent=tangential/memes; off=politics/health/unrelated)\n\n"
+                  + "\n".join(lines))
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+            f.write(prompt); pf = f.name
+        try:
+            proc = subprocess.run(["hermes", "-z", open(pf).read(), "--provider", bridge_provider,
+                                   "-m", model], capture_output=True, text=True, timeout=300)
+            txt = proc.stdout.strip()
+            j0, j1 = txt.find("["), txt.rfind("]")
+            arr = json.loads(txt[j0:j1 + 1]) if j0 >= 0 else []
+            by_i = {int(o["i"]): o for o in arr if "i" in o}
+            for i, it in enumerate(chunk):
+                o = by_i.get(i)
+                if o:
+                    for k in ("content_type", "actionability", "substance", "on_topic"):
+                        if o.get(k):
+                            it[k] = o[k]
+                    it["_model_labeled"] = True
+                labeled.append(it)
+        except Exception as e:
+            print(f"[model-label batch {b} failed: {e}]", file=sys.stderr)
+            labeled.extend(chunk)
+        finally:
+            os.unlink(pf)
+    return labeled
+
+
 def score_all(items, tl, ta, trk):
     out = []
     for it in items:
@@ -224,11 +289,20 @@ def histogram(xs, width=40, buckets=10):
     return "\n".join(lines)
 
 
-def measure(limit=None):
+def measure(limit=None, use_pf=True, model_label_n=0):
     tl, ta = _load_thought_leaders()
     trk = set(_load_tracked_projects())
     pos_items, hardneg_items = load_bookmarks(limit)
     soft_items = load_soft_negatives(limit)
+
+    if model_label_n:
+        print(f"[model-labeling {model_label_n} positives via bridge — checking heuristic-label artifact...]", file=sys.stderr)
+        pos_items = model_label_sample(pos_items, model_label_n)
+        ml = sum(1 for it in pos_items if it.get("_model_labeled"))
+        print(f"[model-labeled {ml}/{len(pos_items)} positives]", file=sys.stderr)
+
+    if use_pf:
+        inject_pf(pos_items); inject_pf(hardneg_items)
 
     pos = score_all(pos_items, tl, ta, trk)
     hardneg = score_all(hardneg_items, tl, ta, trk)
@@ -237,7 +311,7 @@ def measure(limit=None):
     report = []
     report.append("=" * 64)
     report.append("STEP 3 — bookmark-calibration MEASUREMENT (current constants)")
-    report.append(f"gates: TOP={SD.TOP_GATE} ALSO={SD.ALSO_GATE} cap={SD.LOW_REACH_SCORE_CAP}")
+    report.append(f"gates: TOP={SD.TOP_GATE} ALSO={SD.ALSO_GATE} cap={SD.LOW_REACH_SCORE_CAP} | pf={'ON' if use_pf else 'OFF'} model_labeled={model_label_n}")
     report.append("=" * 64)
     for name, xs in (("POSITIVES (productive bookmarks)", pos),
                      ("HARD NEG (politics/meme/sports/crypto bookmarks)", hardneg),
@@ -284,9 +358,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--measure", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--no-pf", action="store_true", help="skip pf injection (offline baseline)")
+    ap.add_argument("--model-label", type=int, default=0, help="re-label N positives with a real model pass")
     args = ap.parse_args()
     if args.measure:
-        measure(args.limit)
+        measure(args.limit, use_pf=not args.no_pf, model_label_n=args.model_label)
     else:
         ap.print_help()
 
