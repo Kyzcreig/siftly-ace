@@ -1,0 +1,126 @@
+{
+  "_meta": {
+    "purpose": "Frozen gold set for deterministic-digest-scoring shadow gate (SPEC §6a). Apollo pre-labels; ACE RATIFIES. Versioned in-repo so shadow runs are reproducible.",
+    "label_semantics": {
+      "known_good": "ideal placement is TOP or ALSO (must score >= ALSO_GATE; known_good in TOP must not be displaced by known_bad)",
+      "known_bad": "spam / fragment / off-topic / engagement-farmed — must NEVER reach TOP",
+      "neutral": "benign but low-value — must NOT appear in TOP; no ordering constraint"
+    },
+    "shadow_pass_bar": [
+      "zero known_bad items land in the TOP set, across all N shadow days",
+      "every known_good item scores >= (re-derived) ALSO_GATE",
+      "top-5 set-overlap with the human-ideal TOP >= 0.8 (4 of 5)",
+      "new gates reproduce current digest cardinality (~MAX_TOP + MAX_ALSO) on the shadow corpus"
+    ],
+    "status": "DRAFT — awaiting Ace ratification of each label",
+    "created": "2026-06-11",
+    "owner_ratify": "Ace"
+  },
+  "items": [
+    {
+      "id": "incident-yohei-2like",
+      "source": "x", "handle": "yoheinakajima", "likes": 2, "retweets": 0,
+      "text": "two fun surprises from using activegraph: the coding agent queried the trace db to debug instead of reading logs (i didn't ask it to); when long eval runs broke it always picked up from right before",
+      "label": "neutral",
+      "why": "real builder, genuinely interesting, but 2 likes = no crowd signal; should NOT have hit 100/TOP. Acceptable as ALSO at most, not TOP. The headline regression case."
+    },
+    {
+      "id": "incident-bitnewsbot-spam",
+      "source": "x", "handle": "bitnewsbot", "likes": 0, "retweets": 0,
+      "text": "#bitcoin #cryptonews pump now huge gains",
+      "label": "known_bad",
+      "why": "crypto spam bot, zero engagement, unknown handle — must never reach TOP. Was flat-rated base 80."
+    },
+    {
+      "id": "incident-emollick-routing",
+      "source": "x", "handle": "emollick", "likes": 249, "retweets": 30,
+      "text": "Here's how the new routing model changes agent design — concrete walkthrough of the tradeoffs",
+      "label": "known_good",
+      "why": "real thought-leader, substantive, strong engagement. Should be TOP. Was scored 71 BELOW the spam bot — the inversion this redesign fixes."
+    },
+    {
+      "id": "incident-elon-reply-fragment",
+      "source": "x", "handle": "elonmusk", "likes": 5000, "retweets": 100,
+      "text": "True",
+      "label": "known_bad",
+      "why": "bare reply fragment from a thought-leader; high engagement must NOT rescue a one-word reply into TOP. The 2026-06-10 all-Elon political wall case."
+    },
+    {
+      "id": "incident-elon-politics",
+      "source": "x", "handle": "elonmusk", "likes": 8000, "retweets": 400,
+      "text": "Murderous migrants beheading — outrage about a political news event unrelated to AI/building",
+      "label": "known_bad",
+      "why": "off-topic political rage-bait from a thought-leader; off_topic penalty + TL-bump-gated-off must keep it out of TOP regardless of engagement."
+    },
+    {
+      "id": "real-anthropic-policy",
+      "source": "x", "handle": "AnthropicAI", "likes": 1200, "retweets": 150,
+      "text": "AI is advancing at a pace our policymaking institutions were not built for — announcing our policy framework",
+      "label": "neutral",
+      "why": "real lab, on-topic, but it's policy-PR not actionable builder content; fine as ALSO, not a TOP must-have."
+    },
+    {
+      "id": "real-ibab-river-launch",
+      "source": "x", "handle": "ibab", "likes": 476, "retweets": 17,
+      "text": "We are releasing River API, our first product, in early access — battle-tested tools for post-training, RL and continual learning",
+      "label": "known_good",
+      "why": "genuine product launch from a known builder, real engagement, actionable. Should be TOP/ALSO."
+    },
+    {
+      "id": "real-steipete-orchestrator-loop",
+      "source": "x", "handle": "steipete", "likes": 853, "retweets": 65,
+      "text": "Here's a simple loop: tell codex to maintain your repos, wake every 5 minutes and direct work to threads — easy to parallelize+steer",
+      "label": "known_good",
+      "why": "concrete actionable builder workflow, strong engagement, on-topic. Top-tier digest material."
+    },
+    {
+      "id": "real-hn-fable-guardrails",
+      "source": "hackernews", "handle": "HN", "hn_points": 234,
+      "text": "Cybersecurity researchers aren't happy about the guardrails on Anthropic's Fable",
+      "label": "known_good",
+      "why": "front-page HN, 234 pts, on-topic AI safety/security discussion. Strong ALSO/TOP."
+    },
+    {
+      "id": "real-hn-apache-burr",
+      "source": "hackernews", "handle": "HN", "hn_points": 80,
+      "text": "Apache Burr: Build reliable AI agents and applications",
+      "label": "known_good",
+      "why": "on-topic agent tooling, Show-HN style, actionable for a builder."
+    },
+    {
+      "id": "real-hn-css-bad-parts",
+      "source": "hackernews", "handle": "HN", "hn_points": 60,
+      "text": "CSS: Unavoidable Bad Parts",
+      "label": "neutral",
+      "why": "decent HN post but off the AI/agent core; should not displace on-topic items in TOP."
+    },
+    {
+      "id": "real-hn-klondike-curses",
+      "source": "hackernews", "handle": "HN", "hn_points": 30,
+      "text": "Klondike Solitaire game for curses in 5k of C",
+      "label": "neutral",
+      "why": "fun but off-topic hobby project; never TOP."
+    },
+    {
+      "id": "real-hn-world-capitals-voronoi",
+      "source": "hackernews", "handle": "HN", "hn_points": 25,
+      "text": "World Capitals Voronoi",
+      "label": "neutral",
+      "why": "off-topic visualization toy; never TOP."
+    },
+    {
+      "id": "real-voxyz-claude-learning-repo",
+      "source": "x", "handle": "Voxyz_ai", "likes": 36, "retweets": 1,
+      "text": "copy this into claude code and it builds the whole learning repo, any field: I want to use Claude Code to learn a new field...",
+      "label": "neutral",
+      "why": "actionable template but low engagement and unknown handle; borderline — good ALSO candidate, must not auto-TOP on label alone (tests the unknown-handle engagement cap)."
+    },
+    {
+      "id": "real-vigilantfox-ivermectin",
+      "source": "x", "handle": "VigilantFox", "likes": 2170, "retweets": 133,
+      "text": "Ivermectin is the wonder drug that keeps on giving",
+      "label": "known_bad",
+      "why": "off-topic health/politics rage-bait with high engagement; the engagement term must NOT carry it into TOP — off_topic penalty case."
+    }
+  ]
+}

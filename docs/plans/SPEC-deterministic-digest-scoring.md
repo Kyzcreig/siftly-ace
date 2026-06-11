@@ -184,6 +184,11 @@ These are the literal acceptance gates (mirrored in §7). If any fails, tune con
 
 ---
 
+## 8b. Related config change — x-feed-brief back to 5 posts (Ace, 2026-06-11)
+Separate from the scoring redesign but bundled into this rollout: **reduce the X Feed Brief Top set from 10 → 5**. `~/.hermes/state/cron/x-feed-brief/prompt.md` currently says "select up to 10" in three places (Step 6 header L123, Step 6 body L124, render L210/L236/L242/L247). Change all "up to 10" / "10 → 9 → 8" references to **5**. This is a **Hard-Config-Rules edit** (diff → backup → approve → verify) — it ships with the cutover batch, NOT applied unilaterally. Rationale: 10 is too long for a daily skim; 5 keeps it high-signal. The deterministic scorer (once ported to x-feed-brief per Open-Q4) makes the top-5 cut more trustworthy.
+
+---
+
 ## 9. Pass-1 review resolution map (senior review, claude-bridge-f2/Opus, APPROVE-WITH-CHANGES)
 | # | Blocker | Resolution |
 |---|---|---|
