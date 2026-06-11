@@ -147,8 +147,12 @@ _EMOJI_RE = re.compile(
 
 
 def _item_text(item):
+    # text_snippet is the x-feed scored-dump field (Step 6.7, ≤120 chars). It is a
+    # LAST-RESORT fallback only: morning-digest rows carry tweet_text/title/summary/
+    # line and never text_snippet, so this is byte-identical for morning-digest while
+    # giving the x-feed deterministic shadow real text to run its guards on.
     return (item.get("tweet_text") or item.get("title") or item.get("summary")
-            or item.get("line") or "")
+            or item.get("line") or item.get("text_snippet") or "")
 
 
 def _substance(text):
@@ -523,6 +527,14 @@ def main(argv=None):
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--engine", choices=["legacy", "deterministic"], default="legacy",
                     help="scoring engine: legacy prose base_score, or deterministic (score_digest.py)")
+    # #2 P2.2: per-brief caps/gates exposed on the CLI (None → module defaults) so a
+    # second brief (x-feed) can request its own slot counts/gates without editing this
+    # file. These thread into build_render_input → select_shadow's P2.1 kwargs; they are
+    # a no-op for morning-digest, which passes none (byte-identical selection preserved).
+    ap.add_argument("--max-top", type=int, default=None, help="override MAX_TOP slot cap")
+    ap.add_argument("--max-also", type=int, default=None, help="override MAX_ALSO slot cap")
+    ap.add_argument("--top-gate", type=int, default=None, help="override TOP_GATE threshold")
+    ap.add_argument("--also-gate", type=int, default=None, help="override ALSO_GATE threshold")
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -532,7 +544,10 @@ def main(argv=None):
         data = json.load(f)
     tl_handles, tl_aliases = _load_thought_leaders()
     tracked = _load_tracked_projects()
-    render_input = build_render_input(data, tl_handles, tl_aliases, tracked, engine=args.engine)
+    render_input = build_render_input(
+        data, tl_handles, tl_aliases, tracked, engine=args.engine,
+        max_top=args.max_top, max_also=args.max_also,
+        top_gate=args.top_gate, also_gate=args.also_gate)
     with open(args.out, "w") as f:
         json.dump(render_input, f, ensure_ascii=False, indent=2)
     aud = render_input["_select_audit"]
