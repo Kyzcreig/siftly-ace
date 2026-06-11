@@ -467,14 +467,19 @@ def _to_render_item(it):
     return out
 
 
-def build_render_input(data, tl_handles, tl_aliases, tracked, now=None, engine="legacy"):
+def build_render_input(data, tl_handles, tl_aliases, tracked, now=None, engine="legacy",
+                       max_top=None, max_also=None, top_gate=None, also_gate=None):
     pool = data.get("all_scored") or []
     if engine == "deterministic":
         # CUTOVER (2026-06-11): the deterministic scorer (score_digest.py) owns the
         # `final`; this module stays the single render-contract authority but its
         # scoring is swapped. Lazy import avoids the score_digest<->select_digest cycle.
         import score_digest as _sd  # noqa: E402
-        selected, also, discarded, _meta = _sd.select_shadow(pool, tl_handles, tl_aliases, tracked, now=now)
+        # #2 P2.1: per-brief caps/gates thread through as explicit kwargs (None →
+        # module defaults), never via global mutation, so morning-digest is unaffected.
+        selected, also, discarded, _meta = _sd.select_shadow(
+            pool, tl_handles, tl_aliases, tracked, now=now,
+            max_top=max_top, max_also=max_also, top_gate=top_gate, also_gate=also_gate)
     else:
         selected, also, discarded = select(pool, tl_handles, tl_aliases, tracked)
     now = now or datetime.datetime.now()

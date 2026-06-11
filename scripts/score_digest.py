@@ -299,16 +299,17 @@ def media_points(item):
     return 0
 
 
-def low_reach_cap(item, is_known):
+def low_reach_cap(item, is_known, cap_val=None):
     """§4.3: permanent floor-guard. Unknown handle + engagement below floor on an
-    X item → cap at LOW_REACH_SCORE_CAP (computed < ALSO_GATE)."""
+    X item → cap at cap_val (defaults to module LOW_REACH_SCORE_CAP; an override
+    threads through from select_shadow when a per-brief also_gate is supplied)."""
     if not _is_x(item):
         return None
     if is_known:
         return None
     if _engagement(item) >= LOW_REACH_ENGAGEMENT_FLOOR:
         return None
-    return LOW_REACH_SCORE_CAP
+    return LOW_REACH_SCORE_CAP if cap_val is None else cap_val
 
 
 # ── Label-trust backstops (SPEC-label-trust-backstops.md) ───────────────────
@@ -395,7 +396,7 @@ def python_on_topic(item):
     return "off", "python:no-tech-tokens"
 
 
-def score_item(item, tl_handles, tl_aliases, tracked, now=None):
+def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_val=None):
     """Deterministic score + term-by-term breakdown (§5). Returns dict with
     `_final` and `_breakdown`."""
     labels, coerced, raw = normalize_labels(item)
@@ -436,7 +437,7 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None):
     pre = base + sub + eng + auth + pf + rec + med - off
     final = max(0.0, min(100.0, float(pre)))
 
-    cap = low_reach_cap(item, is_known)
+    cap = low_reach_cap(item, is_known, cap_val=low_reach_cap_val)
     capped = False
     if cap is not None and final > cap:
         final, capped = float(cap), True
@@ -482,7 +483,8 @@ def _placement_sort_key(it, now=None):
     return (it["_final"], _engagement(it), _item_text(it))
 
 
-def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None):
+def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None, *,
+                  max_top=None, max_also=None, top_gate=None, also_gate=None):
     """Full deterministic SELECT pipeline (shadow-only — does NOT post).
 
     Single-authority per spec §4.4: score_digest.py owns the `final`; we then apply
@@ -491,7 +493,20 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
     select_digest.select() but fed by the new deterministic scorer, so the dry-run
     preview is faithful (deduped, capped, distributed) — closing the 3 gaps the raw
     --shadow score dump showed (dupes, >MAX_TOP overflow, no distribution).
+
+    Caps/gates are PARAMETERIZED (#2 P2.1) so a second brief (x-feed) can request
+    its own slot counts/gates WITHOUT mutating module globals (which would corrupt
+    the live morning-digest that shares this module). None → mode-aware module
+    defaults, so morning-digest behavior is byte-identical when no override given.
+    The low-reach cap is recomputed LOCALLY from the effective also_gate so a gate
+    override actually moves the cap (it does NOT pick up the module constant).
     """
+    mt = MAX_TOP if max_top is None else max_top
+    ma = MAX_ALSO if max_also is None else max_also
+    tg = TOP_GATE if top_gate is None else top_gate
+    ag = ALSO_GATE if also_gate is None else also_gate
+    low_reach_cap_val = ag - 5  # recomputed from the EFFECTIVE also_gate, not the module constant
+
     if tl_handles is None:
         tl_handles, tl_aliases = _load_thought_leaders()
     if tracked is None:
@@ -505,7 +520,8 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
         # so a bare fragment is dropped (not just zero-based) for parity.
         if is_bare_fragment(_item_text(raw)):
             d = dict(raw); d["_drop"] = "bare_fragment"; discarded.append(d); continue
-        scored.append(score_item(raw, tl_handles, tl_aliases or [], tracked, now=now))
+        scored.append(score_item(raw, tl_handles, tl_aliases or [], tracked, now=now,
+                                 low_reach_cap_val=low_reach_cap_val))
 
     scored.sort(key=lambda it: _placement_sort_key(it, now=now), reverse=True)
 
@@ -520,9 +536,9 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
     selected, also = [], []
     for it in scored:
         f = it["_final"]
-        if f >= TOP_GATE and len(selected) < MAX_TOP:
+        if f >= tg and len(selected) < mt:
             selected.append(it)
-        elif f >= ALSO_GATE and len(also) < MAX_ALSO:
+        elif f >= ag and len(also) < ma:
             also.append(it)
         else:
             d = dict(it); d["_drop"] = "below_gate_or_cap"; discarded.append(d)
@@ -531,9 +547,9 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
     overrides = sum(1 for it in scored if it["_breakdown"]["on_topic_overridden"])
     meta = {"scored": len(scored), "label_coercion_count": coercion,
             "on_topic_overrides": overrides,
-            "gates": {"top": TOP_GATE, "also": ALSO_GATE, "low_reach_cap": LOW_REACH_SCORE_CAP},
-            "cleared_top": sum(1 for it in scored if it["_final"] >= TOP_GATE),
-            "cleared_also": sum(1 for it in scored if it["_final"] >= ALSO_GATE)}
+            "gates": {"top": tg, "also": ag, "low_reach_cap": low_reach_cap_val},
+            "cleared_top": sum(1 for it in scored if it["_final"] >= tg),
+            "cleared_also": sum(1 for it in scored if it["_final"] >= ag)}
     return selected, also, discarded, meta
 
 
@@ -718,6 +734,40 @@ def _selftest():
     dg = [it for it in all_out if "diffusiongemma" in _item_text(it).lower()]
     check(len(dg) <= 1, f"event-collapse failed: {len(dg)} DiffusionGemma items survived")
     check(any(it.get("_drop") == "event_dup" for it in disc), "no event_dup in discarded")
+
+    # --- (#2 P2.1) parameterized caps/gates: per-brief overrides thread through
+    # WITHOUT mutating module globals (morning-digest must stay byte-identical). ---
+    # (a) no-override == module defaults: same selection as the default call.
+    sel_def, also_def, _d, m_def = select_shadow(dup_pool, tl_h, tl_a, trk)
+    sel_none, also_none, _d2, m_none = select_shadow(
+        dup_pool, tl_h, tl_a, trk, max_top=None, max_also=None, top_gate=None, also_gate=None)
+    check([_item_text(x) for x in sel_def] == [_item_text(x) for x in sel_none],
+          "explicit-None overrides changed the default selection")
+    check(m_none["gates"]["top"] == TOP_GATE and m_none["gates"]["also"] == ALSO_GATE,
+          "None overrides did not fall back to module gates")
+    # (b) higher max_also (x-feed Quick Hits = 5) lets more 'also' through.
+    many = [base_item(f"u{i}", f"distinct on-topic AI dev tool launch number {i} with code", 300 + i)
+            for i in range(8)]
+    _s, also_hi, _dd, m_hi = select_shadow(many, tl_h, tl_a, trk, max_top=5, max_also=5,
+                                           top_gate=49, also_gate=45)
+    check(len(also_hi) <= 5, f"max_also=5 exceeded: {len(also_hi)}")
+    check(m_hi["gates"]["also"] == 45 and m_hi["gates"]["low_reach_cap"] == 40,
+          f"override gate/cap not threaded: {m_hi['gates']}")
+    # (c) low_reach cap MOVES with also_gate end-to-end: an unknown-author low-reach
+    # item capped at 40 (also_gate=45) must score <=40, vs <=45 at the default.
+    lowreach_item = {"source": "x", "authorHandle": "nobody_unknown", "content_type": "launch",
+                     "actionability": "actionable_now", "substance": "concrete", "on_topic": "core",
+                     "likes": 1, "retweets": 0, "tweet_text": "tiny launch of an AI dev tool with code repo"}
+    s_ovr = score_item(lowreach_item, tl_h, tl_a, trk, low_reach_cap_val=40)
+    check(s_ovr["_final"] <= 40, f"overridden low_reach cap did not bind: {s_ovr['_final']}")
+    check(s_ovr["_breakdown"]["low_reach_capped"] is True, "override low-reach cap did not fire")
+    # (d) Quick-Hits (also) get the SAME event-collapse as Top: a pile-on cannot
+    # fill 'also' with dupes even with max_also=5.
+    pile = [base_item(f"acc{i}", "SharedLaunch X1 mega distinctive phrase now available everywhere today", 100 + i)
+            for i in range(5)]
+    _s3, also_pile, disc_pile, _m3 = select_shadow(pile, tl_h, tl_a, trk, max_top=5, max_also=5)
+    sl = [it for it in (_s3 + also_pile) if "sharedlaunch x1" in _item_text(it).lower()]
+    check(len(sl) <= 1, f"Quick-Hits pile-on not event-deduped: {len(sl)} survived")
 
     # --- (b) recency-as-tiebreak: additive recency goes to 0; freshness only
     # breaks ties (newer wins). Validate the helpers directly (env flag is read
