@@ -103,6 +103,16 @@ RECENCY_24H = 10
 RECENCY_3D = 6
 RECENCY_7D = 3
 
+# (b) Recency-as-tiebreak (calibration 2026-06-11): on a DAILY brief every
+# candidate is same-day, so the +10 <24h slab is a near-uniform offset that
+# compresses the usable score range. When RECENCY_AS_TIEBREAK is set, recency
+# contributes ZERO additive points and is instead used only to break ties
+# between equal-scored items (fresher wins). Ships DARK (default off) so the
+# live morning-digest is byte-identical until the gated cutover. The gates were
+# derived WITH the +10 in the sum, so flipping this live requires re-deriving
+# TOP_GATE/ALSO_GATE — that's the Hard-Config gate, not a silent flip.
+RECENCY_AS_TIEBREAK = os.environ.get("RECENCY_AS_TIEBREAK", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Media (§4.6): monotonic video/transcript >= image >= none.
 MEDIA_VIDEO = 4
 MEDIA_IMAGE = 2
@@ -211,6 +221,11 @@ def pf_points(item):
 
 
 def recency_points(item, now=None):
+    # (b) In tiebreak mode recency adds ZERO to the additive score; freshness is
+    # applied only as a sort tiebreak via recency_rank(). Default (dark) keeps
+    # the original additive slab so live behavior is unchanged.
+    if RECENCY_AS_TIEBREAK:
+        return 0
     ts = item.get("published_at") or item.get("created_at")
     if not ts:
         return 0
@@ -228,6 +243,21 @@ def recency_points(item, now=None):
     if age_h <= 168:
         return RECENCY_7D
     return 0
+
+
+def recency_rank(item, now=None):
+    """Freshness as a pure ordering key for tiebreaks (newer = larger). Returns a
+    float (negative age in hours); items with no/unparseable timestamp sort last.
+    Used as a sort tiebreak so equal-scored items prefer the fresher one without
+    inflating the additive score."""
+    ts = item.get("published_at") or item.get("created_at")
+    dt = _parse_ts(ts) if ts else None
+    if dt is None:
+        return float("-inf")
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return -((now - dt).total_seconds() / 3600.0)
 
 
 def _parse_ts(ts):
@@ -410,6 +440,16 @@ def score_pool(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None):
     return scored, coercion
 
 
+def _placement_sort_key(it, now=None):
+    """Shared ranking key. In tiebreak mode, freshness breaks ties AFTER score
+    and engagement but BEFORE the text fallback. In default (dark) mode the key
+    is byte-identical to the historical (final, engagement, text) tuple so live
+    selection is unchanged."""
+    if RECENCY_AS_TIEBREAK:
+        return (it["_final"], _engagement(it), recency_rank(it, now=now), _item_text(it))
+    return (it["_final"], _engagement(it), _item_text(it))
+
+
 def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None):
     """Full deterministic SELECT pipeline (shadow-only — does NOT post).
 
@@ -435,7 +475,7 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
             d = dict(raw); d["_drop"] = "bare_fragment"; discarded.append(d); continue
         scored.append(score_item(raw, tl_handles, tl_aliases or [], tracked, now=now))
 
-    scored.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+    scored.sort(key=lambda it: _placement_sort_key(it, now=now), reverse=True)
 
     # Event-collapse (5 accounts on one launch → 1 winner) BEFORE gating.
     scored, event_dropped = _sd_collapse_events(scored)
@@ -443,7 +483,7 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
 
     # Forced distribution (anti-inflation), then re-sort for placement.
     scored = _sd_apply_forced_distribution(scored)
-    scored.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+    scored.sort(key=lambda it: _placement_sort_key(it, now=now), reverse=True)
 
     selected, also = [], []
     for it in scored:
@@ -618,6 +658,22 @@ def _selftest():
     dg = [it for it in all_out if "diffusiongemma" in _item_text(it).lower()]
     check(len(dg) <= 1, f"event-collapse failed: {len(dg)} DiffusionGemma items survived")
     check(any(it.get("_drop") == "event_dup" for it in disc), "no event_dup in discarded")
+
+    # --- (b) recency-as-tiebreak: additive recency goes to 0; freshness only
+    # breaks ties (newer wins). Validate the helpers directly (env flag is read
+    # at import, so exercise the functions, not a re-import). ---
+    fresh = {"source": "x", "authorHandle": "nobody", "published_at": "2026-06-11T11:00:00Z"}
+    old = {"source": "x", "authorHandle": "nobody", "published_at": "2026-05-01T11:00:00Z"}
+    now_ref = datetime.datetime(2026, 6, 11, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    # recency_rank must order fresher > older, and a no-timestamp item sorts last
+    check(recency_rank(fresh, now=now_ref) > recency_rank(old, now=now_ref),
+          "recency_rank did not rank fresher above older")
+    check(recency_rank({"source": "x"}, now=now_ref) == float("-inf"),
+          "recency_rank of timestamp-less item should sort last")
+    # default-mode additive recency is the historical slab (<24h -> 10)
+    if not RECENCY_AS_TIEBREAK:
+        check(recency_points(fresh, now=now_ref) == RECENCY_24H,
+              "default recency slab broken")
 
     if fails:
         print("SELFTEST FAILED:")

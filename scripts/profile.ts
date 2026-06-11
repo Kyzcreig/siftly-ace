@@ -44,6 +44,7 @@ export interface PreferenceProfileAuthor {
 export interface PreferenceProfile {
   updated_at: string
   corpus_size: { bookmarks: number; likes: number }
+  signal_basis?: { mode: 'whole-corpus' | 'brief-relevant-only'; signal_rows: number }
   top_topics: PreferenceProfileTopic[]
   high_signal_authors: PreferenceProfileAuthor[]
   favorite_formats: string[]
@@ -58,6 +59,13 @@ export interface BuildPreferenceProfileOptions {
   authorLimit?: number
   formatLimit?: number
   logger?: Pick<Console, 'warn'>
+  // When true, only `brief-relevant` rows contribute to the topic/author/format
+  // signal. This de-contaminates the personal-fit profile so it rewards
+  // digest-taste (AI/dev/startups) instead of doom-scroll-taste (politics-heavy
+  // whole-corpus saves). Calibration ground-truth (2026-06-11): every actionable
+  // bookmark that missed TOP_GATE carried pf=-3 because the whole-corpus profile's
+  // top author was @elonmusk (260 saves) + top topics included politics.
+  briefRelevantOnly?: boolean
 }
 
 export interface PreferenceArtifactsOptions {
@@ -236,10 +244,18 @@ export function buildPreferenceProfile(rows: PreferenceProfileRow[], options: Bu
   const formatBuckets = new Map<string, WeightedBucket>()
   const negativeBuckets = new Map<string, WeightedBucket>()
   const corpusSize = { bookmarks: 0, likes: 0 }
+  const briefRelevantOnly = options.briefRelevantOnly ?? false
+  let signalRows = 0
 
   for (const signals of analyzedRows) {
     if (signals.source === 'bookmark') corpusSize.bookmarks += 1
     else corpusSize.likes += 1
+
+    // (c) Personal-fit de-contamination: when briefRelevantOnly is set, skip
+    // everything-else rows entirely so politics/memes/health do NOT shape the
+    // taste vector. corpusSize above still reflects the TRUE corpus.
+    if (briefRelevantOnly && signals.segment !== 'brief-relevant') continue
+    signalRows += 1
 
     for (const format of signals.formats) {
       addWeighted(formatBuckets, format, signals.weight, signals.segment)
@@ -263,6 +279,10 @@ export function buildPreferenceProfile(rows: PreferenceProfileRow[], options: Bu
   return {
     updated_at: isoNow(options.now),
     corpus_size: corpusSize,
+    signal_basis: {
+      mode: briefRelevantOnly ? 'brief-relevant-only' : 'whole-corpus',
+      signal_rows: signalRows,
+    },
     top_topics: sortedBuckets(topicBuckets)
       .slice(0, options.topTopicLimit ?? TOPIC_LIMIT)
       .map(([name, bucket]) => ({ name, weight: roundWeight(bucket.weight), segment: dominantSegment(bucket) })),
@@ -299,10 +319,10 @@ export async function writePreferenceArtifacts(
   return { jsonPath, markdownPath }
 }
 
-export async function runPreferenceProfile(): Promise<PreferenceArtifactsResult & { rows: number; profile: PreferenceProfile }> {
+export async function runPreferenceProfile(options: { briefRelevantOnly?: boolean } = {}): Promise<PreferenceArtifactsResult & { rows: number; profile: PreferenceProfile }> {
   const dbPath = resolveDatabasePath(process.env.DATABASE_URL, process.cwd())
   const rows = loadProfileRowsFromDatabase(dbPath)
-  const profile = buildPreferenceProfile(rows)
+  const profile = buildPreferenceProfile(rows, { briefRelevantOnly: options.briefRelevantOnly })
   const artifacts = await writePreferenceArtifacts(profile)
   return { ...artifacts, rows: rows.length, profile }
 }
@@ -718,11 +738,14 @@ if (isDirectRun()) {
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
     console.log(usage())
   } else {
-    runPreferenceProfile()
+    const briefRelevantOnly = process.argv.includes('--brief-relevant-only')
+    runPreferenceProfile({ briefRelevantOnly })
       .then((result) => {
         console.log([
           'preference-profile complete',
           `rows=${result.rows}`,
+          `signal_basis=${result.profile.signal_basis?.mode ?? 'whole-corpus'}`,
+          `signal_rows=${result.profile.signal_basis?.signal_rows ?? result.rows}`,
           `bookmarks=${result.profile.corpus_size.bookmarks}`,
           `likes=${result.profile.corpus_size.likes}`,
           `json=${result.jsonPath}`,

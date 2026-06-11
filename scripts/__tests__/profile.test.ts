@@ -141,6 +141,7 @@ describe('preference profile', () => {
     expect(Object.keys(profile)).toEqual([
       'updated_at',
       'corpus_size',
+      'signal_basis',
       'top_topics',
       'high_signal_authors',
       'favorite_formats',
@@ -149,9 +150,49 @@ describe('preference profile', () => {
       'scoring_guidance',
     ])
     expect(Object.keys(profile.corpus_size)).toEqual(['bookmarks', 'likes'])
+    expect(profile.signal_basis).toEqual({ mode: 'whole-corpus', signal_rows: 1 })
     expect(Object.keys(profile.top_topics[0])).toEqual(['name', 'weight', 'segment'])
     expect(Object.keys(profile.high_signal_authors[0])).toEqual(['handle', 'saves', 'weight'])
     expect(Object.keys(profile.novelty_profile)).toEqual(['evergreen_ratio'])
+  })
+
+  it('briefRelevantOnly excludes everything-else rows from signal but keeps true corpus_size (pf de-contamination)', () => {
+    const rows = [
+      row({ tweetId: 'ai-1', authorHandle: 'ai_author', source: 'bookmark' }),
+      // a politics row: counts in corpus, must NOT contribute to topics/authors
+      row({
+        tweetId: 'pol-1',
+        authorHandle: 'politics_author',
+        source: 'bookmark',
+        semanticTags: ['politics'],
+        categoryNames: ['Politics'],
+        categorySlugs: ['politics'],
+        entities: { hashtags: [], urls: [], mentions: [], tools: [], tweetType: 'single', contextAnnotations: [] },
+        enrichmentMeta: {
+          segment: 'everything-else',
+          topicTags: ['politics'],
+          categories: ['politics'],
+          formatFlags: { format: 'single', is_single: true, has_code: false },
+        },
+        embedding: [0, 1, 0, 0],
+      }),
+    ]
+
+    const whole = buildPreferenceProfile(rows, { now: '2026-06-08T12:00:00.000Z' })
+    const briefOnly = buildPreferenceProfile(rows, { now: '2026-06-08T12:00:00.000Z', briefRelevantOnly: true })
+
+    // corpus_size identical (true corpus preserved in both)
+    expect(briefOnly.corpus_size).toEqual({ bookmarks: 2, likes: 0 })
+    expect(whole.corpus_size).toEqual(briefOnly.corpus_size)
+
+    // signal_basis provenance is stamped
+    expect(whole.signal_basis).toEqual({ mode: 'whole-corpus', signal_rows: 2 })
+    expect(briefOnly.signal_basis).toEqual({ mode: 'brief-relevant-only', signal_rows: 1 })
+
+    // whole-corpus picks up the politics author; brief-only must not
+    expect(whole.high_signal_authors.map((a) => a.handle)).toContain('politics_author')
+    expect(briefOnly.high_signal_authors.map((a) => a.handle)).not.toContain('politics_author')
+    expect(briefOnly.high_signal_authors.map((a) => a.handle)).toContain('ai_author')
   })
 
   it('writes both machine-readable JSON and human-readable Obsidian artifacts', async () => {
