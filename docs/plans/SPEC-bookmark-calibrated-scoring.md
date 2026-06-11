@@ -143,3 +143,17 @@ Evidence (all on real bookmark data):
 
 ### Decision needed from Ace
 The big re-fit is **not warranted**. The productive, bounded improvements are: (b) recency→tiebreak, (a) inspect/soften base for analysis/field_report, (c) rebuild pf profile from productive saves. Recommend doing (b)+(c) (cheap, clearly correct) and inspecting (a) before any base-table change.
+
+---
+
+## RESOLUTION — shipped 2026-06-11 (Ace approved all)
+
+All items closed. Tooling: `scripts/inspect_missgate.py`, `scripts/calibrate_pf_baseline.py`, `scripts/calibrate_gate_recency.py` (all cache model labels to /tmp; re-runnable cheaply).
+
+- **(a) miss-set inspected.** Dumped the 8–9 actionable bookmarks under the gate with full term decomposition. Root cause was NOT the base table and NOT pf — it was the **unknown-author engagement cap** (every miss had `eng=6`). See (4).
+- **(c) pf profile de-contaminated — DONE, live.** Added `buildPreferenceProfile({briefRelevantOnly})` + `profile.ts --brief-relevant-only`; only `brief-relevant` rows shape the taste vector (corpus_size still true). Regenerated live profile → **politics topic rank 4→12 (w 1057→255)**. `signal_basis` provenance stamped. NOTE: pf turned out NOT to be the edge-cluster lever (gate clearance identical across baseline 0.13–0.18) — left live `PF_BASELINE=0.18`.
+- **(4) engagement cap 6→10 — DONE, live (THE real lever).** `ENGAGEMENT_CAP_UNKNOWN` 6→10. Recovers 4/8 edge misses (32→36 of 40 actionable clear) with **0/300 hard-negs** breaching the gate. Anti-bot intact (50k-like promo spam still scores 0; the guard is `low_reach_cap` + base gating, not this cap). Selection-neutral on the live debug pool.
+- **(3) on-topic backstop false-drop — DONE, live.** Added `ON_TOPIC_STEMS` prefix-match so dev inflections (`coded`, `extension`) aren't force-dropped off-topic; @levelsio rescued, politics/insults/founder-flex still OFF.
+- **(b) recency→tiebreak — DONE, live (CUTOVER 2026-06-11).** `RECENCY_AS_TIEBREAK=1` set in `morning-digest/prompt.md` Step 6.7. Recency contributes 0 additive points and only breaks ties (fresher wins). Mode-aware gates: tiebreak mode uses **TOP=49 / ALSO=45** (empirically re-derived from the live 141-item pool, not naive −10). **Selection effect:** Top-5 membership unchanged (re-ordered by freshness); the 2 **Also-Noted** slots flip from fresh-but-lower-base tweets → higher-base curated news summaries. Ace chose news summaries. WHY tweets had the edge: it was an artifact — 101/104 tweets fall in the <24h +10 bucket by construction (scraped same-day), while news roundups span dates (+0/+3/+6); the +10 rewarded "ingested today," not quality. Backups: `prompt.md.bak-recency-tiebreak-20260611-131429`. Live command verified end-to-end (exit 0, Also = 2 Perplexity summaries).
+
+Commits (Kyzcreig/siftly-ace main): pf de-contam + recency-dark `b6143a4`; stem fix + pf-baseline harness `4dc70bf`; mode-aware gates + parity harness `9562e91`; engagement cap `06c8311`. All: tsc clean, both-mode selftest OK, 171 unit/e2e pass.
