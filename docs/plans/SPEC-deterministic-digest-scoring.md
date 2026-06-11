@@ -189,6 +189,13 @@ Separate from the scoring redesign but bundled into this rollout: **reduce the X
 
 ---
 
+## 10. Integration seam — BUILT (2026-06-11, shadow-only)
+`score_digest.py --select` now runs the FULL deterministic select pipeline (single-authority §4.4): it scores with the new scorer, then applies select_digest.py's TESTED `_collapse_events` (event-dedup) → `apply_forced_distribution` → Top/Also gating+caps on top of the new `_final`. This closes the 3 gaps the raw `--shadow` dump showed (duplicates, >MAX_TOP overflow, no distribution) and makes the dry-run preview faithful. Selftested (dedup+cap+distribution). **Still shadow-only — does NOT post; cutover unchanged (gated).**
+
+Open tuning signals surfaced by the first faithful dry-run (for the shadow-week gate re-derivation):
+- Gates still admit ~21 of 77 over TOP_GATE (need raising on the new range).
+- Per-author clustering possible (e.g. 3× @emollick in Top 5) — consider a per-author cap at cutover.
+
 ## 9. Pass-1 review resolution map (senior review, claude-bridge-f2/Opus, APPROVE-WITH-CHANGES)
 | # | Blocker | Resolution |
 |---|---|---|

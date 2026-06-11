@@ -45,6 +45,14 @@ from select_digest import (  # noqa: E402
     is_bare_fragment, _item_text, _engagement, _is_x, _substance, _LEADING_MENTIONS_RE,
     THOUGHT_LEADERS_FILE, TRACKED_PROJECTS_FILE,
 )
+# Reuse select_digest's TESTED dedup/distribution primitives so the shadow select
+# pipeline is identical to the live one EXCEPT it consumes the new deterministic
+# `_final` (single-authority, spec §4.4). These read/write the `_final` key that
+# score_item() already sets, so they compose directly.
+from select_digest import (  # noqa: E402
+    _collapse_events as _sd_collapse_events,
+    apply_forced_distribution as _sd_apply_forced_distribution,
+)
 
 # ── Gates (re-derived against the new score range, spec §6 step-2) ───────────
 # The new BASE table tops at 70, so the OLD 83/77 gates are wrong by
@@ -52,6 +60,8 @@ from select_digest import (  # noqa: E402
 # tunables re-derived from the shadow distribution before cutover.
 TOP_GATE = 58
 ALSO_GATE = 50
+MAX_TOP = 5            # max Top Stories slots (mirrors select_digest)
+MAX_ALSO = 2          # max Also Noted slots
 MAX_GE_90 = 2          # forced-distribution carries over; unreachable unless tuned
 MAX_EQ_100 = 1
 
@@ -400,6 +410,61 @@ def score_pool(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None):
     return scored, coercion
 
 
+def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None):
+    """Full deterministic SELECT pipeline (shadow-only — does NOT post).
+
+    Single-authority per spec §4.4: score_digest.py owns the `final`; we then apply
+    select_digest.py's TESTED event-collapse → forced-distribution → Top/Also gating
+    on top of it. Returns (selected, also, discarded, meta). Mirrors
+    select_digest.select() but fed by the new deterministic scorer, so the dry-run
+    preview is faithful (deduped, capped, distributed) — closing the 3 gaps the raw
+    --shadow score dump showed (dupes, >MAX_TOP overflow, no distribution).
+    """
+    if tl_handles is None:
+        tl_handles, tl_aliases = _load_thought_leaders()
+    if tracked is None:
+        tracked = set(_load_tracked_projects())
+    elif not isinstance(tracked, set):
+        tracked = set(tracked)
+
+    scored, discarded = [], []
+    for raw in pool:
+        # Backstop 1 also lives in score_item, but mirror select_digest's pre-filter
+        # so a bare fragment is dropped (not just zero-based) for parity.
+        if is_bare_fragment(_item_text(raw)):
+            d = dict(raw); d["_drop"] = "bare_fragment"; discarded.append(d); continue
+        scored.append(score_item(raw, tl_handles, tl_aliases or [], tracked, now=now))
+
+    scored.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+
+    # Event-collapse (5 accounts on one launch → 1 winner) BEFORE gating.
+    scored, event_dropped = _sd_collapse_events(scored)
+    discarded.extend(event_dropped)
+
+    # Forced distribution (anti-inflation), then re-sort for placement.
+    scored = _sd_apply_forced_distribution(scored)
+    scored.sort(key=lambda it: (it["_final"], _engagement(it), _item_text(it)), reverse=True)
+
+    selected, also = [], []
+    for it in scored:
+        f = it["_final"]
+        if f >= TOP_GATE and len(selected) < MAX_TOP:
+            selected.append(it)
+        elif f >= ALSO_GATE and len(also) < MAX_ALSO:
+            also.append(it)
+        else:
+            d = dict(it); d["_drop"] = "below_gate_or_cap"; discarded.append(d)
+
+    coercion = sum(1 for it in scored if it["_breakdown"]["label_coerced"])
+    overrides = sum(1 for it in scored if it["_breakdown"]["on_topic_overridden"])
+    meta = {"scored": len(scored), "label_coercion_count": coercion,
+            "on_topic_overrides": overrides,
+            "gates": {"top": TOP_GATE, "also": ALSO_GATE, "low_reach_cap": LOW_REACH_SCORE_CAP},
+            "cleared_top": sum(1 for it in scored if it["_final"] >= TOP_GATE),
+            "cleared_also": sum(1 for it in scored if it["_final"] >= ALSO_GATE)}
+    return selected, also, discarded, meta
+
+
 # ── Selftests (spec §7 acceptance) ──────────────────────────────────────────
 def _selftest():
     fails = []
@@ -532,6 +597,28 @@ def _selftest():
     check(score_item(story, tl_h, tl_a, trk)["_breakdown"]["low_reach_capped"] is False,
           "non-X story wrongly low-reach-capped")
 
+    # --- Integration seam: select_shadow dedups, caps, distributes (§4.4) ---
+    base_item = lambda h, txt, likes=500: {
+        "source": "x", "authorHandle": h, "content_type": "launch",
+        "actionability": "actionable_now", "substance": "concrete", "on_topic": "core",
+        "likes": likes, "retweets": 10, "tweet_text": txt}
+    # 3 accounts reporting the SAME launch event (shared distinctive phrase) → collapse to 1
+    dup_pool = [
+        base_item("acct1", "DiffusionGemma is now available lightning fast text diffusion model launch"),
+        base_item("acct2", "DiffusionGemma is now available lightning fast text diffusion model launch today"),
+        base_item("acct3", "DiffusionGemma is now available lightning fast text diffusion model release"),
+        base_item("karpathy", "Shipped a new agent orchestration framework with full eval suite and docs", 2000),
+        base_item("nobody", "random unrelated on-topic AI tool announcement with code repo here", 800),
+    ]
+    sel, also2, disc, meta2 = select_shadow(dup_pool, tl_h, tl_a, trk)
+    check(len(sel) <= MAX_TOP, f"select exceeded MAX_TOP: {len(sel)}")
+    check(len(also2) <= MAX_ALSO, f"select exceeded MAX_ALSO: {len(also2)}")
+    # the 3 DiffusionGemma dupes must collapse to exactly 1 in the output
+    all_out = sel + also2
+    dg = [it for it in all_out if "diffusiongemma" in _item_text(it).lower()]
+    check(len(dg) <= 1, f"event-collapse failed: {len(dg)} DiffusionGemma items survived")
+    check(any(it.get("_drop") == "event_dup" for it in disc), "no event_dup in discarded")
+
     if fails:
         print("SELFTEST FAILED:")
         for f in fails:
@@ -546,12 +633,35 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--shadow", action="store_true", help="score a pool, write breakdowns, change nothing")
+    ap.add_argument("--select", action="store_true", help="full deterministic select pipeline (dedup+distribution+gates), shadow preview — no posting")
     ap.add_argument("--in", dest="inp", default=None)
     ap.add_argument("--out", dest="out", default=None)
     args = ap.parse_args()
 
     if args.selftest:
         sys.exit(_selftest())
+
+    if args.select:
+        src = args.inp or os.path.expanduser("~/.hermes/state/cron/morning-digest/_last_run_debug.json")
+        data = json.load(open(src))
+        pool = data.get("all_scored") or data.get("pool") or []
+        selected, also, discarded, meta = select_shadow(pool)
+        out = args.out or os.path.expanduser("~/.hermes/state/cron/morning-digest/_shadow_select.json")
+        def slim(it):
+            b = it["_breakdown"]
+            return {"handle": _handle(it), "final": it["_final"],
+                    "text": (_item_text(it) or "")[:120],
+                    "content_type": b["labels"]["content_type"],
+                    "effective_on_topic": b["effective_on_topic"],
+                    "breakdown": {k: b[k] for k in ("base","engagement","author","pf","off_topic_pen")}}
+        payload = {"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                   "mode": "select-shadow", "meta": meta,
+                   "selected": [slim(i) for i in selected],
+                   "also": [slim(i) for i in also]}
+        json.dump(payload, open(out, "w"), indent=2)
+        print(f"select-shadow: {len(selected)} top + {len(also)} also (of {meta['scored']}); "
+              f"{meta['on_topic_overrides']} off-topic overrides, {meta['label_coercion_count']} coerced -> {out}")
+        return
 
     if args.shadow:
         src = args.inp or os.path.expanduser("~/.hermes/state/cron/morning-digest/_last_run_debug.json")

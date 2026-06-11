@@ -1,0 +1,118 @@
+{
+  "ts": "2026-06-11T17:09:35.547362+00:00",
+  "mode": "select-shadow",
+  "meta": {
+    "scored": 77,
+    "label_coercion_count": 0,
+    "on_topic_overrides": 24,
+    "gates": {
+      "top": 58,
+      "also": 50,
+      "low_reach_cap": 45
+    },
+    "cleared_top": 21,
+    "cleared_also": 25
+  },
+  "selected": [
+    {
+      "handle": "demishassabis",
+      "final": 95.0,
+      "text": "Awesome to see this innovation in text diffusion. DiffusionGemma is lightning fast, 4x faster than other Gemma 4 models!",
+      "content_type": "field_report",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 60,
+        "engagement": 15,
+        "author": 8,
+        "pf": -1,
+        "off_topic_pen": 0
+      }
+    },
+    {
+      "handle": "0xsammy",
+      "final": 95.0,
+      "text": "My biggest takeaway from the Claude Fable 5 release was that open source AI won't just survive, it'll thrive\n\nThe releas",
+      "content_type": "launch",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 70,
+        "engagement": 6,
+        "author": 0,
+        "pf": 6,
+        "off_topic_pen": 0
+      }
+    },
+    {
+      "handle": "emollick",
+      "final": 89.0,
+      "text": "I honestly don't understand the assumption that there will be continued open weights models. At some point, China will r",
+      "content_type": "launch",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 70,
+        "engagement": 4,
+        "author": 8,
+        "pf": -1,
+        "off_topic_pen": 0
+      }
+    },
+    {
+      "handle": "emollick",
+      "final": 87.0,
+      "text": "Fable: \"write me a rhyming poem with six four line stanzas, each stanza removes another vowel. the first has no u, the s",
+      "content_type": "field_report",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 52,
+        "engagement": 15,
+        "author": 8,
+        "pf": -1,
+        "off_topic_pen": 0
+      }
+    },
+    {
+      "handle": "emollick",
+      "final": 87.0,
+      "text": "Has anyone clearly laid out an argument for continued availability of frontier open weights models that are (1) profitab",
+      "content_type": "field_report",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 60,
+        "engagement": 7,
+        "author": 8,
+        "pf": -1,
+        "off_topic_pen": 0
+      }
+    }
+  ],
+  "also": [
+    {
+      "handle": "paulg",
+      "final": 83.0,
+      "text": "I talked to a founder today whose customers are all really nice people, because their initial market happens to be one t",
+      "content_type": "field_report",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 42,
+        "engagement": 15,
+        "author": 8,
+        "pf": 8,
+        "off_topic_pen": 0
+      }
+    },
+    {
+      "handle": "matth4313",
+      "final": 81.0,
+      "text": "Why @useAtelier is the most underrated project in crypto right now:\n\nEveryone\u2019s hyping AI agents. Most are building flas",
+      "content_type": "field_report",
+      "effective_on_topic": "core",
+      "breakdown": {
+        "base": 60,
+        "engagement": 5,
+        "author": 0,
+        "pf": 6,
+        "off_topic_pen": 0
+      }
+    }
+  ]
+}
