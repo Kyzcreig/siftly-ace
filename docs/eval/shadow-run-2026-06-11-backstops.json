@@ -1,0 +1,3325 @@
+{
+  "ts": "2026-06-11T16:54:32.182921+00:00",
+  "mode": "shadow",
+  "label_coercion_count": 0,
+  "label_coercion_alert": false,
+  "gates": {
+    "top": 58,
+    "also": 50,
+    "low_reach_cap": 45
+  },
+  "scored": [
+    {
+      "id": "2065038715295019147",
+      "handle": "0xsammy",
+      "old_final": 93,
+      "new_final": 95.0,
+      "breakdown": {
+        "base": 70,
+        "substance_adj": 3,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 95.0,
+        "low_reach_capped": false,
+        "final": 95.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064873362799600042",
+      "handle": "demishassabis",
+      "old_final": 87,
+      "new_final": 95.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 95.0,
+        "low_reach_capped": false,
+        "final": 95.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108327051268513",
+      "handle": "emollick",
+      "old_final": 77,
+      "new_final": 94.0,
+      "breakdown": {
+        "base": 70,
+        "substance_adj": 3,
+        "engagement": 4,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 94.0,
+        "low_reach_capped": false,
+        "final": 94.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065100408813432934",
+      "handle": "mohfx2008",
+      "old_final": 90,
+      "new_final": 92.0,
+      "breakdown": {
+        "base": 70,
+        "substance_adj": 3,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 92.0,
+        "low_reach_capped": false,
+        "final": 92.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065106617356489148",
+      "handle": "emollick",
+      "old_final": 77,
+      "new_final": 87.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 3,
+        "engagement": 7,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 87.0,
+        "low_reach_capped": false,
+        "final": 87.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064769268013584767",
+      "handle": "emollick",
+      "old_final": 70,
+      "new_final": 87.0,
+      "breakdown": {
+        "base": 52,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 87.0,
+        "low_reach_capped": false,
+        "final": 87.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065067930551824790",
+      "handle": "paulg",
+      "old_final": 72,
+      "new_final": 83.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 83.0,
+        "low_reach_capped": false,
+        "final": 83.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065096967982641459",
+      "handle": "matth4313",
+      "old_final": 84,
+      "new_final": 81.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 0,
+        "engagement": 5,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 81.0,
+        "low_reach_capped": false,
+        "final": 81.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065091222721761390",
+      "handle": "garrytan",
+      "old_final": 65,
+      "new_final": 76.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 12,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 76.0,
+        "low_reach_capped": false,
+        "final": 76.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064920957098041817",
+      "handle": "emollick",
+      "old_final": 63,
+      "new_final": 76.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 14,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 76.0,
+        "low_reach_capped": false,
+        "final": 76.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065069817866981703",
+      "handle": "paulg",
+      "old_final": 66,
+      "new_final": 75.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 11,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 75.0,
+        "low_reach_capped": false,
+        "final": 75.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065031413582168067",
+      "handle": "paulg",
+      "old_final": 64,
+      "new_final": 75.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 75.0,
+        "low_reach_capped": false,
+        "final": 75.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064749092509532393",
+      "handle": "emollick",
+      "old_final": 65,
+      "new_final": 72.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 72.0,
+        "low_reach_capped": false,
+        "final": 72.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064919775889805726",
+      "handle": "emollick",
+      "old_final": 61,
+      "new_final": 71.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 9,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 71.0,
+        "low_reach_capped": false,
+        "final": 71.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 67,
+      "new_final": 69.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 69.0,
+        "low_reach_capped": false,
+        "final": 69.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "adjacent"
+        },
+        "effective_on_topic": "adjacent",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065017584496349304",
+      "handle": "ylecun",
+      "old_final": 61,
+      "new_final": 69.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 7,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 69.0,
+        "low_reach_capped": false,
+        "final": 69.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064836730935738637",
+      "handle": "yoheinakajima",
+      "old_final": 61,
+      "new_final": 69.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 7,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 69.0,
+        "low_reach_capped": false,
+        "final": 69.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065058147082080263",
+      "handle": "garrytan",
+      "old_final": 63,
+      "new_final": 67.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 67.0,
+        "low_reach_capped": false,
+        "final": 67.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065070934222864658",
+      "handle": "paulg",
+      "old_final": 62,
+      "new_final": 66.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 6,
+        "author": 8,
+        "author_tier": "thought_leader",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 66.0,
+        "low_reach_capped": false,
+        "final": 66.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064996508294877508",
+      "handle": "0xmohii",
+      "old_final": 63,
+      "new_final": 62.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 62.0,
+        "low_reach_capped": false,
+        "final": 62.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065106787737493562",
+      "handle": "grok",
+      "old_final": 68,
+      "new_final": 60.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 6,
+        "author_tier": "tracked_author",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 60.0,
+        "low_reach_capped": false,
+        "final": 60.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 74,
+      "new_final": 59.0,
+      "breakdown": {
+        "base": 50,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 59.0,
+        "low_reach_capped": false,
+        "final": 59.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 76,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 44,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 74,
+      "new_final": 57.0,
+      "breakdown": {
+        "base": 44,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 57.0,
+        "low_reach_capped": false,
+        "final": 57.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 70,
+      "new_final": 53.0,
+      "breakdown": {
+        "base": 44,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 53.0,
+        "low_reach_capped": false,
+        "final": 53.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "effective_on_topic": "adjacent",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 67,
+      "new_final": 53.0,
+      "breakdown": {
+        "base": 44,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 53.0,
+        "low_reach_capped": false,
+        "final": 53.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "adjacent"
+        },
+        "effective_on_topic": "adjacent",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 56,
+      "new_final": 48.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 48.0,
+        "low_reach_capped": false,
+        "final": 48.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065012266421170182",
+      "handle": "jaytl00",
+      "old_final": 83,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 66,
+        "substance_adj": 3,
+        "engagement": 3,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 5,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 87.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "benchmark",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "benchmark",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108023375487470",
+      "handle": "harshbuilds_1",
+      "old_final": 81,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 76.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065107992610267402",
+      "handle": "harshbuilds_1",
+      "old_final": 81,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 76.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108682459828632",
+      "handle": "alexrkonrad",
+      "old_final": 80,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 11,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 70.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065006747308408890",
+      "handle": "akshmnd",
+      "old_final": 79,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 70,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 84.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108536091398369",
+      "handle": "anthonymaio",
+      "old_final": 79,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 60,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 74.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065059220886540769",
+      "handle": "shortinfonews",
+      "old_final": 78,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 9,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 67.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065030252460482772",
+      "handle": "pktechsa",
+      "old_final": 78,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 9,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 70.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065099327794458728",
+      "handle": "m_kasinski",
+      "old_final": 77,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 70,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 82.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065046429760950695",
+      "handle": "m_kasinski",
+      "old_final": 77,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 70,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 82.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "actionable_now",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108876366860492",
+      "handle": "trevoravaughan",
+      "old_final": 77,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 63.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108736541384901",
+      "handle": "ai_agent_code",
+      "old_final": 77,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 63.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108225096114241",
+      "handle": "aglz14",
+      "old_final": 77,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 8,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 60.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065095589516517587",
+      "handle": "yabarich",
+      "old_final": 76,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 62.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065060570714235115",
+      "handle": "traffalex",
+      "old_final": 76,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 64.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065014401535709381",
+      "handle": "zebratechieszts",
+      "old_final": 76,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 64.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065059927757066442",
+      "handle": "zhc57660131",
+      "old_final": 75,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 67.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065021127337140637",
+      "handle": "chzaem496",
+      "old_final": 75,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 67.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065109129920684093",
+      "handle": "wbuzzer",
+      "old_final": 75,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 61.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065109109326930050",
+      "handle": "kidsreallycute",
+      "old_final": 75,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 61.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065109089412358236",
+      "handle": "senchengyuan",
+      "old_final": 75,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 61.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108813062222188",
+      "handle": "userposthq",
+      "old_final": 73,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 59.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108799015542824",
+      "handle": "0xthoughtvector",
+      "old_final": 73,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 65.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065045957700735273",
+      "handle": "sudeepsriv",
+      "old_final": 72,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 60.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065107873718526018",
+      "handle": "zaylen_yung",
+      "old_final": 72,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 58.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108435449086184",
+      "handle": "project_miko",
+      "old_final": 70,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 53.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065107823965397266",
+      "handle": "kiichainio",
+      "old_final": 70,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 56.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 68,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065056606799142950",
+      "handle": "aichinanews",
+      "old_final": 68,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 60.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108350556364966",
+      "handle": "milkroadai",
+      "old_final": 68,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 48,
+        "substance_adj": 3,
+        "engagement": 3,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 63.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "launch",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108769747644464",
+      "handle": "vicbiodev",
+      "old_final": 57,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 56.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 56,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 45.0,
+        "low_reach_capped": false,
+        "final": 45.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065109111927103556",
+      "handle": "polinkaii",
+      "old_final": 56,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 54.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065108290858606790",
+      "handle": "ratanmani55",
+      "old_final": 56,
+      "new_final": 45.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": 3,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 55.0,
+        "low_reach_capped": true,
+        "final": 45.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065023882046652739",
+      "handle": "elonmusk",
+      "old_final": 78,
+      "new_final": 44.0,
+      "breakdown": {
+        "base": 52,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 7,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 44.0,
+        "low_reach_capped": false,
+        "final": 44.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens+offtopic-marker",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 53,
+      "new_final": 42.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 42.0,
+        "low_reach_capped": false,
+        "final": 42.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "effective_on_topic": "adjacent",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 63,
+      "new_final": 41.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -1,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": 0,
+        "pre_cap": 41.0,
+        "low_reach_capped": false,
+        "final": 41.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "core",
+        "on_topic_overridden": null,
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064942907149390097",
+      "handle": "pmarca",
+      "old_final": 71,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 52,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065028693093753307",
+      "handle": "paulg",
+      "old_final": 71,
+      "new_final": 40.0,
+      "breakdown": {
+        "base": 52,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 40.0,
+        "low_reach_capped": false,
+        "final": 40.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064784637340070013",
+      "handle": "tobi",
+      "old_final": 70,
+      "new_final": 39.0,
+      "breakdown": {
+        "base": 52,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 39.0,
+        "low_reach_capped": false,
+        "final": 39.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "reference",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065068549832323360",
+      "handle": "paulg",
+      "old_final": 70,
+      "new_final": 32.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 14,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 6,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 32.0,
+        "low_reach_capped": false,
+        "final": 32.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064947547735789715",
+      "handle": "garrytan",
+      "old_final": 65,
+      "new_final": 31.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 31.0,
+        "low_reach_capped": false,
+        "final": 31.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064991589370593593",
+      "handle": "pmarca",
+      "old_final": 64,
+      "new_final": 30.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 30.0,
+        "low_reach_capped": false,
+        "final": 30.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064974986197225649",
+      "handle": "pmarca",
+      "old_final": 64,
+      "new_final": 30.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 30.0,
+        "low_reach_capped": false,
+        "final": 30.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064942676039102855",
+      "handle": "pmarca",
+      "old_final": 64,
+      "new_final": 30.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 30.0,
+        "low_reach_capped": false,
+        "final": 30.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064948068076986657",
+      "handle": "garrytan",
+      "old_final": 65,
+      "new_final": 29.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 13,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 29.0,
+        "low_reach_capped": false,
+        "final": 29.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064942179819417997",
+      "handle": "pmarca",
+      "old_final": 64,
+      "new_final": 29.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 14,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 29.0,
+        "low_reach_capped": false,
+        "final": 29.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064933775914704968",
+      "handle": "deedydas",
+      "old_final": 63,
+      "new_final": 29.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 29.0,
+        "low_reach_capped": false,
+        "final": 29.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065072077237870963",
+      "handle": "paulg",
+      "old_final": 64,
+      "new_final": 27.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 27.0,
+        "low_reach_capped": false,
+        "final": 27.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064848174859063720",
+      "handle": "paulg",
+      "old_final": 62,
+      "new_final": 23.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 11,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 23.0,
+        "low_reach_capped": false,
+        "final": 23.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065068989437374499",
+      "handle": "emollick",
+      "old_final": 61,
+      "new_final": 22.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 11,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 22.0,
+        "low_reach_capped": false,
+        "final": 22.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064745580597805472",
+      "handle": "emollick",
+      "old_final": 60,
+      "new_final": 22.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 15,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 6,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 22.0,
+        "low_reach_capped": false,
+        "final": 22.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064827187769819332",
+      "handle": "tobi",
+      "old_final": 61,
+      "new_final": 20.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 3,
+        "engagement": 6,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 20.0,
+        "low_reach_capped": false,
+        "final": 20.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "concrete",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065029284608045383",
+      "handle": "paulg",
+      "old_final": 62,
+      "new_final": 19.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 7,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 19.0,
+        "low_reach_capped": false,
+        "final": 19.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065058014424596564",
+      "handle": "garrytan",
+      "old_final": 63,
+      "new_final": 17.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 17.0,
+        "low_reach_capped": false,
+        "final": 17.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064888525418557549",
+      "handle": "swyx",
+      "old_final": 63,
+      "new_final": 16.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 16.0,
+        "low_reach_capped": false,
+        "final": 16.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065070412036182457",
+      "handle": "paulg",
+      "old_final": 62,
+      "new_final": 16.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 4,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": 0,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 16.0,
+        "low_reach_capped": false,
+        "final": 16.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064876915505463779",
+      "handle": "swyx",
+      "old_final": 61,
+      "new_final": 14.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 3,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 14.0,
+        "low_reach_capped": false,
+        "final": 14.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2065032442579431464",
+      "handle": "swyx",
+      "old_final": 61,
+      "new_final": 13.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 2,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 13.0,
+        "low_reach_capped": false,
+        "final": 13.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064775931844296897",
+      "handle": "swyx",
+      "old_final": 61,
+      "new_final": 11.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 11.0,
+        "low_reach_capped": false,
+        "final": 11.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064775732216352942",
+      "handle": "swyx",
+      "old_final": 61,
+      "new_final": 11.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 11.0,
+        "low_reach_capped": false,
+        "final": 11.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": "2064904241316335803",
+      "handle": "yoheinakajima",
+      "old_final": 61,
+      "new_final": 11.0,
+      "breakdown": {
+        "base": 42,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "thought_leader(off-topic\u21920)",
+        "pf": -1,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 11.0,
+        "low_reach_capped": false,
+        "final": 11.0,
+        "labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "field_report",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 55,
+      "new_final": 4.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -2,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 4.0,
+        "low_reach_capped": false,
+        "final": 4.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 51,
+      "new_final": 2.0,
+      "breakdown": {
+        "base": 36,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": 2.0,
+        "low_reach_capped": false,
+        "final": 2.0,
+        "labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "context_only",
+          "substance": "mixed",
+          "on_topic": "adjacent"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": false
+      }
+    },
+    {
+      "id": null,
+      "handle": "",
+      "old_final": 76,
+      "new_final": 0.0,
+      "breakdown": {
+        "base": 0,
+        "substance_adj": 0,
+        "engagement": 0,
+        "author": 0,
+        "author_tier": "unknown",
+        "pf": -4,
+        "recency": 10,
+        "media": 0,
+        "off_topic_pen": -40,
+        "pre_cap": -34.0,
+        "low_reach_capped": false,
+        "final": 0.0,
+        "labels": {
+          "content_type": "reply_fragment",
+          "actionability": "actionable_now",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "label_coerced": false,
+        "raw_labels": {
+          "content_type": "news",
+          "actionability": "actionable_now",
+          "substance": "mixed",
+          "on_topic": "core"
+        },
+        "effective_on_topic": "off",
+        "on_topic_overridden": "python:no-tech-tokens",
+        "fragment_overridden": true
+      }
+    }
+  ]
+}

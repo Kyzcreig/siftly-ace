@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from select_digest import (  # noqa: E402
     _load_thought_leaders, _load_tracked_projects,
     _handle, _is_thought_leader, _matches_tracked, is_on_topic,
-    is_bare_fragment, _item_text, _engagement, _is_x,
+    is_bare_fragment, _item_text, _engagement, _is_x, _substance, _LEADING_MENTIONS_RE,
     THOUGHT_LEADERS_FILE, TRACKED_PROJECTS_FILE,
 )
 
@@ -259,10 +259,91 @@ def low_reach_cap(item, is_known):
     return LOW_REACH_SCORE_CAP
 
 
+# ── Label-trust backstops (SPEC-label-trust-backstops.md) ───────────────────
+# The model's on_topic/content_type labels are a HINT. Python verifies the cheap
+# objective ones and can OVERRIDE toward exclusion (never upgrade). This fixes the
+# 2026-06-11 @elonmusk "scumbag and traitor" miss: the model labeled a political
+# reply fragment on_topic=core, and the deterministic scorer trusted it → 92.
+ON_TOPIC_TOKENS = {
+    "ai", "ml", "llm", "llms", "model", "models", "agent", "agents", "agentic",
+    "gpu", "cuda", "code", "coding", "codex", "claude", "gpt", "gemini", "opus",
+    "api", "sdk", "ship", "shipped", "shipping", "launch", "launched", "release",
+    "released", "open", "source", "opensource", "weights", "benchmark", "eval",
+    "evals", "prompt", "prompting", "finetune", "fine", "tuning", "rl", "rlhf",
+    "inference", "repo", "github", "dataset", "training", "train", "transformer",
+    "embedding", "embeddings", "rag", "vector", "token", "tokens", "context",
+    "diffusion", "neural", "robot", "robotics", "compute", "datacenter", "chip",
+    "anthropic", "openai", "deepmind", "nous", "hermes", "mcp", "tool", "tools",
+    "app", "build", "building", "builder", "dev", "developer", "software",
+    "startup", "founder", "product", "deploy", "framework", "library", "python",
+    "typescript", "rust", "database", "server", "cloud", "kubernetes", "docker",
+    # ML/architecture vocab (added 2026-06-11 after ylecun/emollick false-positives)
+    "transformer", "transformers", "encoder", "encoders", "decoder", "predictor",
+    "predictors", "jepa", "jepas", "attention", "guardrail", "guardrails", "fable",
+    "mythos", "opus", "gemma", "llama", "mistral", "qwen", "grok", "diffusiongemma",
+    "quantization", "lora", "distillation", "alignment", "safety", "jailbreak",
+    "reasoning", "multimodal", "vision", "speech", "voice", "latency", "throughput",
+    "fewshot", "zeroshot", "agentics", "orchestration", "pipeline", "eval", "evals",
+    "scaling", "pretraining", "posttraining", "checkpoint", "weights", "params",
+    "parameters", "architecture", "research", "paper", "arxiv", "sota", "frontier",
+    "kernel", "tensor", "pytorch", "jax", "vllm", "cuda", "rocm", "datacenter",
+}
+# Off-topic markers: politics / insults / culture-war / non-AI-health. NOT used to
+# force-off alone (too blunt) — used only as a confirming tie-breaker + to escalate
+# a zero-on-topic-token post to a hard fragment-or-off.
+OFF_TOPIC_MARKERS = {
+    "scumbag", "traitor", "migrant", "migrants", "election", "woke", "communist",
+    "fascist", "vaccine", "ivermectin", "leftist", "rightwing", "maga", "liberal",
+    "conservative", "democrat", "republican", "trump", "biden", "politician",
+    "deport", "border", "groomer", "shill", "clown", "idiot", "moron", "corrupt",
+}
+
+
+def _tokens(text):
+    """Lowercase alnum word tokens of the post body (mentions/URLs stripped)."""
+    return set(w.lower() for w in _substance(text))
+
+
+def python_on_topic(item):
+    """Independent topic check (does NOT trust the model label). Returns
+    ('core'|'adjacent'|'off', reason). Fail-SAFE: only ever returns 'off' as an
+    OVERRIDE signal; an item with real tech tokens is left to the model label."""
+    text = _item_text(item)
+    toks = _tokens(text)
+    # NOTE: we deliberately do NOT trust item.signals.topic_hits here — the
+    # enrichment auto-tags are as unreliable as the model label (the 2026-06-11
+    # @elonmusk "scumbag and traitor" insult carried a bogus topic_hits=['ai']).
+    # Only ACTUAL on-topic word tokens in the post body count as a topic signal.
+    has_on_topic_token = bool(toks & ON_TOPIC_TOKENS)
+    if has_on_topic_token:
+        return None, None  # real tech tokens present → let the model label stand
+    # zero on-topic signal at all → force off
+    if toks & OFF_TOPIC_MARKERS:
+        return "off", "python:no-tech-tokens+offtopic-marker"
+    return "off", "python:no-tech-tokens"
+
+
 def score_item(item, tl_handles, tl_aliases, tracked, now=None):
     """Deterministic score + term-by-term breakdown (§5). Returns dict with
     `_final` and `_breakdown`."""
     labels, coerced, raw = normalize_labels(item)
+
+    # ── Backstop 1: fragment override (§3.1) — a bare reply fragment is forced to
+    # content_type=reply_fragment (BASE 0) regardless of the model's label.
+    frag_override = False
+    if labels["content_type"] != "reply_fragment" and is_bare_fragment(_item_text(item)):
+        labels = dict(labels); labels["content_type"] = "reply_fragment"
+        frag_override = True
+
+    # ── Backstop 2: off-topic override (§3.2) — independent Python topic check can
+    # force on_topic→off when the text carries ZERO tech/AI tokens (fail-safe: only
+    # downgrades core/adjacent→off, never upgrades off→core).
+    eff_on_topic = labels["on_topic"]
+    on_topic_override_reason = None
+    py_ot, py_reason = python_on_topic(item)
+    if py_ot == "off" and eff_on_topic != "off":
+        eff_on_topic = "off"; on_topic_override_reason = py_reason
+
     ct, ac = labels["content_type"], labels["actionability"]
     base = BASE[ct][ac]
 
@@ -271,13 +352,14 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None):
     sub = SUBSTANCE_ADJ[labels["substance"]]
     eng = engagement_points(item, is_known)
     auth, auth_tier = author_tier_points(item, tl_handles, tl_aliases, tracked)
-    # Author-tier bump is topic-gated (§4.3): only on_topic items get it.
-    if auth and labels["on_topic"] == "off":
+    # Author-tier bump is topic-gated (§4.3): only on_topic items get it. Uses the
+    # EFFECTIVE (Python-verified) on_topic, not the raw model label.
+    if auth and eff_on_topic == "off":
         auth, auth_tier = 0, auth_tier + "(off-topic→0)"
     pf = pf_points(item)
     rec = recency_points(item, now=now)
     med = media_points(item)
-    off = OFF_TOPIC_PEN[labels["on_topic"]]
+    off = OFF_TOPIC_PEN[eff_on_topic]
 
     pre = base + sub + eng + auth + pf + rec + med - off
     final = max(0.0, min(100.0, float(pre)))
@@ -294,6 +376,9 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None):
         "pre_cap": round(float(pre), 1), "low_reach_capped": capped,
         "final": round(final, 1), "labels": labels,
         "label_coerced": coerced, "raw_labels": raw,
+        "effective_on_topic": eff_on_topic,
+        "on_topic_overridden": on_topic_override_reason,
+        "fragment_overridden": frag_override,
     }
     out = dict(item)
     out["_final"] = final
@@ -415,6 +500,30 @@ def _selftest():
     obd = s(offtop)
     check(obd["author"] == 0, f"off-topic TL still got author bump: {obd['author']}")
     check(obd["off_topic_pen"] == -OFF_TOPIC_PEN["off"], "off-topic penalty not applied")
+
+    # --- Backstop: @elonmusk "scumbag and traitor" political reply (2026-06-11 miss) ---
+    # Model mislabeled it content_type=field_report, on_topic=core. Backstops must
+    # force it off-topic and drop it below the gate despite 5264 likes + TL author.
+    elon_insult = {"source": "x", "authorHandle": "elonmusk",
+                   "content_type": "field_report", "actionability": "reference",
+                   "substance": "mixed", "on_topic": "core",
+                   "likes": 5264, "retweets": 440,
+                   "tweet_text": "@IterIntellectus @ZackPolanski Yes, he is a scumbag and traitor"}
+    eb = score_item(elon_insult, tl_h, tl_a, trk)
+    check(eb["_breakdown"]["effective_on_topic"] == "off",
+          f"elon insult not forced off-topic: {eb['_breakdown']['effective_on_topic']}")
+    check(eb["_breakdown"]["author"] == 0, f"elon insult still got author bump: {eb['_breakdown']['author']}")
+    check(eb["_final"] < ALSO_GATE, f"elon insult {eb['_final']} still >= ALSO_GATE {ALSO_GATE}")
+
+    # --- No-regression: a REAL on-topic TL post is NOT forced off ---
+    real_ai = {"source": "x", "authorHandle": "karpathy",
+               "content_type": "analysis", "actionability": "reference",
+               "substance": "concrete", "on_topic": "core", "likes": 1200, "retweets": 90,
+               "tweet_text": "The new model's attention pattern changes how you should structure agent prompts — here's why"}
+    rb = score_item(real_ai, tl_h, tl_a, trk)
+    check(rb["_breakdown"]["effective_on_topic"] == "core",
+          f"real AI post wrongly forced off: {rb['_breakdown']['effective_on_topic']}")
+    check(rb["_breakdown"]["author"] == AUTHOR_TL_POINTS, "real AI post lost its author bump")
 
     # --- non-X items are exempt from the low-reach cap ---
     story = {"source": "hackernews", "title": "Show HN: a new thing", "content_type": "launch",
