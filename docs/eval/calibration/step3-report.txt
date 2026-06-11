@@ -1,0 +1,59 @@
+================================================================
+STEP 3 — bookmark-calibration MEASUREMENT (current constants)
+gates: TOP=58 ALSO=50 cap=45
+================================================================
+
+## POSITIVES (productive bookmarks)
+  {'n': 707, 'min': 0.0, 'p25': 21.0, 'median': 33.0, 'p75': 61.0, 'max': 98.0, 'mean': 39.2}
+    0- 10: ███████ 129
+   10- 20: ██ 34
+   20- 30: █████████ 151
+   30- 40: ███ 54
+   40- 50: █ 9
+   50- 60: ██ 29
+   60- 70: ███████████ 202
+   70- 80: █████ 90
+   80- 90:  5
+   90-100:  4
+
+## HARD NEG (politics/meme/sports/crypto bookmarks)
+  {'n': 437, 'min': 0.0, 'p25': 0.0, 'median': 21.0, 'p75': 21.0, 'max': 39.0, 'mean': 15.3}
+    0- 10: ████████████ 127
+   10- 20: ████ 44
+   20- 30: ██████████████████████ 245
+   30- 40: ██ 21
+   40- 50:  0
+   50- 60:  0
+   60- 70:  0
+   70- 80:  0
+   80- 90:  0
+   90-100:  0
+
+## SOFT NEG (below-gate digest-pool noise)
+  {'n': 105, 'min': 0.0, 'p25': 0.0, 'median': 40.0, 'p75': 45.0, 'max': 100.0, 'mean': 31.9}
+    0- 10: ████████████████ 41
+   10- 20: ██ 5
+   20- 30:  1
+   30- 40: ██ 5
+   40- 50: ████████████ 31
+   50- 60: ██ 5
+   60- 70: ██ 5
+   70- 80: █ 3
+   80- 90: █ 3
+   90-100: ██ 6
+
+## SEPARATION (AUC = P(random positive outranks random negative))
+  AUC(positives vs hard-neg) : 0.745
+  AUC(positives vs soft-neg) : 0.592
+
+## OVERLAP @ TOP_GATE=58
+  positives BELOW gate: 378/707 (53%) — these are good posts the scorer would drop
+  hard-negs CLEARING gate: 0/437 (0%) — noise the scorer would surface
+
+## PER-TERM VARIANCE on positives (low variance = term does no work)
+  base       : mean= 45.1 stdev=18.5 range=[0,70]
+  engagement : mean=  8.0 stdev= 3.8 range=[0,15]
+  author     : mean=  0.6 stdev= 2.0 range=[0,8]
+  pf         : mean=  0.0 stdev= 0.0 range=[0,0]
+  recency    : mean=  0.1 stdev= 0.7 range=[0,6]
+  media      : mean=  0.0 stdev= 0.0 range=[0,0]

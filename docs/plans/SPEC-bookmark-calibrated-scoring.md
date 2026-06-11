@@ -107,8 +107,10 @@ Set TOP_GATE / ALSO_GATE / LOW_REACH_SCORE_CAP from where the calibrated positiv
 - [ ] New constants proposed as a reviewed diff; live-verified on a real digest pool (the constants change is code, not a prompt/config flip).
 - [ ] Docs + AGENTS.md + mem0 updated.
 
-## 8. Open questions for Ace
-1. **crypto-web3**: positive (you save productive crypto/infra) or exclude (noise)? (43 bookmarks tagged.)
-2. **Labeling for the measurement**: cheap heuristic from semanticTags (free, start here) vs a real model-labeling pass (matches prod, small cost)? Recommend heuristic for Step-3 baseline, model-pass only if the heuristic labels prove too noisy.
-3. **Likes (912) as positives too**, or bookmarks-only? Bookmarks are the stronger signal; likes are weaker/noisier. Recommend bookmarks-only for the positive set, likes as a held-out check.
-4. **Author-tier vs engagement priority**: confirm you want a low-engagement post you'd bookmark to beat a high-engagement post you wouldn't — i.e. taste > virality. (Spec assumes yes.)
+## 8. Decisions (Ace, 2026-06-11) — RESOLVED
+1. **crypto-web3 = NOISE (exclude from positives).** General crypto is not wanted. ONLY exception: a post where the crypto angle is genuinely about AI AND the AI part is very interesting — but that's rare and will be captured by the AI tags, not the crypto tag. So: `crypto-web3`/`finance-crypto` join the EXCLUDE list; an item tagged crypto is a positive ONLY if it ALSO carries a strong AI tag (ai-ml/ai-resources).
+2. **Labeling = BOTH, sequenced.** Heuristic labels (free) for the Step-3 measurement baseline. IF Step 3 warrants a re-fit, run the production model-labeling pass on the final calibration set so the shipped constants are fit against production-quality labels (faithful transfer). Don't spend until the measurement proves it's needed.
+3. **Bookmarks-only** for the positive set (912 likes held out as a later check). CONFIRMED.
+4. **Taste > virality CONFIRMED.** A low-engagement post Ace would bookmark must be able to beat a high-engagement post he wouldn't. Engagement weight stays bounded; author-tier + content-type carry more weight for "Ace likes this."
+
+EXCLUDE tag set (final): politics, news, meme-humor, funny-memes, health-wellness, entertainment, sports, food-drink, gaming, crypto-web3, finance-crypto. Crypto-with-strong-AI-tag is the one conditional-include.
