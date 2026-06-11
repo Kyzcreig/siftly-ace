@@ -54,12 +54,25 @@ from select_digest import (  # noqa: E402
     apply_forced_distribution as _sd_apply_forced_distribution,
 )
 
+# (b) Recency-as-tiebreak toggle (read here, before the gates, because the gates
+# are mode-aware). When set, recency contributes 0 additive points and is used
+# only as a sort tiebreak; see recency_points()/recency_rank(). Ships DARK.
+RECENCY_AS_TIEBREAK = os.environ.get("RECENCY_AS_TIEBREAK", "").strip().lower() in ("1", "true", "yes", "on")
+
 # ── Gates (re-derived against the new score range, spec §6 step-2) ───────────
-# The new BASE table tops at 70, so the OLD 83/77 gates are wrong by
-# construction. Defaults below are the shadow-mode STARTING points; they are
-# tunables re-derived from the shadow distribution before cutover.
-TOP_GATE = 58
-ALSO_GATE = 50
+# Gates are MODE-AWARE so they never drift out of sync with the recency mode:
+#  - default (additive recency +10): 58/50 — the post-cutover-spec values that
+#    every fresh same-day item is inflated toward.
+#  - tiebreak (recency=0 additive): 49/45 — empirically re-derived from the live
+#    141-item debug pool so selection is PRESERVED once the +10 slab leaves the
+#    sum (see calibrate_gate_recency.py). NOT the naive -10 (39/40 over-admits on
+#    light days). These are a FLOOR; MAX_TOP/MAX_ALSO still cap actual output.
+if RECENCY_AS_TIEBREAK:
+    TOP_GATE = 49
+    ALSO_GATE = 45
+else:
+    TOP_GATE = 58
+    ALSO_GATE = 50
 MAX_TOP = 5            # max Top Stories slots (mirrors select_digest)
 MAX_ALSO = 2          # max Also Noted slots
 MAX_GE_90 = 2          # forced-distribution carries over; unreachable unless tuned
@@ -103,15 +116,6 @@ RECENCY_24H = 10
 RECENCY_3D = 6
 RECENCY_7D = 3
 
-# (b) Recency-as-tiebreak (calibration 2026-06-11): on a DAILY brief every
-# candidate is same-day, so the +10 <24h slab is a near-uniform offset that
-# compresses the usable score range. When RECENCY_AS_TIEBREAK is set, recency
-# contributes ZERO additive points and is instead used only to break ties
-# between equal-scored items (fresher wins). Ships DARK (default off) so the
-# live morning-digest is byte-identical until the gated cutover. The gates were
-# derived WITH the +10 in the sum, so flipping this live requires re-deriving
-# TOP_GATE/ALSO_GATE — that's the Hard-Config gate, not a silent flip.
-RECENCY_AS_TIEBREAK = os.environ.get("RECENCY_AS_TIEBREAK", "").strip().lower() in ("1", "true", "yes", "on")
 
 # Media (§4.6): monotonic video/transcript >= image >= none.
 MEDIA_VIDEO = 4
