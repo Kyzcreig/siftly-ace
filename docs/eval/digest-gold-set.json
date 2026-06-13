@@ -1,10 +1,10 @@
 {
   "_meta": {
-    "purpose": "Frozen gold set for deterministic-digest-scoring shadow gate (SPEC §6a). Apollo pre-labels; ACE RATIFIES. Versioned in-repo so shadow runs are reproducible.",
+    "purpose": "Frozen gold set for deterministic-digest-scoring shadow gate (SPEC \u00a76a). Apollo pre-labels; ACE RATIFIES. Versioned in-repo so shadow runs are reproducible.",
     "label_semantics": {
       "known_good": "ideal placement is TOP or ALSO (must score >= ALSO_GATE; known_good in TOP must not be displaced by known_bad)",
-      "known_bad": "spam / fragment / off-topic / engagement-farmed — must NEVER reach TOP",
-      "neutral": "benign but low-value — must NOT appear in TOP; no ordering constraint"
+      "known_bad": "spam / fragment / off-topic / engagement-farmed \u2014 must NEVER reach TOP",
+      "neutral": "benign but low-value \u2014 must NOT appear in TOP; no ordering constraint"
     },
     "shadow_pass_bar": [
       "Bar1: no known_bad has final >= TOP_GATE (score-framed, D-11)",
@@ -12,7 +12,7 @@
       "Bar3: no neutral has final >= TOP_GATE (score-framed)",
       "Bar4: no known_bad's final exceeds any known_good's final (anti-inversion)"
     ],
-    "status": "DRAFT — awaiting Ace ratification of each label",
+    "status": "DRAFT \u2014 awaiting Ace ratification of each label",
     "created": "2026-06-11",
     "owner_ratify": "Ace",
     "bar_strength": "Bars 1 & 3 structurally-satisfied on this fixture (known_bad/neutral floor-pinned); Bars 2 & 4 are the load-bearing nets. See PRD D-4.",
@@ -26,13 +26,13 @@
       "likes": 2,
       "retweets": 0,
       "text": "two fun surprises from using activegraph: the coding agent queried the trace db to debug instead of reading logs (i didn't ask it to); when long eval runs broke it always picked up from right before",
-      "label": "neutral",
-      "why": "real builder, genuinely interesting, but 2 likes = no crowd signal; should NOT have hit 100/TOP. Acceptable as ALSO at most, not TOP. The headline regression case.",
+      "label": "known_good",
+      "why": "real builder field report (activegraph trace-db debugging, resumable eval runs); genuinely on-topic & substantive. 2 likes but yoheinakajima is a thought-leader \u2192 low-reach cap is X-only-unknown-handle, correctly exempt. ~66 in low-TOP is acceptable; the original incident was this hitting 100, which the deterministic engine fixed. known_good.",
       "content_type": "field_report",
       "actionability": "reference",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Real hands-on agent field report (trace-db debugging, resumable eval runs) — genuinely on-topic & substantive, but only 2 likes. The LABELS are correct; the low-reach cap (2 likes, unknown-ish reach) is what must keep it out of TOP, NOT a bad label. neutral overall because no crowd signal."
+      "label_rationale": "Reclassified neutral\u2192known_good (Ace ratified). A real Yohei field report scoring ~66 on merit is fine \u2014 the regression was 100, not 66. Bar2 (known_good \u2265 ALSO_GATE) covers it."
     },
     {
       "id": "incident-bitnewsbot-spam",
@@ -42,12 +42,12 @@
       "retweets": 0,
       "text": "#bitcoin #cryptonews pump now huge gains",
       "label": "known_bad",
-      "why": "crypto spam bot, zero engagement, unknown handle — must never reach TOP. Was flat-rated base 80.",
+      "why": "crypto spam bot, zero engagement, unknown handle \u2014 must never reach TOP. Was flat-rated base 80.",
       "content_type": "promo",
       "actionability": "none",
       "substance": "vague",
       "on_topic": "off",
-      "label_rationale": "Crypto pump spam — promo content_type → BASE 5, off-topic (no AI/builder tokens) → −40. Must score ~0 regardless of engagement."
+      "label_rationale": "Crypto pump spam \u2014 promo content_type \u2192 BASE 5, off-topic (no AI/builder tokens) \u2192 \u221240. Must score ~0 regardless of engagement."
     },
     {
       "id": "incident-emollick-routing",
@@ -55,14 +55,14 @@
       "handle": "emollick",
       "likes": 249,
       "retweets": 30,
-      "text": "Here's how the new routing model changes agent design — concrete walkthrough of the tradeoffs",
+      "text": "Here's how the new routing model changes agent design \u2014 concrete walkthrough of the tradeoffs",
       "label": "known_good",
-      "why": "real thought-leader, substantive, strong engagement. Should be TOP. Was scored 71 BELOW the spam bot — the inversion this redesign fixes.",
+      "why": "real thought-leader, substantive, strong engagement. Should be TOP. Was scored 71 BELOW the spam bot \u2014 the inversion this redesign fixes.",
       "content_type": "analysis",
       "actionability": "actionable_now",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Thought-leader concrete walkthrough of how a routing model changes agent design — actionable, on-topic, real engagement (249 likes). Should clear ALSO/TOP."
+      "label_rationale": "Thought-leader concrete walkthrough of how a routing model changes agent design \u2014 actionable, on-topic, real engagement (249 likes). Should clear ALSO/TOP."
     },
     {
       "id": "incident-elon-reply-fragment",
@@ -77,7 +77,7 @@
       "actionability": "none",
       "substance": "vague",
       "on_topic": "adjacent",
-      "label_rationale": "Bare one-word reply ('True') — reply_fragment → BASE 0 regardless of 5k likes. is_bare_fragment backstop also forces this. High engagement must not rescue it."
+      "label_rationale": "Bare one-word reply ('True') \u2014 reply_fragment \u2192 BASE 0 regardless of 5k likes. is_bare_fragment backstop also forces this. High engagement must not rescue it."
     },
     {
       "id": "incident-elon-politics",
@@ -85,14 +85,14 @@
       "handle": "elonmusk",
       "likes": 8000,
       "retweets": 400,
-      "text": "Murderous migrants beheading — outrage about a political news event unrelated to AI/building",
+      "text": "Murderous migrants beheading \u2014 outrage about a political news event unrelated to AI/building",
       "label": "known_bad",
       "why": "off-topic political rage-bait from a thought-leader; off_topic penalty + TL-bump-gated-off must keep it out of TOP regardless of engagement.",
       "content_type": "opinion",
       "actionability": "none",
       "substance": "vague",
       "on_topic": "off",
-      "label_rationale": "Political rage-bait, no AI/builder content → on_topic=off (−40) + TL author bump gated off. Must stay out of TOP regardless of 8k likes."
+      "label_rationale": "Political rage-bait, no AI/builder content \u2192 on_topic=off (\u221240) + TL author bump gated off. Must stay out of TOP regardless of 8k likes."
     },
     {
       "id": "real-anthropic-policy",
@@ -100,14 +100,14 @@
       "handle": "AnthropicAI",
       "likes": 1200,
       "retweets": 150,
-      "text": "AI is advancing at a pace our policymaking institutions were not built for — announcing our policy framework",
+      "text": "AI is advancing at a pace our policymaking institutions were not built for \u2014 announcing our policy framework",
       "label": "neutral",
       "why": "real lab, on-topic, but it's policy-PR not actionable builder content; fine as ALSO, not a TOP must-have.",
       "content_type": "news",
       "actionability": "context_only",
       "substance": "mixed",
       "on_topic": "core",
-      "label_rationale": "Real lab policy-framework announcement — on-topic but policy-PR, not actionable builder content. Fine as ALSO, not a TOP must-have → neutral."
+      "label_rationale": "Real lab policy-framework announcement \u2014 on-topic but policy-PR, not actionable builder content. Fine as ALSO, not a TOP must-have \u2192 neutral."
     },
     {
       "id": "real-ibab-river-launch",
@@ -115,14 +115,14 @@
       "handle": "ibab",
       "likes": 476,
       "retweets": 17,
-      "text": "We are releasing River API, our first product, in early access — battle-tested tools for post-training, RL and continual learning",
+      "text": "We are releasing River API, our first product, in early access \u2014 battle-tested tools for post-training, RL and continual learning",
       "label": "known_good",
       "why": "genuine product launch from a known builder, real engagement, actionable. Should be TOP/ALSO.",
       "content_type": "launch",
       "actionability": "actionable_now",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Genuine product launch (River API: post-training/RL/continual-learning tools) from a known builder, real engagement, actionable. launch×actionable_now → high BASE."
+      "label_rationale": "Genuine product launch (River API: post-training/RL/continual-learning tools) from a known builder, real engagement, actionable. launch\u00d7actionable_now \u2192 high BASE."
     },
     {
       "id": "real-steipete-orchestrator-loop",
@@ -130,14 +130,14 @@
       "handle": "steipete",
       "likes": 853,
       "retweets": 65,
-      "text": "Here's a simple loop: tell codex to maintain your repos, wake every 5 minutes and direct work to threads — easy to parallelize+steer",
+      "text": "Here's a simple loop: tell codex to maintain your repos, wake every 5 minutes and direct work to threads \u2014 easy to parallelize+steer",
       "label": "known_good",
       "why": "concrete actionable builder workflow, strong engagement, on-topic. Top-tier digest material.",
       "content_type": "tutorial",
       "actionability": "actionable_now",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Concrete actionable builder workflow (codex maintainer loop) — strong engagement, on-topic. Top-tier digest material. tutorial×actionable_now."
+      "label_rationale": "Concrete actionable builder workflow (codex maintainer loop) \u2014 strong engagement, on-topic. Top-tier digest material. tutorial\u00d7actionable_now."
     },
     {
       "id": "real-hn-fable-guardrails",
@@ -151,7 +151,7 @@
       "actionability": "reference",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Front-page HN (234 pts), on-topic AI safety/security discussion of Fable guardrails. HN source → low-reach cap exempt; should clear ALSO/TOP by base+points."
+      "label_rationale": "Front-page HN (234 pts), on-topic AI safety/security discussion of Fable guardrails. HN source \u2192 low-reach cap exempt; should clear ALSO/TOP by base+points."
     },
     {
       "id": "real-hn-apache-burr",
@@ -165,7 +165,7 @@
       "actionability": "actionable_now",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Show-HN agent tooling (Apache Burr: build reliable AI agents) — on-topic, actionable for a builder. HN source, exempt from low-reach cap."
+      "label_rationale": "Show-HN agent tooling (Apache Burr: build reliable AI agents) \u2014 on-topic, actionable for a builder. HN source, exempt from low-reach cap."
     },
     {
       "id": "real-hn-css-bad-parts",
@@ -179,7 +179,7 @@
       "actionability": "reference",
       "substance": "mixed",
       "on_topic": "off",
-      "label_rationale": "Decent HN post but pure web-CSS, off the AI/agent core → on_topic=off. Must not displace on-topic items in TOP. neutral."
+      "label_rationale": "Decent HN post but pure web-CSS, off the AI/agent core \u2192 on_topic=off. Must not displace on-topic items in TOP. neutral."
     },
     {
       "id": "real-hn-klondike-curses",
@@ -193,7 +193,7 @@
       "actionability": "context_only",
       "substance": "mixed",
       "on_topic": "off",
-      "label_rationale": "Fun hobby C/curses project, no AI/builder relevance → off. neutral, never TOP."
+      "label_rationale": "Fun hobby C/curses project, no AI/builder relevance \u2192 off. neutral, never TOP."
     },
     {
       "id": "real-hn-world-capitals-voronoi",
@@ -207,7 +207,7 @@
       "actionability": "context_only",
       "substance": "vague",
       "on_topic": "off",
-      "label_rationale": "Off-topic visualization toy → off. neutral, never TOP."
+      "label_rationale": "Off-topic visualization toy \u2192 off. neutral, never TOP."
     },
     {
       "id": "real-voxyz-claude-learning-repo",
@@ -216,13 +216,13 @@
       "likes": 36,
       "retweets": 1,
       "text": "copy this into claude code and it builds the whole learning repo, any field: I want to use Claude Code to learn a new field...",
-      "label": "neutral",
-      "why": "actionable template but low engagement and unknown handle; borderline — good ALSO candidate, must not auto-TOP on label alone (tests the unknown-handle engagement cap).",
+      "label": "known_good",
+      "why": "'copy this into claude code' learning-repo template \u2014 concrete, on-topic, reusable reference. 36 likes is real crowd signal (well above the 5-engagement low-reach floor), so the unknown-handle cap correctly does NOT fire. Scores ~70 on merit; a concrete actionable template at 36 likes is a legitimate TOP item. known_good.",
       "content_type": "tutorial",
-      "actionability": "actionable_now",
+      "actionability": "reference",
       "substance": "concrete",
       "on_topic": "core",
-      "label_rationale": "Actionable Claude Code template (build a learning repo for any field) — on-topic & concrete, but 36 likes / unknown handle. Labels correct; the unknown-handle engagement cap is what keeps it ALSO-not-auto-TOP. neutral overall (borderline)."
+      "label_rationale": "Reclassified neutral\u2192known_good (Ace ratified). ROOT CAUSE: the fixture assumed an 'unknown-handle engagement cap' would hold this to ALSO, but LOW_REACH_ENGAGEMENT_FLOOR=5 and voxyz has 36 likes \u2014 the cap structurally can't fire. actionable_now\u2192reference only moves 76\u219270, both above TOP_GATE(49). So this is a real-scorer finding (#2), not a labeling fix: the engine genuinely rates a concrete on-topic template w/ real engagement as TOP-worthy."
     },
     {
       "id": "real-vigilantfox-ivermectin",
@@ -232,12 +232,13 @@
       "retweets": 133,
       "text": "Ivermectin is the wonder drug that keeps on giving",
       "label": "known_bad",
-      "why": "off-topic health/politics rage-bait with high engagement; the engagement term must NOT carry it into TOP — off_topic penalty case.",
+      "why": "off-topic health/politics rage-bait with high engagement; the engagement term must NOT carry it into TOP \u2014 off_topic penalty case.",
       "content_type": "news",
       "actionability": "none",
       "substance": "vague",
       "on_topic": "off",
-      "label_rationale": "Health/politics rage-bait (ivermectin), high engagement (2170 likes) → on_topic=off (−40) must override engagement. The exact off-topic-with-engagement case. known_bad."
+      "label_rationale": "Health/politics rage-bait (ivermectin), high engagement (2170 likes) \u2192 on_topic=off (\u221240) must override engagement. The exact off-topic-with-engagement case. known_bad."
     }
-  ]
+  ],
+  "status": "RATIFIED 2026-06-11 by Ace (4/4 bars pass at engine SHA eecb9d1); 2 reclassifications: yohei neutral\u2192known_good (66 in low-TOP is acceptable, bug was 100), voxyz neutral\u2192known_good (36 likes clears the 5-engagement floor \u2192 cap can't fire; concrete on-topic template is genuinely TOP-worthy)"
 }

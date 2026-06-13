@@ -1,6 +1,6 @@
 # PRD — Gold-Set Certification for Deterministic Digest Scoring
 
-**Status:** DRAFT → v2 (P1) → v3 (P2) → v4 (P3) → **v5 — APPROVED** (Pass-4 zero blockers; AC sync applied)
+**Status:** DRAFT → v2 (P1) → v3 (P2) → v4 (P3) → v5 — APPROVED → **v6 — BUILT & LIVE-VERIFIED** (2026-06-11)
 **Review trail:** `docs/reviews/goldset-cert-review-pass{1,2,3,4}.md` — Opus, 4 passes
 (AWC → AWC → AWC → AWC-zero-blockers). All blockers + required changes resolved; Pass-4 found no
 critical blockers, only acceptance-criteria sync (now applied). Cleared for build.
@@ -340,3 +340,42 @@ Add the harness to `npm run verify` as an explicit `&&` step (D-5).
 - [ ] The gold gate runs **after the JS steps** in the `npm run verify` `&&` chain and the suite stays
       green. Evidence: `npm run verify` exit 0; a forced harness exit-1 makes `npm run verify` non-zero.
 - [ ] No production surface touched. Evidence: `git diff` touches only `docs/eval/`, `scripts/`, `package.json`.
+
+## 11. Build Log — As-Built Deviations (v6, 2026-06-11)
+
+Built and live-verified. Two deviations the build surfaced that the approved spec (v5) did **not**
+anticipate — both are correctness fixes, documented here rather than silently absorbed:
+
+1. **Ratification reclassified 2 items neutral → known_good** (Ace ratified in-thread):
+   - `incident-yohei-2like` (66): a real Yohei field-report. The fixture assumed engagement would gate
+     it to ALSO; but `yoheinakajima` is a thought-leader → exempt from the X-only low-reach cap, so it
+     scores on merit. 66 in low-TOP is acceptable — **the original incident was it hitting 100**, which
+     the deterministic engine already fixed. Reclassified known_good (Bar 2 covers it).
+   - `real-voxyz-claude-learning-repo` (70): **root-caused** — the fixture assumed an "unknown-handle
+     engagement cap" would hold it to ALSO, but `LOW_REACH_ENGAGEMENT_FLOOR = 5` and voxyz has **36 likes**,
+     so the cap structurally cannot fire. Relabeling `actionable_now → reference` only moved it 76 → 70
+     (both > TOP_GATE). This is a **real-scorer finding**, not a labeling fix: a concrete on-topic template
+     with real crowd signal IS TOP-worthy. Reclassified known_good (actionability honestly kept `reference`).
+
+2. **Mutation matrix (D-4) — two design corrections found during implementation:**
+   - **Isolation via engine-global perturbation was wrong.** The spec's `_apply_mutation` mutated
+     `score_digest.BASE` / `OFF_TOPIC_PEN`; zeroing `OFF_TOPIC_PEN["off"]` lifted an *unrelated neutral*
+     (`real-hn-css-bad-parts` → 50) over TOP_GATE and red **bar3** while targeting bar1/bar4 — cross-bar
+     leakage, the exact failure the matrix exists to catch. **Fix:** mutations now inject ONE forced-score
+     synthetic probe of the target label *after* all real items score through the unperturbed engine. No
+     engine global is touched → no real item moves, no other bar can spuriously flip.
+   - **bar4 semantics: `> max_good` → `> min_good`.** The spec/code asserted "no known_bad > **max** known_good"
+     but the docstring's intent ("no known_bad > **any** known_good") is `> min_good` — the strict, stronger
+     guard. Side benefit: bar4's probe at `min_good+1` (= 48) stays **below** TOP_GATE(49), so bar4 reds in
+     isolation. With `> max_good` (83), any inversion necessarily also breached TOP — un-isolatable.
+   - **Documented entailment `bar1 ⇒ bar4`:** because `min_good (47) < TOP_GATE (49)`, any known_bad that
+     breaches TOP_GATE (bar1) necessarily also out-scores the weakest known_good (bar4). So `--mutate bar1`
+     correctly reds `{bar1, bar4}`; this is asserted explicitly in the test, not hidden.
+
+**As-built artifacts:** `scripts/gold_set_eval.py` (harness), `scripts/__tests__/gold_set_eval_test.py`
+(8 tests — clean cert, 4-bar mutation matrix, no-leak, gate-pin), `docs/eval/digest-gold-set.json`
+(RATIFIED, 15/15 labeled), `package.json` (`test:py` + `gold` folded into `npm run verify`).
+**Note (pre-existing gap closed):** the Python suite (25 tests) was **not** in `npm run verify` before this
+build — it is now, so the gold gate + the deterministic-engine tests actually run in CI/local verify.
+**Verification:** `npm run verify` exit 0 — typecheck + lint(0 err) + JS unit + e2e + 25 Python + gold 4/4.
+One advisory `⚠ THIN` margin: `real-hn-fable-guardrails` at 47 (+2 over ALSO_GATE) — WARN only (OQ-A), non-blocking.

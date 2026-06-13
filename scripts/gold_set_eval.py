@@ -81,33 +81,39 @@ def validate(data):
     return errs
 
 
-def _apply_mutation(S, kind):
-    """Test-only: perturb the engine in-memory so EXACTLY `kind`'s bar reds.
-    Runs in its own subprocess (the pytest harness isolates each), so module-level
-    mutation here can never leak into another case."""
-    if kind == "bar1":
-        # lift a known_bad's promo BASE so its final clears TOP_GATE
-        for ac in S.BASE["promo"]:
-            S.BASE["promo"][ac] = 95
-        S.OFF_TOPIC_PEN["off"] = 0          # let the spam's off-topic not sink it
-        return "known_bad promo BASE->95, off_pen->0 (known_bad reaches TOP)"
-    if kind == "bar2":
-        # crush every BASE so a known_good can't clear ALSO_GATE
-        for ct in S.BASE:
-            for ac in S.BASE[ct]:
-                S.BASE[ct][ac] = 0
-        return "all BASE->0 (known_good drops below ALSO_GATE)"
-    if kind == "bar3":
-        # the synthetic neutral injected below scores high; here lift news BASE so
-        # a neutral (news/context_only) clears TOP_GATE
-        for ac in S.BASE["news"]:
-            S.BASE["news"][ac] = 95
-        return "news BASE->95 (synthetic neutral clears TOP_GATE)"
-    if kind == "bar4":
-        # zero the off-topic penalty so a high-engagement known_bad outscores a known_good
-        S.OFF_TOPIC_PEN["off"] = 0
-        S.BASE["promo"]["none"] = 90
-        return "off_pen->0, promo BASE->90 (known_bad outscores known_good)"
+# Mutation matrix (D-4 anti-rubber-stamp): each `--mutate barN` must make EXACTLY
+# barN red and leave the other three green, proving that bar has teeth. The earlier
+# design mutated engine globals (S.BASE / S.OFF_TOPIC_PEN), which could NOT isolate a
+# bar — e.g. zeroing OFF_TOPIC_PEN["off"] lifted an unrelated *neutral* over TOP_GATE
+# and red bar3 while targeting bar1/bar4. Cross-bar leakage = the bar's teeth are
+# unproven, the exact failure the matrix exists to catch.
+#
+# Isolation-correct design: score every REAL gold item through the UNPERTURBED engine,
+# then inject ONE synthetic probe of the target label whose post-score `final` is forced
+# to violate only that bar. No engine global is touched, so no other item can move and
+# no other bar can flip. The probe carries `_forced_final` consumed in evaluate().
+def _mutation_probe(kind, min_good):
+    """Return (probe_item, note). probe_item is scored as itself but its `final` is
+    overridden to `_forced_final`, violating exactly `kind`'s bar. `min_good` is the
+    weakest real known_good score, used so bar4's inversion probe stays below TOP_GATE
+    (and therefore reds bar4 in isolation, without also tripping bar1)."""
+    base = {"id": f"MUT-{kind}", "source": "x", "handle": "mutation_probe",
+            "likes": 0, "retweets": 0, "text": "mutation probe",
+            "content_type": "news", "actionability": "none",
+            "substance": "vague", "on_topic": "off"}
+    if kind == "bar1":   # no known_bad >= TOP_GATE
+        base.update(label="known_bad", _forced_final=float(TOP_GATE_EXPECTED + 1))
+        return base, f"synthetic known_bad forced to {TOP_GATE_EXPECTED + 1} (>= TOP_GATE) -> bar1 reds"
+    if kind == "bar2":   # every known_good >= ALSO_GATE
+        base.update(label="known_good", _forced_final=float(ALSO_GATE_EXPECTED - 1))
+        return base, f"synthetic known_good forced to {ALSO_GATE_EXPECTED - 1} (< ALSO_GATE) -> bar2 reds"
+    if kind == "bar3":   # no neutral >= TOP_GATE
+        base.update(label="neutral", _forced_final=float(TOP_GATE_EXPECTED + 1))
+        return base, f"synthetic neutral forced to {TOP_GATE_EXPECTED + 1} (>= TOP_GATE) -> bar3 reds"
+    if kind == "bar4":   # no known_bad final > the WEAKEST known_good (min_good)
+        base.update(label="known_bad", _forced_final=float(min_good + 1))
+        return base, (f"synthetic known_bad forced to min_good+1 ({min_good + 1}) -> bar4 reds "
+                      f"(inversion vs weakest known_good); stays < TOP_GATE so bar1 unaffected")
     raise SystemExit(f"unknown mutation {kind!r}")
 
 
@@ -119,9 +125,6 @@ def evaluate(data, mutate=None):
     importlib.reload(S)
 
     mutation_note = None
-    if mutate:
-        # bar3 needs a synthetic neutral injected (production neutrals are floor-pinned, D-12)
-        mutation_note = _apply_mutation(S, mutate)
 
     # D-10 gate-pin: the engine's resolved tiebreak gates must equal the single literal.
     if S.TOP_GATE != TOP_GATE_EXPECTED or S.ALSO_GATE != ALSO_GATE_EXPECTED:
@@ -130,14 +133,6 @@ def evaluate(data, mutate=None):
         return {"error": "gate-pin"}, 1
 
     pool = [_to_engine(it) for it in data["items"]]
-    # bar3 mutation: inject a synthetic neutral so the bar has something to red
-    if mutate == "bar3":
-        pool.append(_to_engine({
-            "id": "synthetic-neutral", "source": "x", "handle": "synth_neutral",
-            "likes": 5000, "retweets": 500, "text": "a synthetic on-topic AI model agent benchmark note",
-            "label": "neutral", "content_type": "news", "actionability": "context_only",
-            "substance": "mixed", "on_topic": "core",
-        }))
 
     tl, ta = S._load_thought_leaders()
     trk = set(S._load_tracked_projects())
@@ -159,6 +154,20 @@ def evaluate(data, mutate=None):
         scored.append(rec)
         by_id[gid] = rec
 
+    # Mutation matrix (D-4): inject ONE forced-score synthetic probe of the target
+    # label AFTER all real items are scored through the unperturbed engine. The probe's
+    # `final` is set directly (no engine global touched), so EXACTLY the target bar can
+    # red and no real item's score moves. bar4's probe needs the real min_good first.
+    if mutate:
+        real_min_good = min((r["final"] for r in scored if r["label"] == "known_good"),
+                            default=0.0)
+        probe, mutation_note = _mutation_probe(mutate, real_min_good)
+        scored.append({
+            "id": probe["id"], "label": probe["label"], "handle": probe["handle"],
+            "final": probe["_forced_final"], "low_reach_capped": False,
+            "coerced": False, "source": probe["source"], "synthetic": True,
+        })
+
     goods = [r for r in scored if r["label"] == "known_good"]
     bads = [r for r in scored if r["label"] == "known_bad"]
     neutrals = [r for r in scored if r["label"] == "neutral"]
@@ -171,8 +180,12 @@ def evaluate(data, mutate=None):
     bar1 = [r["id"] for r in bads if r["final"] >= TOP_GATE_EXPECTED]
     bar2 = [r["id"] for r in goods if r["final"] < ALSO_GATE_EXPECTED]
     bar3 = [r["id"] for r in neutrals if r["final"] >= TOP_GATE_EXPECTED]
-    max_good = max((r["final"] for r in goods), default=0.0)
-    bar4 = [r["id"] for r in bads if r["final"] > max_good]
+    # bar4 (anti-inversion): no known_bad may outscore the WEAKEST known_good. Using
+    # min_good (not max_good) is the strict reading of "no known_bad > any known_good"
+    # and is the stronger guard — a known_bad beating even your weakest real builder is
+    # an inversion. (Pass-3 RC-4: this is a score-level check, independent of placement.)
+    min_good = min((r["final"] for r in goods), default=0.0)
+    bar4 = [r["id"] for r in bads if r["final"] > min_good]
 
     bars = {
         "bar1_no_known_bad_top": not bar1,
@@ -180,7 +193,9 @@ def evaluate(data, mutate=None):
         "bar3_no_neutral_top": not bar3,
         "bar4_no_inversion": not bar4,
     }
-    coerced = [r["id"] for r in scored if r["coerced"]]
+    # synthetic probe is exempt from the coercion check (it carries a forced score, not
+    # a real engine path); only real gold items must be fully labeled / non-coerced.
+    coerced = [r["id"] for r in scored if r["coerced"] and not r.get("synthetic")]
     passed = all(bars.values()) and not coerced and not hn_cap_errs
 
     result = {

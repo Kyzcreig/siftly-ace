@@ -20,8 +20,10 @@
     "embed": "tsx scripts/embed.ts",
     "embed:secure": "scripts/with-secrets.sh tsx scripts/embed.ts",
     "test:e2e:live": "scripts/with-secrets.sh vitest run --dir e2e",
+    "test:py": "python3 -m pytest scripts/__tests__/ -q",
+    "gold": "python3 scripts/gold_set_eval.py",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:py && npm run gold",
     "verify:live": "npm run typecheck && npm run lint && npm run test && npm run test:e2e:live"
   },
   "dependencies": {
