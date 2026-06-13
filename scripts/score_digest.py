@@ -112,6 +112,22 @@ ENGAGEMENT_CAP = 15            # known / thought-leader / tracked-author handles
 # above 10 (high-eng misses already maxed), so 10 is the knee, not a blank cheque.
 ENGAGEMENT_CAP_UNKNOWN = 10
 
+# HN crowd-signal (§4.2b): HackerNews stories carry NO likes/retweets — their crowd
+# signal is front-page POINTS. Before this term the engine read engagement from
+# likes+retweets only, so EVERY HN story scored engagement=0 — a 2,345-point #1 and a
+# 40-point minor story were indistinguishable, clustering all HN news at base (~47,
+# barely over ALSO_GATE, ~never TOP). This term restores the signal: log-scaled around
+# a PIVOT below which there's no boost (minor stories stay ALSO), capped like the known
+# X-engagement tier (HN front-page is a strong curated signal). Modeled on the last live
+# run: pts<50→0 (ALSO), 90→+2 (TOP knee), 234→+5.4, 2345→+13.4. X items are unaffected
+# (they have no hn_points → this branch is never taken).
+HN_POINTS_K = 8
+HN_POINTS_PIVOT = 50          # below this, no crowd boost (minor stories stay at base)
+# Bounded at/below the KNOWN X-engagement ceiling so an HN megastory can never earn a
+# bigger crowd term than the strongest X tweet. Enforced by a selftest invariant
+# (HN_POINTS_CAP <= ENGAGEMENT_CAP), not just asserted here — see _selftest().
+HN_POINTS_CAP = 14
+
 # Author tier (§4.3): additive, bounded.
 AUTHOR_TL_POINTS = 8
 AUTHOR_TRACKED_POINTS = 6
@@ -203,11 +219,39 @@ def normalize_labels(item):
     return labels, coerced, raw
 
 
+def _hn_points(item):
+    """Front-page HN points, or None for non-HN items. Source-gated (backstop-over-trust):
+    only items whose `source` is hackernews use the points curve, so an X tweet that
+    somehow carried a stray `hn_points` key can NEVER be hijacked off the likes/retweets
+    curve. (Verified: live ingest only sets hn_points on source=HN; this makes the X
+    byte-identical guarantee structural, not assumption-based.)"""
+    src = str(item.get("source") or "").lower()
+    if src not in ("hackernews", "hn"):
+        return None
+    p = item.get("hn_points")
+    if p is None or isinstance(p, bool):   # bool is an int subclass — exclude True/False
+        return None
+    try:
+        return max(0, int(p))
+    except (TypeError, ValueError):
+        return None
+
+
 def engagement_points(item, is_known):
+    """Returns (points, is_hn_crowd). `is_hn_crowd` is True iff the HN front-page-points
+    branch was taken — the gate in score_item keys on THIS fact, not a second _hn_points()
+    call, so the topic-gate can never drift from the term it gates (Review Pass-2 RC-1)."""
+    # §4.2b: HN stories have no likes/retweets — their crowd signal is front-page
+    # points. Score those on their own log curve (pivot below which there's no boost),
+    # so a 2,345-pt #1 outranks a 40-pt minor story instead of both reading 0.
+    hp = _hn_points(item)
+    if hp is not None:
+        raw = HN_POINTS_K * math.log10(max(hp, 1) / HN_POINTS_PIVOT)
+        return int(round(max(0.0, min(HN_POINTS_CAP, raw)))), True
     eng = _engagement(item)
     raw = ENGAGEMENT_K * math.log10(1 + eng)
     cap = ENGAGEMENT_CAP if is_known else ENGAGEMENT_CAP_UNKNOWN
-    return int(round(min(raw, cap)))
+    return int(round(min(raw, cap))), False
 
 
 def author_tier_points(item, tl_handles, tl_aliases, tracked):
@@ -423,7 +467,16 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
     is_known = _is_thought_leader(item, tl_handles, tl_aliases) or (_handle(item) in tracked)
 
     sub = SUBSTANCE_ADJ[labels["substance"]]
-    eng = engagement_points(item, is_known)
+    eng, is_hn_crowd = engagement_points(item, is_known)
+    # §4.2b: the HN crowd-signal term is topic-gated like the author bump (§4.3) — an
+    # off-topic story gets ZERO crowd lift, so off-topic safety is STRUCTURAL (enforced
+    # here), not an accident of the base/penalty arithmetic. Keys on the branch flag the
+    # engine ACTUALLY took (is_hn_crowd), not a second _hn_points() call, so the gate can
+    # never drift from the term it gates (Pass-2 RC-1). Scoped to the HN crowd term only:
+    # X engagement is left exactly as-is (off-topic X handled by OFF_TOPIC_PEN; gating it
+    # would change live X scoring + break X byte-identity).
+    if eng and is_hn_crowd and eff_on_topic == "off":
+        eng = 0
     auth, auth_tier = author_tier_points(item, tl_handles, tl_aliases, tracked)
     # Author-tier bump is topic-gated (§4.3): only on_topic items get it. Uses the
     # EFFECTIVE (Python-verified) on_topic, not the raw model label.
@@ -712,6 +765,78 @@ def _selftest():
              "hn_points": 3}
     check(score_item(story, tl_h, tl_a, trk)["_breakdown"]["low_reach_capped"] is False,
           "non-X story wrongly low-reach-capped")
+
+    # --- §4.2b HN crowd-signal: front-page points differentiate HN stories (the
+    # 2026-06-11 gap — before this, every HN story scored engagement=0, so a 2,345-pt
+    # #1 and a 40-pt minor story were indistinguishable, all clustering at base ~47). ---
+    hn_news = lambda pts: {"source": "hackernews", "title": "On-topic AI model agent benchmark news",
+                           "content_type": "news", "actionability": "reference",
+                           "substance": "concrete", "on_topic": "core", "hn_points": pts}
+    hn_minor = score_item(hn_news(40), tl_h, tl_a, trk)
+    hn_front = score_item(hn_news(234), tl_h, tl_a, trk)
+    hn_mega = score_item(hn_news(2345), tl_h, tl_a, trk)
+    # monotonic on the CROWD TERM itself (not the rounded _final, which can tie): assert
+    # strict > on the engagement breakdown across adjacent realistic front-page values, so
+    # integer rounding can't silently tie two distinct stories (Review Pass-1 Blocker 4).
+    e40 = score_item(hn_news(40), tl_h, tl_a, trk)["_breakdown"]["engagement"]
+    e90 = score_item(hn_news(90), tl_h, tl_a, trk)["_breakdown"]["engagement"]
+    e234 = score_item(hn_news(234), tl_h, tl_a, trk)["_breakdown"]["engagement"]
+    e2345 = score_item(hn_news(2345), tl_h, tl_a, trk)["_breakdown"]["engagement"]
+    check(e2345 > e234 > e90 >= e40,
+          f"HN crowd term not monotonic on adjacent values: 40={e40} 90={e90} 234={e234} 2345={e2345}")
+    # the actual gap fix: a front-page (234) on-topic story reaches TOP, driven BY the
+    # crowd term (assert the term's value, not just that _final cleared — Blocker 3).
+    check(hn_front["_final"] >= TOP_GATE, f"front-page HN (234pts) below TOP_GATE: {hn_front['_final']}")
+    check(e234 >= 5, f"234-pt crowd term too small to drive TOP: {e234}")
+    check(hn_minor["_final"] < TOP_GATE, f"40-pt HN minor wrongly TOP: {hn_minor['_final']}")
+    # PIVOT boundary band (Blocker 3): at exactly PIVOT the crowd term is 0 (no boost);
+    # the 50–90 band where real slow-day front-page clusters yields a small positive lift.
+    check(score_item(hn_news(HN_POINTS_PIVOT), tl_h, tl_a, trk)["_breakdown"]["engagement"] == 0,
+          "HN crowd term nonzero at PIVOT (floor should be exactly 0 there)")
+    check(e90 >= 1, f"60-90pt front-page band got no lift: 90pt term={e90}")
+    # crowd-signal is bounded AND <= the known X-engagement ceiling, enforced as an
+    # invariant so the constant can't silently drift above what an X tweet can earn (Blocker 1).
+    check(HN_POINTS_CAP <= ENGAGEMENT_CAP,
+          f"HN_POINTS_CAP {HN_POINTS_CAP} exceeds ENGAGEMENT_CAP {ENGAGEMENT_CAP} (crowd term outranks any X tweet)")
+    check(hn_mega["_breakdown"]["engagement"] <= HN_POINTS_CAP,
+          f"HN crowd term exceeded cap {HN_POINTS_CAP}: {hn_mega['_breakdown']['engagement']}")
+    # SAFETY (Blocker 2): off-topic HN gets ZERO crowd lift — STRUCTURALLY gated, not by
+    # base/penalty arithmetic. Assert the engagement TERM is 0 (discriminating: revert the
+    # topic-gate and this fails), not merely that _final landed under ALSO.
+    hn_offtopic = {"source": "hackernews", "title": "A new sourdough bread recipe technique",
+                   "content_type": "news", "actionability": "reference", "substance": "concrete",
+                   "on_topic": "off", "hn_points": 5000}
+    ot = score_item(hn_offtopic, tl_h, tl_a, trk)
+    check(ot["_breakdown"]["engagement"] == 0,
+          f"off-topic HN crowd term not gated to 0: {ot['_breakdown']['engagement']}")
+    check(ot["_final"] < ALSO_GATE, f"5000-pt off-topic HN story not gated: {ot['_final']}")
+    # SCOPE-GUARD (Pass-2 RC-5): the topic-gate must zero ONLY off-topic crowd lift, not
+    # all HN crowd terms — an on-topic mega still gets its full term. If a future edit
+    # over-broadens the gate (zeroing every HN crowd term), this fails loudly.
+    check(hn_mega["_breakdown"]["engagement"] > 0,
+          f"on-topic HN mega lost its crowd term (gate over-broad): {hn_mega['_breakdown']['engagement']}")
+    # KNEE POSITION (Pass-2 RC-2): pin the real-world _final at a slow-day front-page value
+    # so the differentiation goal is tested, not just the sign of the lift. A 234-pt
+    # on-topic story must clear TOP; the same labels at 40 pts must not.
+    check(hn_front["_final"] >= TOP_GATE and hn_minor["_final"] < TOP_GATE,
+          f"knee mispositioned: 234pt={hn_front['_final']} (want ≥{TOP_GATE}), 40pt={hn_minor['_final']} (want <{TOP_GATE})")
+    # TIE/REORDER (Pass-2 RC-3): two DISTINCT high-point stories must produce distinct
+    # _final so crowd-signal — not the recency tiebreak — orders them. Guards the
+    # integer-rounding tie that would silently fall through to recency.
+    f234 = score_item(hn_news(234), tl_h, tl_a, trk)["_final"]
+    f600 = score_item(hn_news(600), tl_h, tl_a, trk)["_final"]
+    check(f600 > f234,
+          f"distinct front-page stories tied at _final (would reorder by recency): 234={f234} 600={f600}")
+    # X items are UNAFFECTED — source-gated: an X tweet carrying a STRAY hn_points key
+    # is NOT hijacked onto the HN curve (it still scores by likes/retweets). This is the
+    # structural backstop, not an assumption about ingest.
+    x_stray = {"source": "x", "authorHandle": "karpathy", "content_type": "field_report",
+               "actionability": "reference", "substance": "concrete", "on_topic": "core",
+               "likes": 800, "retweets": 40, "hn_points": 5000,
+               "tweet_text": "shipped a new agent eval harness with docs"}
+    x_clean = dict(x_stray); del x_clean["hn_points"]
+    check(score_item(x_stray, tl_h, tl_a, trk)["_final"] == score_item(x_clean, tl_h, tl_a, trk)["_final"],
+          "stray hn_points hijacked an X tweet onto the HN curve (source-gate failed)")
 
     # --- Integration seam: select_shadow dedups, caps, distributes (§4.4) ---
     base_item = lambda h, txt, likes=500: {

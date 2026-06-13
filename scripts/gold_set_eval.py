@@ -39,6 +39,11 @@ GOLD = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 TOP_GATE_EXPECTED = 49
 ALSO_GATE_EXPECTED = 45
 
+# Minimum real (non-synthetic) corpus size for a non-vacuous certification. Set below the
+# curated 15-item gold set so legitimate pruning is allowed, while a truncated/empty fixture
+# fails loud instead of passing the bars vacuously (Review Blocker 5).
+MIN_CORPUS = 10
+
 ENUM = {
     "content_type": {"launch", "benchmark", "tutorial", "field_report", "analysis",
                      "news", "opinion", "promo", "reply_fragment"},
@@ -193,14 +198,32 @@ def evaluate(data, mutate=None):
         "bar3_no_neutral_top": not bar3,
         "bar4_no_inversion": not bar4,
     }
+    # Non-emptiness floor (dogfood finding): an empty/hollow fixture would satisfy all 4
+    # bars VACUOUSLY (no item to violate them) and green-light a cutover against nothing.
+    # Silent-pass is unacceptable — require a real corpus with all three label classes.
+    # MUT-* synthetic probes don't count toward the real-corpus floor. The MIN_CORPUS
+    # threshold (named, not a bare literal — Review Blocker 5) is set below the curated
+    # gold-set size (15) so legitimate pruning to ~10 is allowed, while a truncated/empty
+    # fixture fails. Per-class ≥1 also guarantees bar4's min_good comes from a REAL
+    # known_good (an all-synthetic-good set can't satisfy the inversion bar).
+    real = [r for r in scored if not r.get("synthetic")]
+    n_good = sum(1 for r in real if r["label"] == "known_good")
+    n_bad = sum(1 for r in real if r["label"] == "known_bad")
+    n_neutral = sum(1 for r in real if r["label"] == "neutral")
+    corpus_floor_ok = (len(real) >= MIN_CORPUS
+                       and n_good >= 1 and n_bad >= 1 and n_neutral >= 1)
     # synthetic probe is exempt from the coercion check (it carries a forced score, not
     # a real engine path); only real gold items must be fully labeled / non-coerced.
     coerced = [r["id"] for r in scored if r["coerced"] and not r.get("synthetic")]
-    passed = all(bars.values()) and not coerced and not hn_cap_errs
+    passed = (all(bars.values()) and not coerced and not hn_cap_errs
+              and corpus_floor_ok)
 
     result = {
         "gates": {"top": S.TOP_GATE, "also": S.ALSO_GATE},
         "scored": scored, "bars": bars,
+        "corpus_floor_ok": corpus_floor_ok,
+        "corpus_counts": {"total": len(real), "known_good": n_good,
+                          "known_bad": n_bad, "neutral": n_neutral},
         "violations": {"bar1": bar1, "bar2": bar2, "bar3": bar3, "bar4": bar4,
                        "coerced": coerced, "hn_low_reach_capped": hn_cap_errs},
         "mutation": mutation_note,
@@ -233,6 +256,11 @@ def _print_report(result):
         print(f"    FAIL  label_coerced (unlabeled items): {v['coerced']}")
     if v["hn_low_reach_capped"]:
         print(f"    FAIL  HN known_good low-reach-capped (D-9 schema): {v['hn_low_reach_capped']}")
+    if not result.get("corpus_floor_ok", True):
+        c = result.get("corpus_counts", {})
+        print(f"    FAIL  corpus floor (hollow/empty fixture): total={c.get('total')} "
+              f"known_good={c.get('known_good')} known_bad={c.get('known_bad')} neutral={c.get('neutral')} "
+              f"— need ≥10 items with ≥1 of each class (bars pass vacuously otherwise)")
     n = sum(1 for x in result["bars"].values() if x)
     print(f"\nGOLD SET: {'PASS' if result['passed'] else 'FAIL'} ({n}/4 bars)")
 

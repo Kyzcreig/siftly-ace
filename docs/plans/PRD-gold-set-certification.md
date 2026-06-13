@@ -379,3 +379,34 @@ anticipate — both are correctness fixes, documented here rather than silently 
 build — it is now, so the gold gate + the deterministic-engine tests actually run in CI/local verify.
 **Verification:** `npm run verify` exit 0 — typecheck + lint(0 err) + JS unit + e2e + 25 Python + gold 4/4.
 One advisory `⚠ THIN` margin: `real-hn-fable-guardrails` at 47 (+2 over ALSO_GATE) — WARN only (OQ-A), non-blocking.
+
+## 12. Follow-on — the THIN margin traced to a real scorer gap (hn_points crowd-signal), 2026-06-11
+
+The `⚠ THIN` advisory above was investigated rather than waved off (Ace: "what should we do about this?").
+Root cause was a genuine production blind spot the gold set exposed:
+
+- **Finding:** `real-hn-fable-guardrails` (a 234-pt front-page HN story) scored 47 = base 44 + substance 3,
+  **engagement 0**. `_engagement()` reads only `likes + retweets`; HN stories have neither — their crowd
+  signal is `hn_points`, which the engine **never read**. So a 2,345-pt #1 and a 40-pt minor story scored
+  identically, clustering all HN news at ~47 (barely over ALSO_GATE, ~never TOP, zero differentiation).
+  Verified against the live morning-digest run (13 HN items, points 9–2,345, all engagement 0).
+- **Decision (Ace-approved):** map `hn_points` → a crowd-signal term (the HN analog of likes/retweets).
+  Log-scaled around a pivot below which there's no boost (minor stories stay ALSO), capped like the known
+  X-engagement tier. `HN_POINTS_K=8, PIVOT=50, CAP=14`. Modeled on real data: pts<50→+0, 90→+2 (TOP knee),
+  234→+5 (fable now **52**, real margin), 2,345→+13. **X items byte-identical** (source-gated, see below).
+- **Safety property (verified in selftest):** points NEVER rescue an off-topic story — a 5,000-pt off-topic
+  HN item still scores < ALSO (topic gating dominates the crowd term).
+- **Dogfood hardening (2 fixes):**
+  - **Source-gate `_hn_points`** — only `source∈{hackernews,hn}` uses the points curve, so an X tweet that
+    somehow carried a stray `hn_points` key can NEVER be hijacked off the likes/retweets curve. Makes the
+    X byte-identical guarantee structural, not an assumption. (Also excludes `bool`, an int subclass.)
+  - **Corpus non-emptiness floor in the cert harness** — an empty/hollow gold set previously passed all 4
+    bars *vacuously* (exit 0), which would green-light a cutover against nothing. Now requires ≥10 real
+    items with ≥1 each of known_good/known_bad/neutral, else a visible FAIL. (Silent-pass is unacceptable.)
+
+**As-built (follow-on):** `scripts/score_digest.py` (`_hn_points` + HN branch in `engagement_points`, §4.2b
+constants, 6 selftest assertions incl. monotonicity, TOP knee, cap, off-topic-still-gated, X-hijack-prevention);
+`scripts/gold_set_eval.py` (corpus floor + `corpus_counts` in result + FAIL line); `scripts/__tests__/gold_set_eval_test.py`
+(+3 corpus-floor tests, +entailment-direction-robust mutation tests). `docs/reviews/dogfood-2026-06-11-hn-points-goldset.md`.
+**Verification:** `npm run verify` exit 0 — typecheck + lint(0 err) + 180 JS + 10 e2e + 28 Python + gold 4/4.
+fable now scores 52 (margin +7, no longer THIN); the gold set re-certifies clean with the new engine.

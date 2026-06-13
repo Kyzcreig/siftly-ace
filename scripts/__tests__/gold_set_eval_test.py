@@ -60,14 +60,29 @@ class MutationMatrixTest(unittest.TestCase):
         reds = {k for k, ok in result["bars"].items() if not ok}
         return result, code, reds
 
+    def _min_good_vs_top(self):
+        """The bar1<->bar4 entailment direction depends on whether the weakest real
+        known_good sits above or below TOP_GATE — derive it from a clean run so these
+        tests don't hardcode a direction that silently rots when corpus scores shift
+        (e.g. the hn_points crowd-signal term lifted min_good above TOP_GATE)."""
+        G = _fresh_harness()
+        result, _ = G.evaluate(G._load())
+        goods = [r["final"] for r in result["scored"] if r["label"] == "known_good"]
+        return min(goods), G.TOP_GATE_EXPECTED
+
     def test_bar1_reds_known_bad_at_top(self):
         _, code, reds = self._run("bar1")
         self.assertEqual(code, 1)
         self.assertIn("bar1_no_known_bad_top", reds)
-        # documented entailment: a known_bad >= TOP_GATE(49) is also > min_good(<49),
-        # so bar1 STRICTLY IMPLIES bar4 at this corpus. Assert exactly {bar1,bar4}.
-        self.assertEqual(reds, {"bar1_no_known_bad_top", "bar4_no_inversion"},
-                         "bar1 probe must red exactly bar1 + its entailed bar4")
+        # Entailment: bar1's probe scores TOP_GATE+1. It ALSO reds bar4 iff that score
+        # exceeds the weakest known_good (min_good). So bar1 entails bar4 only when
+        # min_good < TOP_GATE+1. Assert the live-derived expectation, not a fixed set.
+        min_good, top = self._min_good_vs_top()
+        expected = {"bar1_no_known_bad_top"}
+        if (top + 1) > min_good:
+            expected.add("bar4_no_inversion")  # known_bad at TOP+1 also out-scores min_good
+        self.assertEqual(reds, expected,
+                         f"bar1 reds must match entailment (min_good={min_good}, TOP={top})")
 
     def test_bar2_isolates(self):
         _, code, reds = self._run("bar2")
@@ -81,13 +96,18 @@ class MutationMatrixTest(unittest.TestCase):
         self.assertEqual(reds, {"bar3_no_neutral_top"},
                          "bar3 probe must red ONLY bar3")
 
-    def test_bar4_isolates_below_top_gate(self):
+    def test_bar4_reds_inversion(self):
         _, code, reds = self._run("bar4")
         self.assertEqual(code, 1)
-        # bar4's probe scores min_good+1, which is < TOP_GATE, so bar1 stays green —
-        # proving bar4 has independent teeth (inversion without breaching TOP).
-        self.assertEqual(reds, {"bar4_no_inversion"},
-                         "bar4 probe must red ONLY bar4 (stays below TOP_GATE)")
+        self.assertIn("bar4_no_inversion", reds)
+        # bar4's probe scores min_good+1. It ALSO reds bar1 iff that score >= TOP_GATE,
+        # i.e. when min_good+1 >= TOP_GATE (min_good is at/above the gate). Derive it.
+        min_good, top = self._min_good_vs_top()
+        expected = {"bar4_no_inversion"}
+        if (min_good + 1) >= top:
+            expected.add("bar1_no_known_bad_top")  # inversion probe also breaches TOP
+        self.assertEqual(reds, expected,
+                         f"bar4 reds must match entailment (min_good={min_good}, TOP={top})")
 
 
 class NoLeakTest(unittest.TestCase):
@@ -101,6 +121,43 @@ class NoLeakTest(unittest.TestCase):
         result, code = G.evaluate(G._load())  # clean run, same process
         self.assertEqual(code, 0, f"clean cert after a mutation must still pass; "
                                   f"violations={result.get('violations')}")
+
+
+class CorpusFloorTest(unittest.TestCase):
+    """Dogfood finding: an empty/hollow fixture would pass all 4 bars VACUOUSLY and
+    green-light a cutover against nothing. The non-emptiness floor must hard-fail it."""
+
+    def test_empty_gold_set_fails_loud(self):
+        G = _fresh_harness()
+        result, code = G.evaluate({"items": []})
+        self.assertEqual(code, 1, "empty gold set must FAIL, not pass vacuously")
+        self.assertFalse(result["corpus_floor_ok"])
+
+    def test_single_class_only_fails(self):
+        # all known_good, no known_bad / neutral → bars 1/3/4 are vacuous → must fail.
+        G = _fresh_harness()
+        data = G._load()
+        goods = [it for it in data["items"] if it.get("label") == "known_good"]
+        result, code = G.evaluate({"items": goods})
+        self.assertEqual(code, 1, "single-class fixture must FAIL the corpus floor")
+        self.assertFalse(result["corpus_floor_ok"])
+
+    def test_ratified_set_clears_floor(self):
+        G = _fresh_harness()
+        result, _ = G.evaluate(G._load())
+        self.assertTrue(result["corpus_floor_ok"])
+        c = result["corpus_counts"]
+        self.assertGreaterEqual(c["total"], 10)
+        self.assertTrue(c["known_good"] and c["known_bad"] and c["neutral"])
+
+    def test_min_corpus_below_gold_manifest(self):
+        # Pass-2 RC-4: the floor must sit BELOW the curated gold-set size so a legitimately
+        # pruned corpus isn't false-failed, while a truncated one still fails. Lock the
+        # relationship so a future MIN_CORPUS bump above the manifest can't silently land.
+        G = _fresh_harness()
+        manifest = len(G._load()["items"])
+        self.assertLess(G.MIN_CORPUS, manifest,
+                        f"MIN_CORPUS={G.MIN_CORPUS} must be < gold manifest size {manifest}")
 
 
 class GatePinTest(unittest.TestCase):
