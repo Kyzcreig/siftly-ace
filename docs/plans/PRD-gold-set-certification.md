@@ -410,3 +410,10 @@ constants, 6 selftest assertions incl. monotonicity, TOP knee, cap, off-topic-st
 (+3 corpus-floor tests, +entailment-direction-robust mutation tests). `docs/reviews/dogfood-2026-06-11-hn-points-goldset.md`.
 **Verification:** `npm run verify` exit 0 — typecheck + lint(0 err) + 180 JS + 10 e2e + 28 Python + gold 4/4.
 fable now scores 52 (margin +7, no longer THIN); the gold set re-certifies clean with the new engine.
+
+**Loose ends closed (2026-06-11, see `docs/plans/SPEC-hnpoints-loose-ends.md`):** the 3 follow-ups flagged at
+hn_points closeout are resolved. (a) cap invariant tightened `<=`→`<` (lock intent). (b) **real ranking bug
+fixed** — the placement tiebreak read raw `likes+retweets` (0 for HN), so a tied HN story always lost its TOP
+slot to any X tweet; now HN tiebreaks on its scored crowd term (X byte-identical preserved via positive
+source-gate). (c) the "stray" v12 review file was this repo's own artifact — committed. 1 Opus pass (AWC, 0
+blockers, 2 RCs applied). verify exit 0 (29 Python).

@@ -125,7 +125,7 @@ HN_POINTS_K = 8
 HN_POINTS_PIVOT = 50          # below this, no crowd boost (minor stories stay at base)
 # Bounded at/below the KNOWN X-engagement ceiling so an HN megastory can never earn a
 # bigger crowd term than the strongest X tweet. Enforced by a selftest invariant
-# (HN_POINTS_CAP <= ENGAGEMENT_CAP), not just asserted here — see _selftest().
+# (HN_POINTS_CAP < ENGAGEMENT_CAP), not just asserted here — see _selftest().
 HN_POINTS_CAP = 14
 
 # Author tier (§4.3): additive, bounded.
@@ -526,14 +526,43 @@ def score_pool(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None):
     return scored, coercion
 
 
+def _placement_engagement(it):
+    """Engagement rung for the placement tiebreak.
+
+    X items: use raw `_engagement()` (likes+retweets) EXACTLY as before — this preserves
+    the live morning-digest's byte-identical tiebreak ordering (two X tweets with different
+    raw engagement but the same *capped* crowd term must still order by raw engagement, the
+    historical behavior; using the capped term would collapse them to a tie and silently
+    reorder live output).
+
+    HN items: raw _engagement() is 0 (no likes/retweets), which threw away the hn_points
+    signal that earned the score — a tied HN story always lost its slot to any X tweet (the
+    "promoted HN truncated below the fold" bug). For HN, use the SCORED crowd term
+    (`_breakdown["engagement"]`, the hn_points-derived value) so the tiebreak reflects the
+    front-page signal. HN and X engagement scales aren't directly comparable, but they only
+    meet as a tiebreak rung AFTER `_final` is equal, and an HN story carrying a real crowd
+    term should not be pinned below a 0 — which is exactly what raw _engagement gave it."""
+    bd = it.get("_breakdown")
+    src = str(it.get("source") or "").lower()
+    if (isinstance(bd, dict) and bd.get("labels") is not None
+            and src in ("hackernews", "hn") and _hn_points(it) is not None):
+        # scored HN item → its crowd term is the meaningful engagement signal. The
+        # positive source-gate (not merely "_hn_points present") means an X record that
+        # somehow carries a stray hn_points key can NEVER switch onto the capped crowd
+        # term and break the X byte-identity guarantee (Review RC-2).
+        return bd.get("engagement", 0)
+    return _engagement(it)
+
+
 def _placement_sort_key(it, now=None):
     """Shared ranking key. In tiebreak mode, freshness breaks ties AFTER score
     and engagement but BEFORE the text fallback. In default (dark) mode the key
     is byte-identical to the historical (final, engagement, text) tuple so live
-    selection is unchanged."""
+    selection is unchanged. The engagement rung uses the SCORED crowd term (see
+    _placement_engagement) so HN stories tiebreak on their hn_points signal, not 0."""
     if RECENCY_AS_TIEBREAK:
-        return (it["_final"], _engagement(it), recency_rank(it, now=now), _item_text(it))
-    return (it["_final"], _engagement(it), _item_text(it))
+        return (it["_final"], _placement_engagement(it), recency_rank(it, now=now), _item_text(it))
+    return (it["_final"], _placement_engagement(it), _item_text(it))
 
 
 def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None, *,
@@ -796,8 +825,9 @@ def _selftest():
     check(e90 >= 1, f"60-90pt front-page band got no lift: 90pt term={e90}")
     # crowd-signal is bounded AND <= the known X-engagement ceiling, enforced as an
     # invariant so the constant can't silently drift above what an X tweet can earn (Blocker 1).
-    check(HN_POINTS_CAP <= ENGAGEMENT_CAP,
-          f"HN_POINTS_CAP {HN_POINTS_CAP} exceeds ENGAGEMENT_CAP {ENGAGEMENT_CAP} (crowd term outranks any X tweet)")
+    check(HN_POINTS_CAP < ENGAGEMENT_CAP,
+          f"HN_POINTS_CAP {HN_POINTS_CAP} not strictly < ENGAGEMENT_CAP {ENGAGEMENT_CAP} "
+          f"(curated front-page crowd-signal must stay strictly below the strongest known-author X tweet)")
     check(hn_mega["_breakdown"]["engagement"] <= HN_POINTS_CAP,
           f"HN crowd term exceeded cap {HN_POINTS_CAP}: {hn_mega['_breakdown']['engagement']}")
     # SAFETY (Blocker 2): off-topic HN gets ZERO crowd lift — STRUCTURALLY gated, not by
@@ -837,6 +867,48 @@ def _selftest():
     x_clean = dict(x_stray); del x_clean["hn_points"]
     check(score_item(x_stray, tl_h, tl_a, trk)["_final"] == score_item(x_clean, tl_h, tl_a, trk)["_final"],
           "stray hn_points hijacked an X tweet onto the HN curve (source-gate failed)")
+
+    # --- PLACEMENT TIEBREAK uses the SCORED crowd term for HN, raw engagement for X
+    # (loose-end F-b). Before this, _placement_sort_key read raw _engagement() (likes+rt),
+    # which is 0 for HN — so a tied HN story ALWAYS lost its slot to any X tweet despite the
+    # hn_points signal that earned its score. ---
+    # (1) X byte-identity: two X tweets with different RAW engagement but the same capped
+    # crowd term must still order by RAW engagement (the historical live behavior), NOT
+    # collapse to a tie. Regression for the byte-identity guarantee.
+    xhi = {"source": "x", "authorHandle": "a", "content_type": "launch", "actionability": "actionable_now",
+           "substance": "concrete", "on_topic": "core", "likes": 3000, "retweets": 100,
+           "tweet_text": "launched a new agent framework alpha with full docs today"}
+    xlo = dict(xhi); xlo["authorHandle"] = "b"; xlo["likes"] = 300; xlo["retweets"] = 10
+    ihi, ilo = score_item(xhi, tl_h, tl_a, trk), score_item(xlo, tl_h, tl_a, trk)
+    check(ihi["_final"] == ilo["_final"], "x tiebreak fixture should tie on _final")
+    check(_placement_sort_key(ihi) > _placement_sort_key(ilo),
+          "X byte-identity broken: higher-raw-engagement X tweet must still win the tiebreak")
+    # (2) HN no longer pinned to 0: the placement engagement rung for a scored on-topic HN
+    # story equals its crowd term (>0), not raw likes+retweets (0). This is what stops a
+    # tied HN story from auto-losing its TOP slot.
+    hn_placed = score_item(hn_news(234), tl_h, tl_a, trk)
+    check(_placement_engagement(hn_placed) == hn_placed["_breakdown"]["engagement"] > 0,
+          f"HN placement rung not using crowd term: {_placement_engagement(hn_placed)} "
+          f"(crowd={hn_placed['_breakdown']['engagement']})")
+    # (3) end-to-end: a FRESHER on-topic HN story tied on _final with an X tweet is no longer
+    # bumped out of the only TOP slot. Build an exact _final tie, give HN the fresher ts.
+    hn_tie = {"source": "hackernews", "content_type": "news", "actionability": "reference",
+              "substance": "concrete", "on_topic": "core", "hn_points": 234,
+              "title": "new on-topic ai model agent benchmark result released today",
+              "created_at": "2026-06-11T12:00:00Z"}
+    x_tie = {"source": "x", "authorHandle": "nobody", "content_type": "news", "actionability": "reference",
+             "substance": "concrete", "on_topic": "core", "likes": 5, "retweets": 0,
+             "tweet_text": "an on-topic ai model agent news note worth reading today here",
+             "created_at": "2026-06-11T06:00:00Z"}
+    hti, xti = score_item(hn_tie, tl_h, tl_a, trk), score_item(x_tie, tl_h, tl_a, trk)
+    # Preconditions assert LOUDLY (Review RC-1) so a fixture that drifts out of the tie
+    # fails instead of silently green-passing the one check that exercises select_shadow e2e.
+    check(hti["_final"] == xti["_final"], f"e2e fixture must tie on _final: HN={hti['_final']} X={xti['_final']}")
+    check(hti["_final"] >= ALSO_GATE, f"e2e fixture must clear ALSO_GATE to be placeable: {hti['_final']}")
+    sel_t, _, _, _ = select_shadow([x_tie, hn_tie], tl_h, tl_a, trk, max_top=1, max_also=1)
+    winner = sel_t[0].get("title") or sel_t[0].get("tweet_text", "")
+    check("benchmark result" in winner,
+          f"fresher tied HN story still bumped from the TOP slot (got: {winner!r})")
 
     # --- Integration seam: select_shadow dedups, caps, distributes (§4.4) ---
     base_item = lambda h, txt, likes=500: {
