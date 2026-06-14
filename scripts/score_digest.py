@@ -798,9 +798,17 @@ def _selftest():
     # --- §4.2b HN crowd-signal: front-page points differentiate HN stories (the
     # 2026-06-11 gap — before this, every HN story scored engagement=0, so a 2,345-pt
     # #1 and a 40-pt minor story were indistinguishable, all clustering at base ~47). ---
+    # Realistic front-page HN fixture: a real front-page story is RECENT, so the digest
+    # gates (58/50, calibrated WITH the additive recency +10 present — see gate comment
+    # above) assume the +10 recency term. Omitting created_at gave the fixture recency=0,
+    # making a 234-pt story score 52 (not 62) and spuriously fail the knee assertion. The
+    # scorer is correct; the fixture was unrealistic. Stamp it fresh so the test asserts
+    # against a production-possible story state.
+    _hn_fresh_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     hn_news = lambda pts: {"source": "hackernews", "title": "On-topic AI model agent benchmark news",
                            "content_type": "news", "actionability": "reference",
-                           "substance": "concrete", "on_topic": "core", "hn_points": pts}
+                           "substance": "concrete", "on_topic": "core", "hn_points": pts,
+                           "created_at": _hn_fresh_ts}
     hn_minor = score_item(hn_news(40), tl_h, tl_a, trk)
     hn_front = score_item(hn_news(234), tl_h, tl_a, trk)
     hn_mega = score_item(hn_news(2345), tl_h, tl_a, trk)
