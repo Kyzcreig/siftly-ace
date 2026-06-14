@@ -38,12 +38,15 @@ CANDIDATES = {
 
 
 def run(*args, env=None):
+    # Default: skip the ~3s 1Password op probe in pf-audit's embed provisioning
+    # (tests don't need real embeds; the shadow-force-failure test overrides this).
+    base_env = {**os.environ, 'PF_AUDIT_NO_OP_PROBE': '1'}
     return subprocess.run(
         ['python3', str(AUDIT), *args],
         cwd=ROOT.parent,
         text=True,
         capture_output=True,
-        env={**os.environ, **(env or {})},
+        env={**base_env, **(env or {})},
         check=False,
     )
 
@@ -240,6 +243,48 @@ class PfAuditTest(unittest.TestCase):
                 rec = json.loads(line)
                 self.assertNotEqual(rec['ts'], old_ts)
             self.assertGreaterEqual(len(log_lines), 1)
+
+    def test_embed_env_fast_path_and_optout(self):
+        """_embed_env: pre-set OPENAI_API_KEY short-circuits the op probe; opt-out
+        returns None; mode-gate skips embed provisioning for keyword/PF_WEIGHT=0."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('pfaudit_mod', str(AUDIT))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        # Fast path: a pre-set key is used directly (no op call) and survives.
+        old = os.environ.get('OPENAI_API_KEY')
+        try:
+            os.environ['OPENAI_API_KEY'] = 'sk-test-fastpath'
+            env = m._embed_env()
+            self.assertIsNotNone(env)
+            self.assertEqual(env['OPENAI_API_KEY'], 'sk-test-fastpath')
+        finally:
+            if old is None:
+                os.environ.pop('OPENAI_API_KEY', None)
+            else:
+                os.environ['OPENAI_API_KEY'] = old
+        # Opt-out returns None (no provisioning, pf-score keyword-falls-back).
+        old_optout = os.environ.get('PF_AUDIT_NO_OP_PROBE')
+        old_key = os.environ.pop('OPENAI_API_KEY', None)
+        try:
+            os.environ['PF_AUDIT_NO_OP_PROBE'] = '1'
+            self.assertIsNone(m._embed_env())
+        finally:
+            if old_optout is None:
+                os.environ.pop('PF_AUDIT_NO_OP_PROBE', None)
+            else:
+                os.environ['PF_AUDIT_NO_OP_PROBE'] = old_optout
+            if old_key is not None:
+                os.environ['OPENAI_API_KEY'] = old_key
+        # Mode gate: keyword + PF_WEIGHT=0 don't want embed; shadow/embed do.
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / 'c.json'
+            cfg.write_text(json.dumps({'PF_AFFINITY_MODE': 'keyword'}), encoding='utf-8')
+            self.assertFalse(m._affinity_mode_wants_embed(str(cfg)))
+            cfg.write_text(json.dumps({'PF_AFFINITY_MODE': 'shadow'}), encoding='utf-8')
+            self.assertTrue(m._affinity_mode_wants_embed(str(cfg)))
+            cfg.write_text(json.dumps({}), encoding='utf-8')  # default -> shadow
+            self.assertTrue(m._affinity_mode_wants_embed(str(cfg)))
 
 
 if __name__ == '__main__':

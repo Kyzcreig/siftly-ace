@@ -63,6 +63,73 @@ def top_signals(signals: dict[str, Any], n: int = 2) -> list[dict[str, Any]]:
     return scored[:n]
 
 
+def _embed_env() -> dict[str, str] | None:
+    """Best-effort embed provisioning for SHADOW/embed pf modes (Wave 6).
+
+    Returns a child env with OPENAI_API_KEY (from 1Password via the project's
+    with-secrets.sh op path) + SIFTLY_SQLITE_VEC_EXTENSION_PATH, so a live cron
+    pf-score run can actually compute the embed-affinity shadow delta instead of
+    silently keyword-falling-back. FAIL-OPEN: returns None on any error so the
+    caller runs pf-score with the bare env (which keyword-falls-back — the brief
+    never breaks). Never raises, never prints the secret.
+    """
+    try:
+        repo = Path(__file__).resolve().parent.parent
+        wrapper = repo / "scripts" / "with-secrets.sh"
+        vec = repo / ".local" / "vec0.dylib"
+        # Fast path: if OPENAI_API_KEY is already in the env (cron pre-export, tests,
+        # or a prior export), use it directly — skip the ~3s 1Password op probe.
+        existing = os.environ.get("OPENAI_API_KEY")
+        if existing:
+            env = dict(os.environ)
+            if vec.exists():
+                env.setdefault("SIFTLY_SQLITE_VEC_EXTENSION_PATH", str(vec))
+            return env
+        # Opt-out for tests / environments that must not shell out to 1Password.
+        if os.environ.get("PF_AUDIT_NO_OP_PROBE") == "1":
+            return None
+        if not wrapper.exists():
+            return None
+        # with-secrets.sh prints a non-secret confirmation to stdout then runs the
+        # given command; we use it to PRINT the resolved env keys we need, nothing else.
+        probe = subprocess.run(
+            ["bash", str(wrapper), "bash", "-c", "printf 'OPENAI_API_KEY=%s\\n' \"${OPENAI_API_KEY:-}\""],
+            capture_output=True, text=True, timeout=20, check=False,
+            cwd=str(repo),
+        )
+        key = ""
+        for line in (probe.stdout or "").splitlines():
+            if line.startswith("OPENAI_API_KEY="):
+                key = line.split("=", 1)[1].strip()
+        if not key:
+            return None
+        env = dict(os.environ)
+        env["OPENAI_API_KEY"] = key
+        if vec.exists():
+            env.setdefault("SIFTLY_SQLITE_VEC_EXTENSION_PATH", str(vec))
+        return env
+    except Exception:
+        return None
+
+
+def _affinity_mode_wants_embed(config: str) -> bool:
+    """True only when the resolved pf affinity mode is shadow/embed (needs the
+    embed env). keyword mode / PF_WEIGHT=0 don't, so we skip the op probe — keeps
+    the common path and the test suite fast (the probe shells out to 1Password)."""
+    try:
+        mode = os.environ.get("PF_AFFINITY_MODE") or os.environ.get("SIFTLY_PF_AFFINITY_MODE")
+        if mode is None:
+            cfg = Path(config)
+            if cfg.exists():
+                data = json.loads(cfg.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    mode = data.get("PF_AFFINITY_MODE") or data.get("pf_affinity_mode")
+        mode = (mode or "shadow").strip().lower()
+        return mode in ("shadow", "embed")
+    except Exception:
+        return True  # fail toward provisioning; pf-score still fails-open to keyword
+
+
 def run_pf_score(pf_score: Path, input_arg: str | None, profile: str, config: str,
                  timeout: float) -> tuple[str, bool]:
     """Run pf-score.py; return (stdout_text, timed_out)."""
@@ -70,6 +137,9 @@ def run_pf_score(pf_score: Path, input_arg: str | None, profile: str, config: st
     if input_arg:
         cmd.append(input_arg)
     cmd += ["--profile", profile, "--config", config, "--include-affinity-audit"]
+    # Provision embed env ONLY for shadow/embed modes (fail-open to bare env ->
+    # keyword fallback). keyword mode / PF_WEIGHT=0 skip the op probe entirely.
+    child_env = _embed_env() if _affinity_mode_wants_embed(config) else None
     try:
         proc = subprocess.run(
             cmd,
@@ -77,6 +147,7 @@ def run_pf_score(pf_score: Path, input_arg: str | None, profile: str, config: st
             text=True,
             timeout=timeout,
             check=False,
+            env=child_env,
         )
         return proc.stdout, False
     except subprocess.TimeoutExpired as e:
