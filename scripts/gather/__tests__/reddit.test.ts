@@ -153,4 +153,61 @@ describe('reddit gatherer (RSS/Atom)', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/429 after/))
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/unreachable|empty feed/i))
   })
+
+  it('selects the alternate/comments link, not a thumbnail; handles CDATA + <source> [B1/B2/B3]', async () => {
+    const ADV = readFileSync(resolve(__dirname, 'fixtures/reddit-adversarial.atom.xml'), 'utf8')
+    const candidates = await gatherRedditPosts({
+      subreddits: ['ML'],
+      fetchImpl: vi.fn(async (_u: string, _i?: RequestInit) => rssResponse(200, ADV)),
+      sleepImpl: noSleep, logger: { warn: vi.fn() },
+    })
+    expect(candidates).toHaveLength(2)
+
+    // B1: picks rel="alternate" /comments/ permalink, NOT the thumbnail link
+    expect(candidates[0].url).toContain('/r/ML/comments/aaa/real_post')
+    expect(candidates[0].url).not.toContain('thumbs.redditmedia')
+
+    // B2: CDATA wrapper stripped from title; title is plain text (Reddit titles are not
+    // HTML, so any literal angle-brackets inside the CDATA are kept verbatim, just the
+    // <![CDATA[ ]]> wrapper + entities resolved). The wrapper must NOT leak.
+    expect(candidates[0].title).toBe('CDATA Title & <b>bold</b>')
+    expect(candidates[0].title).not.toContain('CDATA[')
+    expect(candidates[0].title).not.toContain(']]>')
+    expect(candidates[0].summary).not.toContain(']]>')
+    expect(candidates[0].summary).not.toContain('CDATA')
+    expect(candidates[0].summary).not.toContain('<')
+
+    // B3: author from the entry's OWN <author>, NOT <category><name> and NOT <source><author>
+    expect(candidates[0].authorHandle).toBe('u/realposter')
+    expect(candidates[1].authorHandle).toBe('u/actual_author')
+    expect(candidates[1].authorHandle).not.toBe('u/crosspost_source_author')
+  })
+
+  it('reports a TRUNCATED feed (open <entry>, no close) as malformed, not empty [B6]', async () => {
+    const warn = vi.fn()
+    const truncated = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>cut off mid-str'
+    const candidates = await gatherRedditPosts({
+      subreddits: ['ML'],
+      fetchImpl: vi.fn(async (_u: string, _i?: RequestInit) => rssResponse(200, truncated)),
+      sleepImpl: noSleep, logger: { warn },
+    })
+    expect(candidates).toEqual([])
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/malformed\/truncated feed/i))
+    expect(warn).not.toHaveBeenCalledWith(expect.stringMatching(/empty feed/i))
+  })
+
+  it('sanitizes subreddit names (no path traversal / shell metachars escape /r/) [trust boundary]', async () => {
+    const seen: string[] = []
+    const fetchImpl = vi.fn(async (url: string, _i?: RequestInit) => { seen.push(url); return rssResponse(200, '<feed></feed>') })
+    await gatherRedditPosts({
+      subreddits: ['../../etc/passwd', 'ML; rm -rf /', 'a$(whoami)b'],
+      fetchImpl, sleepImpl: noSleep, logger: { warn: vi.fn() },
+    })
+    for (const u of seen) {
+      expect(u).toMatch(/^https:\/\/www\.reddit\.com\/r\/[A-Za-z0-9_]+\/hot\.rss\?limit=\d+$/)
+      expect(u).not.toContain('..')
+      expect(u).not.toContain('$(')
+      expect(u).not.toContain(';')
+    }
+  })
 })

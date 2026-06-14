@@ -1,0 +1,79 @@
+# Independent Senior Review (Opus)
+
+## Verdict
+BLOCK
+
+The pivot is structurally sound, but there are real correctness defects in the link-selection logic, the entry-splitting regex, and the 429 accounting that will silently corrupt or drop data on a *real, well-formed* Reddit Atom feed — not malformed input. These pass the author's fixture because the fixture is too tame.
+
+## Critical Blockers
+
+### B1. `<link>` selection grabs the WRONG href on real Reddit Atom entries
+Real Reddit `<entry>` blocks contain **multiple `<link>` elements**. The canonical shape is:
+
+```
+<link href="https://www.reddit.com/r/MachineLearning/comments/abc/..." />
+...
+<link rel="alternate" type="text/html" href="..." />
+```
+
+but Reddit also emits, per entry, a thumbnail/media link and (crucially) the `<author>` block contains:
+
+```
+<author><name>/u/foo</name><uri>https://www.reddit.com/user/foo</uri></author>
+```
+
+The code does:
+```ts
+const href = firstMatch(entry, /<link\b[^>]*\bhref=["']([^"']+)["']/i)
+```
+`firstMatch` returns the **first** `href` in document order with no `rel` discrimination. On any entry where a media/thumbnail `<link>` (e.g. `<link rel="..." href="https://external-preview.redd.it/...jpg">`) precedes the alternate post link — which happens on link posts with previews — this binds `url` to an image CDN URL, not the comments permalink. The test `expect(first.url).toContain('/r/MachineLearning/comments/')` only passes because the fixture's first entry is a self/text post with a single link. **This is a silent data-corruption bug on the most common post type (link posts).** Must select `rel="alternate"`/`type="text/html"`, or specifically the `reddit.com/.../comments/` link, with the bare-href as last resort.
+
+### B2. `<author><name>` regex collides with `<entry>`-level vs `<feed>`-level author, and the fallback `<name>` is dangerous
+```ts
+const authorRaw = firstMatch(entry, /<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/i)
+  ?? firstMatch(entry, /<name>([\s\S]*?)<\/name>/i)
+```
+Two problems:
+- The primary regex `<author>[\s\S]*?<name>...` is fine **only because** you operate on a single pre-split entry. But Reddit entries do NOT always carry an entry-level `<author>`; AutoModerator/aggregate entries and some crossposts omit it. When absent, the fallback `/<name>([\s\S]*?)<\/name>/` will match a `<name>` from **nested media/category markup** or, if the split regex over-captures (see B3), a *different entry's* author. The fixture has clean per-entry authors so this never fires.
+- It does not constrain `<name>` to within `<author>`, so any future `<name>` element anywhere in the entry is a false positive.
+
+### B3. Entry-splitting regex is not namespace-safe and mis-handles `<entry/>`
+```ts
+xml.match(/<entry\b[\s\S]*?<\/entry>/gi)
+```
+- Reddit's Atom is frequently served with a default namespace but can appear prefixed (`<atom:entry>` / `<feed xmlns:atom=...>`), and media extensions use `<media:...>`. A prefixed `<atom:entry>` would **not** match `/<entry\b/` → zero entries → misclassified as "empty feed" (an honest 200 with content reported as empty). The empty-vs-error distinction you went to trouble to build is defeated by a feed that's valid but prefixed.
+- `[\s\S]*?` is lazy and correct for non-nested entries, but Atom permits no nested `<entry>`, so that's fine — the namespace gap is the real defect.
+
+## Required Changes
+
+1. **Fix link selection (B1).** Replace the first-href grab with rel/type-aware selection. Concretely: collect all `<link ...>` in the entry, prefer the one whose `href` matches `reddit.com/r/<sub>/comments/`, else `rel="alternate"`+`type="text/html"`, else first href. Add a fixture entry that is a **link post with a preview/thumbnail `<link>` ordered before the alternate** and assert `url` contains `/comments/`. This is the one test that would have caught it.
+
+2. **Constrain author extraction (B2).** Anchor the name strictly inside the entry-level `<author>`: drop the bare-`<name>` fallback, or scope it to fail closed (return `null` author) rather than capture a stray `<name>`. Add a fixture entry with **no `<author>`** and assert `authorHandle === null` (not a media title leaking in).
+
+3. **Make entry splitting namespace-tolerant (B3).** Match `/<(?:[a-z]+:)?entry\b[\s\S]*?<\/(?:[a-z]+:)?entry>/gi` and apply the same prefix tolerance to `<title>`, `<link>`, `<content>`, `<author>`, `<published>`. Add a prefixed-namespace fixture and assert it parses, **and** assert a prefixed feed with entries does NOT trigger the "empty feed (0 entries)" warn.
+
+4. **429 retry accounting is off-by-one against the warn message and `maxRetries` semantics.** In `fetchWithRetry`, the loop does `1 initial + maxRetries` fetches. The warn says `HTTP 429 after ${maxRetries} retries`. With `maxRetries: 1` and a perpetual-429 server, you fetch twice (initial + 1 retry) and warn "after 1 retries" — that part is consistent. **But the test `retries on 429 ... maxRetries: 2 ... toHaveBeenCalledTimes(3)` only asserts the happy path.** There is no test that a server returning 429 *every* time stops at exactly `1 + maxRetries` calls. Add one: perpetual-429 with `maxRetries: 2` must assert `fetchImpl` called exactly 3 times and `[]` returned. Without it, an infinite-retry regression ships green.
+
+5. **`parseRetryAfter` silently swallows `Retry-After: 0` vs a malformed value identically, and clamps to 60s but the exponential default can exceed it.** `backoffBaseMs * 2^attempt` with base 3000 and attempt 2 = 12000ms — fine, but unbounded by the same 60s cap the header path enforces. Cap the computed backoff at the same ceiling (60_000) so a misconfigured `backoffBaseMs` can't hang the gatherer for minutes. Minor but cheap.
+
+6. **`cleanSummary` double-decodes — verify it can't resurrect tags into the output.** Flow: `decodeHtmlEntities(value)` → `stripTags` (which strips `<[^>]*>` then `decodeHtmlEntities` **again**). If `<content>` contains `&amp;lt;script&amp;gt;`, pass 1 → `&lt;script&gt;`, `stripTags` regex sees no real `<...>` so strips nothing, then inner `decodeHtmlEntities` → `<script>` **leaks into summary as literal text**. The test only asserts `not.toContain('<')` on the fixture, which has no double-escaped markup. Add a fixture/inline case with double-escaped HTML and assert no `<` survives. Either decode-then-strip in a loop until stable, or strip after the final decode.
+
+7. **`limit` is clamped to ≤100 and appended as `?limit=`, but Reddit's `hot.rss` ignores/caps it differently than `hot.json`.** Not a blocker, but the test asserts the URL carries `limit=25` — verify live that `hot.rss?limit=25` actually returns ≤25 entries; if Reddit caps RSS at 25 regardless, the `limit` option is a no-op lie in the public contract. Document or drop it.
+
+## Lens Notes
+
+- **Seam/contract:** The biggest seams (B1 link, B2 author, B3 namespace) all pass because the fixture is a *single clean capture* of three text-post entries. A green suite here proves the parser handles *that one feed*, not "real but unusual" feeds — exactly the gap you flagged. The fixture is the test's blind spot.
+- **Regex catastrophic backtracking:** I checked the patterns. `/<entry\b[\s\S]*?<\/entry>/gi`, `/<content[^>]*>([\s\S]*?)<\/content>/i`, and the entity regex `/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi` are all linear (lazy quantifiers with a literal terminator, no nested alternation over the same span). **No catastrophic-backtracking risk** — the one genuinely good thing, stated once. The author regex `<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>` is also linear but semantically loose (B2).
+- **Empty-feed vs error:** Correctly distinguished for the *fixture* shape, but B3 collapses a valid prefixed feed into the empty-feed branch — the distinction is only as good as the entry regex.
+- **429 path:** Logic is correct; the gap is test coverage of the exhaustion path (Required Change 4), not the code.
+- **authorHandle normalization:** `normalizeAuthorHandle` correctly strips `/u/`, `/`, and avoids `u/u/` — the dedicated `[RC-3]` test is genuinely good and covers the doubling/leading-slash cases. The weak point is *upstream* (B2: what `authorRaw` you feed it), not the normalizer.
+
+## Residual Risks
+
+- **HTML entities in `<title>`:** `decodeHtmlEntities` on title only does one pass. A title like `AT&amp;amp;T` → `AT&amp;T` (still escaped). Low-severity cosmetic, but Reddit double-escapes ampersands in titles routinely.
+- **`<published>` absent → `created_at: null`:** Acceptable, but downstream consumers must tolerate null `created_at`; not verified in this diff.
+- **`redditUrl` not shown in diff** — B1's fix depends on its behavior with non-reddit hrefs (external link-post URLs). If `redditUrl` rejects non-reddit domains, a link post's `url` could become null and the whole entry drops (title present, url null → `parseAtomEntry` returns null). That's a *different* silent-drop path for the exact post type B1 mis-binds. Confirm `redditUrl` semantics before fixing B1.
+- **Numeric-entity `String.fromCodePoint` on invalid code points:** `Number.parseInt` of `#x110000` is finite but out of Unicode range → `fromCodePoint` throws → caught, returns `match`. Handled, but worth a test.
+- **`x-ratelimit-reset` as Retry-After fallback** parses an absolute epoch-seconds as a *duration* (`secs * 1000`) — Reddit's `x-ratelimit-reset` is seconds-until-reset, so this is correct *by luck*; if Reddit ever sends an absolute timestamp there, you'd sleep for ~55 years before the 60s clamp saves you. The clamp masks the ambiguity; document the assumption.
+
+The fixture-driven tests are well-constructed for what they cover, but they certify the parser against one benign capture. Ship the four fixture additions in Required Changes 1–3 and 6 and the exhaustion test in 4, and re-run live against a subreddit with link posts and previews before this goes back to green.

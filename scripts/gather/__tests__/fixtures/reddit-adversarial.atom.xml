@@ -1,0 +1,25 @@
+<!-- siftly-ace ADVERSARIAL test fixture: synthetic Atom variants Reddit CAN emit.
+     Hand-built 2026-06-14 to exercise parser edge cases the clean live capture lacks:
+     multi-<link> (thumbnail before alternate), CDATA title/content, <source> crosspost
+     author nesting, and a <category><name>. Staleness: synthetic, regenerate only if
+     parser contract changes. -->
+<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+<title>adversarial</title>
+<entry>
+  <author><name>/u/realposter</name><uri>https://www.reddit.com/user/realposter</uri></author>
+  <category term="ML"><name>not-an-author</name></category>
+  <link rel="thumbnail" href="https://b.thumbs.redditmedia.com/THUMB.png" />
+  <link rel="alternate" type="text/html" href="https://www.reddit.com/r/ML/comments/aaa/real_post/" />
+  <title><![CDATA[CDATA Title & <b>bold</b>]]></title>
+  <content type="html"><![CDATA[<p>Body with <a href="x">link</a> & ampersand</p>]]></content>
+  <published>2026-06-10T12:00:00+00:00</published>
+</entry>
+<entry>
+  <source><author><name>/u/crosspost_source_author</name></author></source>
+  <author><name>/u/actual_author</name></author>
+  <link href="https://www.reddit.com/r/ML/comments/bbb/crosspost/" />
+  <title>Crosspost entry</title>
+  <content type="html">&lt;p&gt;escaped &amp;amp; double&lt;/p&gt;</content>
+  <published>2026-06-11T08:30:00+00:00</published>
+</entry>
+</feed>

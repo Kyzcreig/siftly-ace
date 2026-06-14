@@ -1,0 +1,67 @@
+This is an inline diff review, not a GitHub PR. I have enough to do the adversarial review directly. Let me trace the parser and retry logic carefully against real Atom feed behavior.
+
+# Independent Senior Review (Opus)
+
+## Verdict
+BLOCK
+
+The pivot is structurally sound, but the regex-based Atom parser will silently corrupt output on a *real* Reddit RSS feed (which it is not actually being tested against — the fixture is a sanitized happy-path file). At least two of the bugs below produce wrong-but-not-empty data, which is the worst failure class: the green suite stays green and the brief ships garbage. The `<link>` extraction in particular is near-certain to grab the wrong URL on genuine Reddit Atom.
+
+## Critical Blockers
+
+**B1 — `<link>` href regex grabs the WRONG link on real Reddit Atom.**
+Reddit Atom `<entry>` blocks contain **multiple** `<link>` elements. The real shape is roughly:
+```xml
+<link href="https://www.reddit.com/r/.../comments/.../" />
+...and the <author> block contains:
+<author><name>/u/foo</name><uri>https://www.reddit.com/user/foo</uri></author>
+```
+But the feed-level and entry-level links vary, and Reddit also emits `<link rel="alternate" .../>`. Your regex:
+```js
+firstMatch(entry, /<link\b[^>]*\bhref=["']([^"']+)["']/i)
+```
+takes the **first** `href` attribute in document order. Atom allows attributes in any order — `<link rel="alternate" type="text/html" href="...">` works, but a feed that emits `<link thumbnail="..." href="...">` or puts `rel` after `href` is fine too. More importantly, you are not filtering by `rel`. If Reddit ever emits a `<link rel="self">` or a media/thumbnail `<link>` first (it does emit thumbnail links in some entry variants), you capture the wrong URL. The fixture has exactly one clean link per entry, so the test can never catch this. **You must select `rel="alternate"` (or the comments-permalink link) explicitly, not "first href".**
+
+**B2 — Regex `[\s\S]*?` title/content extraction breaks on CDATA and on nested same-name tags.**
+`<title[^>]*>([\s\S]*?)<\/title>` is non-greedy, fine — but Reddit content is `<content type="html">` containing **escaped** HTML, which is OK, *except* some feeds wrap content in `<![CDATA[ ... ]]>`. Your regex captures the literal `<![CDATA[...]]>` wrapper as content text, and `stripTags` will NOT remove it (`<![CDATA[` is not matched by `<[^>]*>` because `]]>` contains no `>`-terminated tag boundary in the way you expect — actually `<![CDATA[` *does* get eaten by `<[^>]*>` up to the first `>`, but the trailing `]]>` survives as literal `]]>` in the summary). Result: summaries leak `]]>` and partial markup. The `expect(first.summary).not.toContain('<')` assertion passes while `]]>` garbage ships. Decide CDATA handling explicitly.
+
+**B3 — `firstMatch(entry, /<name>([\s\S]*?)<\/name>/i)` author fallback can capture across the whole entry and grab the wrong `<name>`.**
+The fallback fires when the strict `<author>...<name>...` pattern fails. But Reddit entries can contain other `<name>` elements (e.g. inside `<category>` or `<source><author>`), and your fallback is unanchored over the entire entry string. Worse: the **primary** pattern `<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>` uses `[\s\S]*?` greedily-bounded by `</author>` — if an entry has a `<source><author>...</author></source>` block (Atom permits this for aggregated feeds), the `[\s\S]*?<\/author>` can match the FIRST `</author>` which may be the source's, capturing the source author, not the post author. Anchor to the entry's own author.
+
+## Required Changes
+
+1. **Select the alternate link explicitly (fixes B1).** Don't take the first `href`. Match all `<link ...>` tags, prefer the one with `rel="alternate"` (or, since this is Reddit, the link whose href contains `/comments/`), and fall back to first only if none qualify. Add a fixture entry with multiple `<link>` elements (thumbnail + alternate) so the test actually exercises selection.
+
+2. **Handle CDATA in title/content/summary (fixes B2).** Before `stripTags`, strip `<![CDATA[ ... ]]>` wrappers, or special-case them in the extractor. Add a fixture entry whose `<content>` and `<title>` use CDATA, and assert no `]]>`/`<![CDATA[` survives.
+
+3. **Anchor the author extraction to the entry's own author (fixes B3).** Combine into a single anchored pattern and drop the broad `<name>` fallback, or scope the fallback to reject `<name>` inside `<category>`/`<source>`. Add a fixture entry containing a `<source><author><name>...` block and assert the post author wins.
+
+4. **`maxRetries` retry-count contract is off-by-context — verify the live default does what the comment claims.** `fetchWithRetry` does `1 initial + up to maxRetries` calls. The test asserts `toHaveBeenCalledTimes(3)` with `maxRetries: 2` — correct. But the **production default** is `DEFAULT_MAX_RETRIES = 2`, and the 429 politeness comment says back-to-back probes 429 hard. With `backoffBaseMs=3000`, the second retry waits `3000 * 2^1 = 6000ms`, total worst-case ~9s of `sleepImpl` **per subreddit**, plus the 2500ms inter-sub delay. Across the default subreddit list this can blow the gatherer's overall budget. No test covers wall-clock budget. Add a max-total-time guard or document the worst-case latency.
+
+5. **`parseRetryAfter` silently clamps to 60s but the 429-exhausted path still warns generically.** When `Retry-After` is a huge value (Reddit sometimes sends large), you clamp to 60s and retry early — into another 429. That's fine, but the exhausted warn says "429 after N retries" without surfacing that a server asked for a longer wait. Low priority, but log the requested Retry-After when present.
+
+6. **Empty-feed vs malformed distinction is regex-fragile.** The empty-feed branch keys off `xml.match(/<entry\b[\s\S]*?<\/entry>/gi)` returning null/empty. A feed with a SINGLE malformed (unclosed) `<entry>` — real on truncated responses — produces `null` here and is reported as "empty feed (0 entries)" rather than "malformed". The test `'not xml at all'` only covers the no-entry case, and the empty-feed test uses a well-formed empty `<feed>`. A truncated entry is the realistic failure (socket cut mid-stream → `text()` returns partial XML), and you'd mislabel it. Distinguish "no `<feed>`/no entries at all" (empty) from "has `<entry` open tag but no close" (malformed/truncated).
+
+7. **`redditUrl` is referenced but its body isn't in the diff — confirm it doesn't reject the RSS hrefs.** The old code fed it `/r/.../comments/...` permalinks and absolute `url` values. Now `href` is always an absolute `https://www.reddit.com/...`. If `redditUrl` had logic to prefix-relative permalinks, dead code; if it whitelists hosts, confirm it accepts the exact href host. Not visible in diff = not reviewable = blocker for a "no surprises" merge. Show it.
+
+8. **`limit` is passed in the RSS query string but Reddit's `hot.rss?limit=` is advisory.** Reddit RSS frequently returns ~25 regardless of `limit=100`. The test asserts the URL contains `limit=25` but never asserts the gatherer respects an over-cap. Not a code bug, but the `limit` clamp to 100 implies a precision the endpoint doesn't honor — document it so a future caller doesn't trust `limit`.
+
+## Lens Notes
+
+- **Catastrophic backtracking:** The patterns here are all non-greedy `[\s\S]*?` bounded by literal close tags, fed per-entry (not whole-document), so true catastrophic backtracking is unlikely. The one to watch is the author primary pattern `<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>` — two unbounded lazy quantifiers in sequence over a large entry that has `<author>` but no `</author>` (truncated feed) will scan to end-of-string for each, O(n²)-ish per attempt. With normal entries it's fine; on a truncated multi-KB entry it degrades. The split-into-entries-first design mostly contains blast radius, but B6's truncated-entry case is also the backtracking-cost case.
+
+- **Entity decode double-pass:** `cleanSummary` decodes once, then `stripTags` decodes again — a value containing `&amp;amp;` becomes `&amp;` then `&`. Probably desired (Reddit double-escapes), but it's an undocumented double-decode that can over-decode legitimate literal `&amp;` text in a title-in-summary. The `title` field, by contrast, is decoded only ONCE (`decodeHtmlEntities(firstMatch(... title ...))`). So titles and summaries have **different** decode depth. A title `AT&amp;T` → `AT&T` (correct); the same string inside summary content → potentially `AT&T` too, but a summary containing `&amp;amp;T` → `&T`. Inconsistent decode depth across fields is a latent contract mismatch. Pick one decode policy.
+
+- **`headers.get` contract:** `parseRetryAfter` calls `h.get('retry-after')`. The real `fetch` Headers object is case-insensitive and present; the test mock lowercases keys manually. Live `Response.headers` is fine. But the `FetchResponse` type marks `headers?` optional — a custom `fetchImpl` returning no `headers` silently disables Retry-After honoring with no warning. Acceptable, but note it.
+
+## Residual Risks
+
+- **The fixture is the spec, and the fixture is sanitized.** Every assertion is pinned to `reddit-hot-machinelearning.atom.xml`, which has exactly 3 clean entries, one clean link each, no CDATA, no `<source>`, no thumbnails, well-formed authors. None of the real-world Atom variance (B1–B3, R6) is represented. "Live-verified working, 10 candidates parsed" proves the happy path on **one** capture, not the contract. Capture 2–3 genuinely different subreddit feeds (one with pinned/sticky mod posts, one image-heavy sub with thumbnail links, one with crossposts/`<source>`) and add them as fixtures before trusting this.
+
+- **Sticky/mod posts:** `[D] Self-Promotion Thread` by AutoModerator is exactly the kind of low-value pinned post that dominates `hot.rss`. The gatherer has no filtering — every brief will lead with the same recurring AutoMod stickies. Not a parse bug, but a discovery-quality bug the "10 candidates" proof would mask.
+
+- **Silent honest-zero engagement → ranking collapse downstream.** `normalized` is computed from `normalizeEngagement('reddit', 0, 1)` for *every* reddit candidate, so all reddit items get an identical score. If the downstream ranker sorts by `normalized`, reddit candidates become order-unstable (tie on a constant) and may be systematically buried or float by insertion order. The honest-zero is correct in isolation; its interaction with ranking is unverified and untested.
+
+- **`redditUrl` not shown** (R7) — repeating because it's the single biggest review gap: you cannot certify URL handling on a diff that omits the function every URL passes through.
+
+Net: the retry/sequential/empty-vs-error scaffolding is decent and well-tested. The **parser** is the liability — it's a regex pretending to be an Atom reader, validated against one cherry-picked feed. Fix B1–B3, add adversarial fixtures, and show `redditUrl`, then this is APPROVE WITH CHANGES.

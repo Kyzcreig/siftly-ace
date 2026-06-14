@@ -142,11 +142,18 @@ function stripTags(value: string): string {
   return decodeHtmlEntities(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim()
 }
 
+/** Remove <![CDATA[ ... ]]> wrappers, keeping the inner text. Some Atom feeds wrap
+ *  title/content in CDATA; without this the literal ]]> leaks past stripTags. (B2) */
+function stripCdata(value: string): string {
+  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+}
+
 function cleanSummary(value: unknown): string {
   if (typeof value !== 'string') return ''
-  // Atom <content> arrives entity-escaped; decode once so the inner tags become real,
-  // then strip them. Two passes: outer decode -> strip inner tags + decode text.
-  const decodedOnce = decodeHtmlEntities(value)
+  // Atom <content> arrives entity-escaped (or CDATA-wrapped). Un-CDATA, decode the
+  // escaped markup to real tags, then strip tags + decode text. (B2 + decode policy.)
+  const unwrapped = stripCdata(value)
+  const decodedOnce = decodeHtmlEntities(unwrapped)
   return stripTags(decodedOnce).slice(0, 600)
 }
 
@@ -184,6 +191,38 @@ function firstMatch(block: string, re: RegExp): string | null {
   return m ? m[1] : null
 }
 
+/** Pick the post permalink from an entry's possibly-multiple <link> elements.
+ *  Prefer rel="alternate"; then any href containing /comments/ (Reddit permalink);
+ *  then the first href. Avoids grabbing a thumbnail/self/media link. (B1) */
+function selectEntryLink(entry: string): string | null {
+  const links = entry.match(/<link\b[^>]*>/gi) ?? []
+  const hrefOf = (tag: string): string | null => {
+    const m = tag.match(/\bhref=["']([^"']+)["']/i)
+    return m ? m[1] : null
+  }
+  const alternate = links.find((l) => /\brel=["']alternate["']/i.test(l))
+  if (alternate) { const h = hrefOf(alternate); if (h) return h }
+  for (const l of links) {
+    const h = hrefOf(l)
+    if (h && /\/comments\//i.test(h)) return h
+  }
+  for (const l of links) { const h = hrefOf(l); if (h) return h }
+  return null
+}
+
+/** Extract the post author from the entry's own <author> block only. Falls back to a
+ *  top-level <name> that is NOT inside <category>/<source>. (B3) */
+function extractEntryAuthor(entry: string): string | null {
+  // Strip nested <source>...</source> so a crosspost's source author can't win.
+  const withoutSource = entry.replace(/<source\b[\s\S]*?<\/source>/gi, '')
+  const block = firstMatch(withoutSource, /<author\b[^>]*>([\s\S]*?)<\/author>/i)
+  if (block) {
+    const name = firstMatch(block, /<name>([\s\S]*?)<\/name>/i)
+    if (name) return name
+  }
+  return null
+}
+
 /** Parse one Atom <entry> into a RedditCandidate. Defensive: missing required
  *  fields -> null (caller counts as malformed, never throws). */
 function parseAtomEntry(
@@ -191,14 +230,14 @@ function parseAtomEntry(
   subreddit: string,
   normalizeEngagement: NormalizeEngagement,
 ): RedditCandidate | null {
-  const title = text(decodeHtmlEntities(firstMatch(entry, /<title[^>]*>([\s\S]*?)<\/title>/i) ?? ''))
-  const href = firstMatch(entry, /<link\b[^>]*\bhref=["']([^"']+)["']/i)
+  const title = text(decodeHtmlEntities(stripCdata(firstMatch(entry, /<title[^>]*>([\s\S]*?)<\/title>/i) ?? '')))
+  const href = selectEntryLink(entry)
   const url = href ? redditUrl(href) : null
   if (!title || !url) return null
 
-  const authorRaw = firstMatch(entry, /<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/i)
-    ?? firstMatch(entry, /<name>([\s\S]*?)<\/name>/i)
-  const authorHandle = normalizeAuthorHandle(authorRaw)
+  // Anchor the author to the entry's OWN <author>...</author>, taking the FIRST <name>
+  // inside it. Reject <name> that lives in <category>/<source> (crossposts). (B3)
+  const authorHandle = normalizeAuthorHandle(extractEntryAuthor(entry))
 
   const published = firstMatch(entry, /<published>([\s\S]*?)<\/published>/i)
     ?? firstMatch(entry, /<updated>([\s\S]*?)<\/updated>/i)
@@ -300,7 +339,13 @@ export async function gatherRedditPosts(options: GatherRedditOptions = {}): Prom
 
     const entries = xml.match(/<entry\b[\s\S]*?<\/entry>/gi)
     if (!entries || entries.length === 0) {
-      logger.warn(`reddit gather ${subreddit}: empty feed (0 entries); returning [] for that source`)
+      // Distinguish a TRUNCATED response (an <entry open tag with no matching close —
+      // realistic on a socket cut mid-stream) from a genuinely empty <feed>. (B6)
+      if (/<entry\b/i.test(xml)) {
+        logger.warn(`reddit gather ${subreddit}: malformed/truncated feed (unterminated entry); returning [] for that source`)
+      } else {
+        logger.warn(`reddit gather ${subreddit}: empty feed (0 entries); returning [] for that source`)
+      }
       continue
     }
 
