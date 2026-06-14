@@ -37,7 +37,7 @@ TOPIC_ALIASES = {
     "dev-tools": ["agent", "agents", "coding", "developer", "devtools", "hermes", "codex", "claude", "cursor", "mcp", "github", "typescript", "python"],
     "ai-ml": ["ai", "llm", "model", "openai", "anthropic", "inference", "training", "eval", "benchmark", "rag", "embedding"],
     "startups-business": ["startup", "founder", "business", "agency", "company", "growth", "product", "sales"],
-    "finance": ["market", "markets", "invest", "equity", "trading", "bitcoin", "crypto", "money", "fund"],
+    "finance": ["market", "markets", "invest", "equity", "money", "fund"],
     "security-privacy": ["security", "privacy", "auth", "token", "exploit", "vulnerability", "malware"],
     "productivity": ["workflow", "automation", "productivity", "notes", "obsidian", "calendar"],
     "politics": ["policy", "politics", "election", "government", "law", "regulation"],

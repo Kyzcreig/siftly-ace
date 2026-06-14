@@ -9,6 +9,7 @@ import {
   buildPreferenceProfile,
   loadProfileRowsFromDatabase,
   writePreferenceArtifacts,
+  isExcludedTopic,
   type PreferenceProfileRow,
 } from '../profile'
 
@@ -243,5 +244,40 @@ describe('preference profile', () => {
       warn.mockRestore()
       await rm(root, { recursive: true, force: true })
     }
+  })
+
+  it('excludes opted-out crypto topics from top_topics while keeping finance', () => {
+    const profile = buildPreferenceProfile([
+      // crypto-tagged rows (would otherwise build a crypto bucket)
+      row({
+        tweetId: 'c1', source: 'bookmark',
+        enrichmentMeta: { segment: 'brief-relevant', topicTags: ['crypto-and-web3'], categories: ['crypto-and-web3'], formatFlags: { format: 'single' } },
+      }),
+      row({
+        tweetId: 'c2', source: 'bookmark',
+        enrichmentMeta: { segment: 'brief-relevant', topicTags: ['crypto-web3'], categories: ['finance-crypto'], formatFlags: { format: 'single' } },
+      }),
+      // a legit finance row (must SURVIVE — finance is not excluded)
+      row({
+        tweetId: 'f1', source: 'bookmark',
+        enrichmentMeta: { segment: 'brief-relevant', topicTags: ['finance'], categories: ['finance'], formatFlags: { format: 'single' } },
+      }),
+    ], { now: '2026-06-14T12:00:00.000Z' })
+
+    const topicNames = profile.top_topics.map((t) => t.name)
+    expect(topicNames).not.toContain('crypto')
+    expect(topicNames).not.toContain('crypto-web3')
+    expect(topicNames).not.toContain('crypto-and-web3')
+    expect(topicNames).not.toContain('finance-crypto')
+    // finance itself is preserved
+    expect(topicNames).toContain('finance')
+  })
+
+  it('isExcludedTopic recognizes crypto variants and not finance', () => {
+    expect(isExcludedTopic('crypto')).toBe(true)
+    expect(isExcludedTopic('crypto-and-web3')).toBe(true)
+    expect(isExcludedTopic('Crypto & Web3')).toBe(true)
+    expect(isExcludedTopic('finance')).toBe(false)
+    expect(isExcludedTopic('dev-tools')).toBe(false)
   })
 })

@@ -187,6 +187,22 @@ export function canonicalizeTopic(value: string): string {
   return TOPIC_SYNONYMS[key] ?? key
 }
 
+// Topics Ace has explicitly opted OUT of, regardless of corpus weight. These are
+// dropped at aggregation time so they never enter top_topics / the taste vector,
+// even though the underlying bookmarks still count toward the TRUE corpus_size.
+// Crypto/web3: Ace stated "I don't care about crypto at all" (2026-06-14) — the
+// corpus shows finance as #1 by weight, but the crypto-specific slice is excluded
+// so a BNB/Binance/token post can't earn a personal-fit nudge. `finance` (markets,
+// investing, money) is NOT excluded — only the crypto-tagged buckets.
+const EXCLUDED_TOPICS = new Set<string>([
+  'crypto', 'crypto-web3', 'crypto-and-web3', 'finance-crypto', 'web3',
+  'blockchain', 'cryptocurrency', 'defi', 'nft', 'nfts',
+])
+
+export function isExcludedTopic(value: string): boolean {
+  return EXCLUDED_TOPICS.has(canonicalizeTopic(value))
+}
+
 export function loadProfileRowsFromDatabase(dbPath: string): PreferenceProfileRow[] {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true })
   try {
@@ -267,10 +283,15 @@ export function buildPreferenceProfile(rows: PreferenceProfileRow[], options: Bu
     if (signals.circular) continue
 
     for (const topic of signals.topics) {
-      addWeighted(topicBuckets, canonicalizeTopic(topic), signals.weight, signals.segment)
+      const canon = canonicalizeTopic(topic)
+      if (EXCLUDED_TOPICS.has(canon)) continue // opted-out topic (e.g. crypto) — never reinforce
+      addWeighted(topicBuckets, canon, signals.weight, signals.segment)
     }
     const clusterTag = clusterTags.get(signals.row.id)
-    if (clusterTag) addWeighted(topicBuckets, canonicalizeTopic(clusterTag), signals.weight, signals.segment)
+    if (clusterTag) {
+      const canonCluster = canonicalizeTopic(clusterTag)
+      if (!EXCLUDED_TOPICS.has(canonCluster)) addWeighted(topicBuckets, canonCluster, signals.weight, signals.segment)
+    }
 
     const handle = normalizeHandle(signals.row.authorHandle)
     if (handle) addWeighted(authorBuckets, handle, signals.weight, signals.segment)
