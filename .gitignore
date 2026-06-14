@@ -76,3 +76,6 @@ promo-video/
 .hermes/
 __pycache__/
 *.pyc
+
+# Wave 6 output-shadow runtime provenance (saw-didn't-save log is local state)
+docs/eval/surfaced-items/
