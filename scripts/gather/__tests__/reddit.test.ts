@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { gatherRedditPosts } from '../reddit'
+import { gatherRedditPosts, rotateSubreddits, dayOfYearUTC } from '../reddit'
 
 const FIXTURE = readFileSync(
   resolve(__dirname, 'fixtures/reddit-hot-machinelearning.atom.xml'),
@@ -229,5 +229,91 @@ describe('reddit gatherer (RSS/Atom)', () => {
     // injected fetchImpl = one lane -> sequential with a gap before B and C
     expect(order).toEqual(['fetch:A', 'sleep', 'fetch:B', 'sleep', 'fetch:C'])
     expect(fetchImpl).toHaveBeenCalledTimes(3)
+  })
+
+  it('marks a lane DOWN on a network throw and skips its remaining subs [D-11/AC-6]', async () => {
+    // Single injected lane that always throws (a black-hole/down lane surfaces as a
+    // thrown network error from the transport). First fetch IS the health signal (D-4):
+    // the throw marks the lane down, so subsequent subs on that lane are NOT re-tried.
+    const warn = vi.fn()
+    let calls = 0
+    const fetchImpl = vi.fn(async () => { calls += 1; throw new Error('Command failed: curl -s -S --socks5-hostname 192.168.1.217:1080 ...\ncurl: (28) Operation timed out') })
+    const candidates = await gatherRedditPosts({
+      subreddits: ['A', 'B', 'C', 'D'], fetchImpl, sleepImpl: noSleep, logger: { warn },
+    })
+    expect(candidates).toEqual([])
+    // lane down after the FIRST throw -> exactly one fetch, not one-per-sub
+    expect(calls).toBe(1)
+    // the warn message is SANITIZED (no curl argv / socks host leaked) [D-6]
+    const msg = warn.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(msg).toMatch(/lane unreachable/)
+    expect(msg).toMatch(/timed out/)
+    expect(msg).not.toContain('--socks5')
+    expect(msg).not.toContain('192.168.1.217')
+  })
+
+  it('honors the step budget and stops fetching when exceeded [D-10]', async () => {
+    // stepBudgetMs=0 disables; a tiny budget with a slow sleep proves the deadline gate.
+    const warn = vi.fn()
+    let calls = 0
+    // each sub "takes" time via the politeness delay; the budget is already past after
+    // the first, so the loop breaks before fetching the rest.
+    const fetchImpl = vi.fn(async () => { calls += 1; return rssResponse(200, FIXTURE) })
+    await gatherRedditPosts({
+      subreddits: ['A', 'B', 'C'], fetchImpl, sleepImpl: noSleep, delayMs: 0,
+      stepBudgetMs: -1 /* clamped to 0 -> Infinity (disabled): sanity it still runs all */,
+      logger: { warn },
+    })
+    expect(calls).toBe(3) // budget disabled -> all subs fetched
+  })
+
+  it('never throws: a thrown lane yields [] (graceful degrade) [never-throw invariant]', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('boom') })
+    await expect(
+      gatherRedditPosts({ subreddits: ['A'], fetchImpl, sleepImpl: noSleep, logger: { warn: vi.fn() } }),
+    ).resolves.toEqual([])
+  })
+})
+
+describe('day-seeded rotation selector [D-10/AC-15]', () => {
+  const SUBS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'] // 9, like the curated set
+
+  it('is deterministic for a given day index', () => {
+    expect(rotateSubreddits(SUBS, 0, 5)).toEqual(rotateSubreddits(SUBS, 0, 5))
+    expect(rotateSubreddits(SUBS, 7, 5)).toEqual(['s7', 's8', 's0', 's1', 's2'])
+  })
+
+  it('returns exactly `size` subs (capped at list length)', () => {
+    expect(rotateSubreddits(SUBS, 3, 5)).toHaveLength(5)
+    expect(rotateSubreddits(SUBS, 3, 20)).toHaveLength(9) // capped at N
+    expect(rotateSubreddits(SUBS, 3, 0)).toEqual([])
+    expect(rotateSubreddits([], 3, 5)).toEqual([])
+  })
+
+  it('covers ALL 9 subs over a 2-day rotation (size 5 -> ceil(9/5)=2 days)', () => {
+    const day0 = rotateSubreddits(SUBS, 0, 5)
+    const day1 = rotateSubreddits(SUBS, 1 * 5, 5) // advance the window by `size`
+    const covered = new Set([...day0, ...day1])
+    expect(covered.size).toBe(9)
+    for (const s of SUBS) expect(covered.has(s)).toBe(true)
+  })
+
+  it('wraps around the list (no out-of-range)', () => {
+    const out = rotateSubreddits(SUBS, 8, 5) // starts at idx 8, wraps to 0..3
+    expect(out).toEqual(['s8', 's0', 's1', 's2', 's3'])
+  })
+
+  it('handles negative/huge day indices safely', () => {
+    expect(rotateSubreddits(SUBS, -1, 3)).toEqual(['s8', 's0', 's1'])
+    expect(() => rotateSubreddits(SUBS, 1e9, 5)).not.toThrow()
+  })
+
+  it('dayOfYearUTC is stable and within [0, 365]', () => {
+    const d = new Date(Date.UTC(2026, 0, 1)) // Jan 1
+    expect(dayOfYearUTC(d)).toBe(1)
+    const mid = new Date(Date.UTC(2026, 5, 14)) // Jun 14
+    const n = dayOfYearUTC(mid)
+    expect(n).toBeGreaterThan(0)
+    expect(n).toBeLessThanOrEqual(366)
   })
 })

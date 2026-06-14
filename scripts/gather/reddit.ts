@@ -3,6 +3,16 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const DEFAULT_SUBREDDITS = ['LocalLLaMA', 'MachineLearning']
+// Curated AI sub set (PRD-brief-live-wiring §5.2, OQ-1 LOCKED). All 9 live-verified
+// HTTP 200 (2026-06-14). Builder/technically-literate niches; marketing-heavy subs
+// excluded. Used by the day-seeded rotation selector below.
+const CURATED_AI_SUBREDDITS = [
+  'LocalLLaMA', 'MachineLearning', 'artificial', 'singularity', 'OpenAI',
+  'AI_Agents', 'LLMDevs', 'ChatGPTCoding', 'StableDiffusion',
+] as const
+// Per-run rotation size: ~5 of 9 keeps a single run inside the measured per-IP RSS
+// budget (D-10) while covering all 9 over a <=2-day rotation.
+const DEFAULT_ROTATION_SIZE = 5
 const DEFAULT_LIMIT = 25
 const USER_AGENT = 'siftly-ace reddit gatherer (https://github.com/Kyzcreig/siftly-ace)'
 const ENGAGEMENT_NORMALIZE_MODULE: string = '../lib/engagement-normalize'
@@ -19,13 +29,25 @@ const ENGAGEMENT_NORMALIZE_MODULE: string = '../lib/engagement-normalize'
 // comments). Unlike the old JSON path, those fields are INTENTIONALLY honest-zero
 // here, not fabricated. A zero-engagement reddit candidate is correct, not a bug.
 const RSS_BASE = 'https://www.reddit.com'
-// Politeness: Reddit per-IP rate-limits RSS hard (back-to-back probes -> 429; a
-// single spaced request -> 200). Sequential + delay + bounded 429 retry. The
-// delay is operator-tunable (measured live, recorded in the live-proof artifact),
-// NOT a guessed default baked in as truth.
-const DEFAULT_DELAY_MS = 2500
+// Politeness: Reddit per-IP rate-limits RSS hard. LIVE-MEASURED 2026-06-14: 9 subs
+// across 2 lanes (~4-5 fetches/IP) mass-429 at 2.5-3s gaps; reliable 200s needed
+// ~45-60s spacing per IP. So the default per-lane gap is raised, AND the rotation
+// selector caps a run at ~5 subs (D-10) so the same-lane spacing x subs-per-lane
+// stays inside the per-source Reddit time box. Sequential per-lane + bounded 429
+// retry; lanes run CONCURRENTLY (each its own IP budget).
+const DEFAULT_DELAY_MS = 45_000
 const DEFAULT_MAX_RETRIES = 2
 const DEFAULT_BACKOFF_BASE_MS = 3000
+// D-11: bounded per-fetch timeout so a black-hole lane (connects, never responds)
+// fails THAT fetch within the box instead of hanging the brief. Applies to both
+// the curl (SOCKS) transport and native fetch.
+const DEFAULT_FETCH_TIMEOUT_MS = 8000
+// D-10: hard wall-clock cap on the whole Reddit step, independent of the brief's
+// global 20-min (1200s) AbortController, so a slow/throttled Reddit never starves the
+// rest of the pipeline. LIVE-MEASURED 2026-06-14: a 5-sub/2-lane/45s-spacing run with
+// one 429 retry took ~203s, so the box is 240s (still ~20% of the cron budget, leaving
+// ~960s for enrich/embed/export/score). The estimate before measurement was 180s.
+const DEFAULT_STEP_BUDGET_MS = 240_000
 
 type NormalizeEngagement = (source: string, raw: number, n: number) => number
 
@@ -70,6 +92,9 @@ export type GatherRedditOptions = {
   backoffBaseMs?: number
   /** Injectable sleep so tests run without real timers. */
   sleepImpl?: SleepLike
+  /** Hard wall-clock cap (ms) on the whole Reddit step (D-10), independent of any
+   *  outer brief timeout. Default DEFAULT_STEP_BUDGET_MS. 0 disables. */
+  stepBudgetMs?: number
   /** Egress lanes to round-robin subreddits across. Each entry is '' (direct/native
    *  fetch, the Mac Studio's own residential WAN) or a SOCKS proxy URL like
    *  'socks5://192.168.1.217:1080' (Starlink). Independent residential IPs each get
@@ -279,14 +304,18 @@ function defaultSleep(ms: number): Promise<void> {
  *  lane shells out to curl --socks5-hostname (the exact call proven live). Returns a
  *  FetchResponse-shaped object. Used only for the DEFAULT lane fetchers; tests inject
  *  their own fetchImpl and never hit this. */
-function curlFetch(proxyUrl: string): FetchLike {
+function curlFetch(proxyUrl: string, timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS): FetchLike {
   return async (url: string): Promise<FetchResponse> => {
     const { execFile } = await import('node:child_process')
     const { promisify } = await import('node:util')
     const run = promisify(execFile)
-    // -s silent, -S show errors, write the HTTP code as a trailer we split off.
+    // D-11: --connect-timeout + --max-time bound a black-hole proxy (connects, never
+    // responds) so curl returns within the box instead of hanging the brief.
+    const maxTime = Math.max(1, Math.ceil(timeoutMs / 1000))
     const args = [
-      '-s', '-S', '--max-time', '20',
+      '-s', '-S',
+      '--connect-timeout', String(maxTime),
+      '--max-time', String(maxTime),
       '--socks5-hostname', proxyUrl.replace(/^socks5:\/\//i, ''),
       '-A', USER_AGENT,
       '-w', '\n%{http_code}',
@@ -311,7 +340,11 @@ function curlFetch(proxyUrl: string): FetchLike {
 }
 
 function nativeFetch(url: string, init?: RequestInit): Promise<FetchResponse> {
-  return fetch(url, init) as unknown as Promise<FetchResponse>
+  // D-11: bound the direct-WAN fetch too, so a stalled connection can't hang the step.
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), DEFAULT_FETCH_TIMEOUT_MS)
+  return (fetch(url, { ...init, signal: ac.signal }) as unknown as Promise<FetchResponse>)
+    .finally(() => clearTimeout(timer))
 }
 
 /** Build one FetchLike per lane: '' -> native fetch (direct WAN), a socks5:// url ->
@@ -354,6 +387,42 @@ async function fetchWithRetry(
   return resp
 }
 
+/** D-6 cosmetic: a curl/execFile failure's `.message` includes the full argv
+ *  (proxy host, UA, url). Strip it to a short, log-safe reason. */
+function sanitizeFetchError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  // execFile errors look like: "Command failed: curl -s -S ... \n<stderr>". Prefer
+  // the curl stderr tail (after the last newline) if present; else a generic label.
+  const nl = raw.lastIndexOf('\n')
+  const tail = nl >= 0 ? raw.slice(nl + 1).trim() : ''
+  if (tail && !/^curl\b/i.test(tail) && !tail.includes('--socks5')) return tail
+  if (/timed out|timeout|max-time|operation too slow/i.test(raw)) return 'timed out'
+  if (/could not resolve|couldn'?t resolve|resolve host/i.test(raw)) return 'dns failure'
+  if (/connection refused|couldn'?t connect|failed to connect/i.test(raw)) return 'connection refused'
+  if (/socks/i.test(raw)) return 'proxy unreachable'
+  return 'unreachable'
+}
+
+/** D-10: deterministic day-seeded rotation. Given the full sub list and a day index
+ *  (day-of-year), returns a stable rotating window of `size` subs such that, advancing
+ *  the day by 1 each run, every sub is covered over ceil(N/size) days. Pure + testable. */
+export function rotateSubreddits(all: readonly string[], dayIndex: number, size: number): string[] {
+  const n = all.length
+  if (n === 0 || size <= 0) return []
+  const k = Math.min(size, n)
+  const start = ((Math.trunc(dayIndex) % n) + n) % n
+  const out: string[] = []
+  for (let i = 0; i < k; i++) out.push(all[(start + i) % n])
+  return out
+}
+
+/** Day-of-year (UTC), 0-based — the rotation seed. */
+export function dayOfYearUTC(d: Date = new Date()): number {
+  const start = Date.UTC(d.getUTCFullYear(), 0, 0)
+  const now = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  return Math.floor((now - start) / 86_400_000)
+}
+
 export async function gatherRedditPosts(options: GatherRedditOptions = {}): Promise<RedditCandidate[]> {
   const subreddits = options.subreddits?.length ? options.subreddits : DEFAULT_SUBREDDITS
   const limit = Math.max(1, Math.min(100, Math.trunc(options.limit ?? DEFAULT_LIMIT)))
@@ -362,57 +431,35 @@ export async function gatherRedditPosts(options: GatherRedditOptions = {}): Prom
   const maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? DEFAULT_MAX_RETRIES))
   const backoffBaseMs = Math.max(0, Math.trunc(options.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS))
   const sleepImpl: SleepLike = options.sleepImpl ?? defaultSleep
-  // Lane round-robin: spread subreddits across independent residential egress IPs, each
-  // with its own Reddit per-IP RSS budget. An injected fetchImpl (tests) overrides lanes
-  // entirely (single fetcher). The politeness delay applies only BETWEEN subs ON THE SAME
-  // lane — consecutive subs on different IPs need no gap.
+  const stepBudgetMs = Math.max(0, Math.trunc(options.stepBudgetMs ?? DEFAULT_STEP_BUDGET_MS))
+  const deadline = stepBudgetMs > 0 ? Date.now() + stepBudgetMs : Infinity
+  const normalizeEngagement = await loadNormalizeEngagement()
+
+  // Lanes run CONCURRENTLY (D-10): each lane is an independent residential IP with its
+  // own per-IP RSS budget, so there is no reason to serialize across lanes. WITHIN a
+  // lane, subs are sequential with the politeness delay (same-IP cadence). An injected
+  // fetchImpl (tests) collapses to a single lane.
   const lanes = options.lanes?.length ? options.lanes : ['']
   const fetchers: FetchLike[] = options.fetchImpl ? [options.fetchImpl] : laneFetchers(lanes)
-  const lastFetchAtPerLane: number[] = new Array(fetchers.length).fill(0)
-  const normalizeEngagement = await loadNormalizeEngagement()
-  const candidates: RedditCandidate[] = []
 
-  for (let i = 0; i < subreddits.length; i++) {
-    const subreddit = subreddits[i]
-    const laneIdx = i % fetchers.length
-    const fetchImpl = fetchers[laneIdx]
-    // politeness gap only if THIS lane fetched recently (same-IP cadence)
-    if (delayMs > 0 && lastFetchAtPerLane[laneIdx] > 0) await sleepImpl(delayMs)
-    lastFetchAtPerLane[laneIdx] = 1
+  // Assign subs to lanes round-robin (sub i -> lane i % L), preserving the historical
+  // distribution, but now grouped per lane so each lane can run as its own sequence.
+  const perLane: string[][] = fetchers.map(() => [])
+  for (let i = 0; i < subreddits.length; i++) perLane[i % fetchers.length].push(subreddits[i])
 
-    const url = rssApiUrl(subreddit, limit)
-    let xml: string
-    try {
-      const response = await fetchWithRetry(url, fetchImpl, sleepImpl, maxRetries, backoffBaseMs)
-      if (response.status === 429) {
-        logger.warn(`reddit gather ${subreddit}: HTTP 429 after ${maxRetries} retries; returning [] for that source`)
-        continue
-      }
-      if (!response.ok) {
-        logger.warn(`reddit gather ${subreddit}: HTTP ${response.status}; returning [] for that source`)
-        continue
-      }
-      xml = await response.text()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.warn(`reddit gather ${subreddit}: malformed or unreachable source (${message}); returning [] for that source`)
-      continue
-    }
-
+  // Parse one fetched feed into candidates (shared by every lane worker).
+  const parseFeed = (xml: string, subreddit: string, sink: RedditCandidate[]): void => {
     const entries = xml.match(/<entry\b[\s\S]*?<\/entry>/gi)
     if (!entries || entries.length === 0) {
-      // Distinguish a TRUNCATED response (an <entry open tag with no matching close —
-      // realistic on a socket cut mid-stream) from a genuinely empty <feed>. (B6)
       if (/<entry\b/i.test(xml)) {
         logger.warn(`reddit gather ${subreddit}: malformed/truncated feed (unterminated entry); returning [] for that source`)
       } else {
         logger.warn(`reddit gather ${subreddit}: empty feed (0 entries); returning [] for that source`)
       }
-      continue
+      return
     }
-
     let malformed = 0
-    const before = candidates.length
+    const before = sink.length
     for (const entry of entries) {
       let parsed: RedditCandidate | null = null
       try {
@@ -420,16 +467,58 @@ export async function gatherRedditPosts(options: GatherRedditOptions = {}): Prom
       } catch {
         parsed = null
       }
-      if (parsed) candidates.push(parsed)
+      if (parsed) sink.push(parsed)
       else malformed += 1
     }
     if (malformed > 0) logger.warn(`reddit gather ${subreddit}: malformed entr(y/ies) ignored (${malformed})`)
-    if (candidates.length === before && malformed === 0) {
+    if (sink.length === before && malformed === 0) {
       logger.warn(`reddit gather ${subreddit}: empty feed after filtering; returning [] for that source`)
     }
   }
 
-  return candidates
+  // One worker per lane. A network throw (down/black-hole lane caught by the per-fetch
+  // timeout, D-11) marks THIS lane down for the rest of the run: its remaining subs are
+  // skipped (no point re-paying the timeout per sub). The first real fetch IS the health
+  // signal (D-4) — no separate preflight.
+  const laneWorker = async (laneIdx: number): Promise<RedditCandidate[]> => {
+    const fetchImpl = fetchers[laneIdx]
+    const subs = perLane[laneIdx]
+    const out: RedditCandidate[] = []
+    let laneDown = false
+    for (let j = 0; j < subs.length; j++) {
+      if (Date.now() >= deadline) {
+        logger.warn(`reddit gather: step budget (${stepBudgetMs}ms) exceeded; ${subs.length - j} sub(s) on lane ${laneIdx} skipped`)
+        break
+      }
+      if (laneDown) break
+      const subreddit = subs[j]
+      if (delayMs > 0 && j > 0) await sleepImpl(delayMs) // same-IP cadence
+      const url = rssApiUrl(subreddit, limit)
+      try {
+        const response = await fetchWithRetry(url, fetchImpl, sleepImpl, maxRetries, backoffBaseMs)
+        if (response.status === 429) {
+          logger.warn(`reddit gather ${subreddit}: HTTP 429 after ${maxRetries} retries; returning [] for that source`)
+          continue
+        }
+        if (!response.ok) {
+          logger.warn(`reddit gather ${subreddit}: HTTP ${response.status}; returning [] for that source`)
+          continue
+        }
+        parseFeed(await response.text(), subreddit, out)
+      } catch (err) {
+        // Network throw = lane transport failure (proxy down / black-hole timeout).
+        // Mark the lane down so we don't re-pay the timeout for every remaining sub.
+        const reason = sanitizeFetchError(err)
+        const lane = lanes[laneIdx] ?? ''
+        logger.warn(`reddit gather ${subreddit} via ${lane || 'direct'}: lane unreachable (${reason}); marking lane down, ${subs.length - j - 1} remaining sub(s) skipped`)
+        laneDown = true
+      }
+    }
+    return out
+  }
+
+  const laneResults = await Promise.all(fetchers.map((_, idx) => laneWorker(idx)))
+  return laneResults.flat()
 }
 
 function flag(name: string): string | undefined {
@@ -451,16 +540,33 @@ function intOf(value: string | undefined, fallback: number): number {
 }
 
 async function main(): Promise<number> {
-  const subreddits = allFlags('subreddit')
+  const explicitSubs = allFlags('subreddit')
   const limit = intOf(flag('limit'), DEFAULT_LIMIT)
   const delayMs = flag('delay-ms') !== undefined ? intOf(flag('delay-ms'), DEFAULT_DELAY_MS) : undefined
+  const stepBudgetMs = flag('step-budget-ms') !== undefined ? intOf(flag('step-budget-ms'), DEFAULT_STEP_BUDGET_MS) : undefined
   // --lane '' (direct) and/or --lane socks5://host:port (e.g. Starlink). Repeatable;
   // subreddits round-robin across them. Default: direct WAN only.
   const lanes = allFlags('lane')
+  // --rotate [size] selects a day-seeded rotating subset of the curated AI set (D-10),
+  // so a single run stays inside the per-IP RSS budget and all 9 subs are covered over
+  // a <=2-day rotation. Explicit --subreddit flags override rotation. --rotate-day lets
+  // a test/operator pin the day index deterministically.
+  const wantRotate = process.argv.includes('--rotate')
+  const rotateSize = intOf(flag('rotate'), DEFAULT_ROTATION_SIZE)
+  const rotateDay = flag('rotate-day') !== undefined ? Number(flag('rotate-day')) : dayOfYearUTC()
+  let subreddits: string[]
+  if (explicitSubs.length) {
+    subreddits = explicitSubs
+  } else if (wantRotate) {
+    subreddits = rotateSubreddits(CURATED_AI_SUBREDDITS, rotateDay, rotateSize)
+  } else {
+    subreddits = [...DEFAULT_SUBREDDITS]
+  }
   const candidates = await gatherRedditPosts({
-    subreddits: subreddits.length ? subreddits : DEFAULT_SUBREDDITS,
+    subreddits,
     limit,
     delayMs,
+    stepBudgetMs,
     lanes: lanes.length ? lanes : undefined,
     logger: { warn: (message) => console.error(message) },
   })
