@@ -1,6 +1,6 @@
 # Wave 6 — Live Cutover Plan (P1)
 
-**Status:** ready to execute · **Owner:** Apollo · **Date:** 2026-06-13
+**Status:** EXECUTED (shadow live 2026-06-13); embed promotion deferred to data-gated follow-up · **Owner:** Apollo · **Date:** 2026-06-13
 **Principle:** ship the PLUMBING (shadow-mode, dedup, gatherers, diversity) which is byte-identical-safe; do NOT flip `embed` (no shadow data yet — AC#9 gate has zero evidence). `embed` promotion auto-surfaces to Ace in ~3+ days once shadow data accrues.
 
 ## What the cutover IS today (all safe / byte-identical)
