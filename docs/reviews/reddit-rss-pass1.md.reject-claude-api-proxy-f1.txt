@@ -1,0 +1,35 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+None rise to BLOCK. This is a low-blast-radius, dependency-removing change to an unwired gatherer (§2, §11, Evidence: "Reddit gatherer is NOT wired into a live brief → zero blast radius"). The premise gate is genuinely verified live (Evidence Pack: RSS 200 reproduced after pause; 429 on back-to-back). Below are the changes required before closeout — none block dispatch, but several block "done."
+
+## Required Changes
+
+1. **The 429-handling design contradicts the live evidence and will silently zero out the source (§5, §6 Phase 2, D-4; Evidence: "Back-to-back RSS probes → 429 … A single spaced request → 200 every time").** The spec retries 429 with a 2s→4s backoff *capped at 2 retries*, then contributes `[]`. But the ground truth is that 429 is triggered by *proximity of requests*, and the per-IP RSS limit recovers on the order of the rate-limit window — not seconds. A 2s/4s backoff is almost certainly too short to clear a real 429, so the realistic production path is "retry, still 429, return [] silently." That means the *normal* failure mode produces an empty source that looks healthy (warn-only, no alert — §7). Required: (a) honor the `x-rate-limit-reset`/`Retry-After` header if present rather than a fixed 2s/4s; (b) make the inter-sub `delayMs` the primary defense (the evidence says spacing is what works, not retry); (c) state the expected recovery window so OQ-1 defaults aren't guessed against contradicting evidence. Retry-with-tiny-backoff is treating a windowed limiter like a transient blip.
+
+2. **No staleness/empty-source detection — a 403 (datacenter block returns) or persistent 429 degrades to `[]` indistinguishably from "nothing hot today" (§3 Invariant 1, §7 Observability, R1).** The whole reason the API path died is the host's datacenter IP got blocked (Evidence). RSS works *today* from that IP, but the same block mechanism could extend to RSS (R1 acknowledges this). The design's "honest []" invariant is correct for not-crashing, but there is no signal that distinguishes "source returned 0 because Reddit is down/blocking" from "source returned 0 legitimately." Required: probe/closeout must assert a **nonzero floor** (AC-9 already says `fetched>0` — good), and the spec should state that the cron-wiring step (separate PRD) MUST add a "reddit fetched 0 for N consecutive days" warn. Note this explicitly as a handoff invariant to the wiring PRD so it isn't lost at the seam.
+
+3. **Author/URL parsing assumptions are under-specified against the one adversarial reality of HTML-in-Atom (§5, OQ-2; Evidence: `<content type="html">`).** The content is HTML inside Atom inside a regex parser (D-3). Two real hazards the spec hand-waves: (a) `<title>` and `<content>` can contain CDATA and/or HTML-entity-escaped `<entry>`-looking substrings — a naive `/<entry>(.*?)<\/entry>/` regex can mis-split on entity-encoded angle brackets in post titles; (b) the `author/name` is stated as `/u/<name>` "if Reddit prefixes it" — that conditional ("if") means the spec doesn't actually know the format it's parsing. Required: the captured fixture (Phase 1) must include at least one entry with HTML/entities in the title and one with markup in `<content>`, and the parser test must prove correct split + decode on it. Pin the exact `author` format from the live capture, not "if prefixed."
+
+4. **The fixture is the regression gate but its provenance/refresh is undefined (R2, R3, Phase 1).** R3 correctly flags "false works from a stale fixture," and the mitigation is live e2e. But the fixture itself is captured once from a live 200 and then frozen — if Reddit drifts the Atom schema (R2), the fixture test stays green while live breaks. Required: commit the fixture with a capture-date comment and add a single assertion in the live e2e that the *live* feed still matches the fixture's structural shape (field presence), so schema drift fails loudly rather than only via a hand-run probe.
+
+5. **Closeout proofs that are "Not applicable" for the deletion phase skip the one real risk of a deletion (§6 Phase 3).** Removing OAuth code + `__resetRedditTokenCacheForTests` + 3 tests is fine, but "covered by grep + tsc" doesn't prove nothing *else* imported those symbols. Required: closeout grep must also cover `src/`, `e2e/`, and test files (not just `scripts/ .env.example`) for the removed exports, and `npm run verify` (AC-8) must be the gate — which it is, so just widen the grep scope in AC-6.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Sound — RSS is correctly scoped to a discovery gatherer's actual need (inflow, not mining); regex-no-dep matches house style (D-3, §3).
+- **Security/identity-isolation:** Net positive — removes an entire credential surface (§7); unauthenticated public-GET only, no token to leak.
+- **DevOps/SRE:** Rollback is genuinely trivial (unwired, single-file, `git revert` — §11); but the launch contract has no empty-source alarm, so a silent-zero degradation is invisible (Required Change 1 & 2).
+- **Implementation/maintainability:** Regex Atom parsing is the accepted risk (D-3) but needs adversarial fixtures (Required Change 3); `delayMs`/`sleepImpl` injection for hermetic tests is the right call (§5).
+- **QA:** Tests are *mostly* real gates — live e2e is required not optional (Phase 1/2, R3), which is the right instinct; weakness is the frozen fixture (Required Change 4) and happy-path author-format assumption (Required Change 3).
+- **Config-drift:** Strong — D-6 rips out dead cred plumbing rather than leaving a "set these creds" path that can never work; widen the removal grep to `src/`/tests (Required Change 5).
+
+## Residual Risks / Open Questions
+
+- **The entire pivot rests on one IP-dependent fact:** RSS 200 from a datacenter IP that Reddit *already* blocks for JSON. If Reddit closes the RSS hole (they closed JSON for the same IP class), this dies the same death — and there is no fallback in-scope (R1 leans entirely on github-trending). Acceptable for now, but the gatherer should be treated as best-effort, never load-bearing.
+- **OQ-1 defaults are guessed against contradicting evidence** (2s backoff vs. a window-based limiter) — resolve via Required Change 1 before picking numbers.
+- **OQ-2 (summary content) is genuinely open** and cosmetic; lean (stripped ~600-char content) is fine, but verify the HTML-strip handles Reddit's `<content>` wrapper markup (`<!-- SC_OFF -->`, `<div class="md">`) so summaries aren't full of markup artifacts.
+- **Unverified assumption:** that `normalizeEngagement('reddit', 0, 1)` produces a genuinely *neutral* score and not a *low/penalizing* one — if zero-engagement maps to a low score, every RSS reddit item is silently deprioritized vs. the old JSON items that had real scores. Confirm the normalize semantics before honest-zero is declared harmless (relevant when wired; ties to R4).

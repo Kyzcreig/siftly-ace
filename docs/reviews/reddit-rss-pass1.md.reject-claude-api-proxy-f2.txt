@@ -1,0 +1,37 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+This is a tight, well-scoped PRD with honest evidence and a genuinely zero-blast-radius change. The pivot is correct and the invariants are the right ones. But several acceptance gates are weaker than they read, and one of them is structurally impossible to keep green deterministically — which is the kind of thing that becomes a flaky CI or a silently-rotting test six weeks out.
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+None rise to BLOCK. The change is unwired (§2, §11 "zero blast radius"), credential-net-negative (§7), and reversible by `git revert`. Nothing here can cause an outage. The items below are real and must be fixed before merge, but none gate a stop.
+
+## Required Changes
+
+1. **AC-1 / AC-5 / AC-9 are live-network gates inside `npm run verify` — they WILL flake or 429 (R3, §6 Phase 1/2 "required" e2e, AC-8).** The evidence pack states back-to-back RSS probes return **429** and only *spaced* requests return 200. If AC-1/AC-5/AC-9's "live" e2e checks run inside `npm run verify` (AC-8: "tsc + lint + unit + e2e"), then CI hitting Reddit on every run is both rude (violates the §3 politeness invariant at CI frequency) and non-deterministic (429 → red on an unchanged tree). **Required:** split the gate. The deterministic, must-pass CI gate runs against the **captured Atom fixture** (Phase 1 fixture test) + mocked 429/403/malformed paths. The **live** AC-1/AC-5/AC-9 runs are a *manual/closeout* step (like the repo's existing `verify:live` pattern), explicitly NOT in `npm run verify`. State this split in §10; right now AC-8 ("full gate green") silently swallows three live-network assertions.
+
+2. **The fixture is the entire deterministic safety net and §6 doesn't pin its provenance (R2, R3, §6 Phase 1).** "Feed a captured real Atom fixture" — captured when, stored where, regenerated how? If the only honest schema-drift detector (R2) is a fixture, the PRD must mandate: (a) the fixture is committed from a real live 200 with the capture date in a header comment, (b) a documented one-liner to refresh it, (c) the parser test asserts *specific* parsed values (exact title, exact `u/<name>`, exact ISO `created_at`), not just "N candidates." A count-only assertion passes against garbage. Cite this in AC-1's evidence.
+
+3. **"Byte-identical `RedditCandidate`" (§3, AC-3) is contradicted by the data — make it explicit, not silent (Invariant 2 vs Invariant 5).** The shape is identical but the *values* are not: `engagement_raw.{score,upvotes,comments}` go from real JSON numbers to forced `0`, and `normalized` from real to neutral. Downstream scoring consumed real engagement before; now it consumes zeros. §3 calls this "zero downstream changes" — that's true for the *type* but false for *behavior*. R4 acknowledges it but defers it as "not a blocker." Required: AC-3 must say "shape unchanged; engagement values intentionally degrade to honest-zero per Invariant 5" so a future reader doesn't treat a zero-engagement reddit candidate as a parse bug. This is a one-line doc fix, but it closes a real trap.
+
+4. **`authorHandle` normalization is underspecified and untested (§5).** §5 says `authorHandle = u/<name>` "after stripping the leading `/u/` if Reddit prefixes it" — "if" is doing a lot of work. The JSON path produced `author` (bare name); RSS gives `/u/<name>`. If today's `RedditCandidate.authorHandle` was bare `<name>` and you now emit `u/<name>`, that's a silent value drift that breaks cross-brief dedup keyed on author. **Required:** pin the exact target format, assert it in the fixture test against a known entry, and confirm it matches what the JSON path emitted (or document the intentional change).
+
+5. **AC-6 grep is too narrow (§6 Phase 3, AC-6).** AC-6 greps `REDDIT_CLIENT|oauth.reddit|access_token` in `scripts/ .env.example`. The evidence pack lists more dead surface: `__resetRedditTokenCacheForTests`, the "3 OAuth tests," the `with-secrets.sh` Reddit block (refs at item `REDDIT_APP_ITEM`), and `REDDIT_CLIENT_ID/SECRET`. Add `REDDIT_APP_ITEM`, `REDDIT_SECRET`, `__resetRedditTokenCache`, and `oauth` (Reddit-scoped) to the grep, and grep the test dir too — otherwise a stray `REDDIT_APP_ITEM` ref in `with-secrets.sh` survives a green AC-6.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Correct pivot; regex-Atom matches the established `github-trending.ts` house style (D-3, §5) — consistent, no new dep, sound.
+- **Security/identity-isolation:** Net-positive — removes an entire credential surface (§7); unauthenticated GET to public RSS only, no identity to isolate.
+- **DevOps/SRE:** Rollback is clean and zero-blast (§11); the gap is the launch *gate* conflating live-network e2e with deterministic CI (Required #1) — fix the contract, not the rollout.
+- **Implementation/maintainability:** Single-file, defensive parser (R2); the only debt is the optional `lib/html-text.ts` dedup left as "optional" (§5) — fine to defer, but pick duplicate-or-share explicitly so it doesn't get half-done.
+- **QA:** Negative paths are genuinely covered (429/403/5xx/malformed/throw, AC-2) — but the *positive* gate leans on a count assertion + live network; tighten to value-level fixture assertions (Required #2) or it's happy-path theater.
+- **Config-drift:** D-6/Phase 3 removes dead cred plumbing honestly; AC-6's grep must actually cover all of it (Required #5) or drift survives the gate that's supposed to kill it.
+
+## Residual Risks / Open Questions
+
+- **RSS as an unsanctioned-but-tolerated path:** The same Nov-2025 policy that closed the API could extend to RSS rate-policy at any time (R1). RSS isn't a contract; it's a feed Reddit can throttle or gate behind auth unilaterally. Accepted given graceful `[]` degradation and the unwired state, but this gatherer should be treated as *best-effort forever*, never load-bearing — worth a one-line note in AGENTS.md so a future wiring step doesn't assume reliability.
+- **OQ-2 (summary content) is unresolved but affects the output values** — the `<content>` HTML strip/truncate choice changes what dedup/scoring sees. Lean-stripped-text is reasonable; just resolve it before wiring, not after.
+- **429-during-cron correlation (R5):** if this ever shares an egress IP with another Reddit-touching job, the per-IP budget is shared and the "few subs once/day" math breaks. Note the assumption: this is the *only* Reddit-RSS consumer on that IP.
+- **Atom `<link href>` selection:** Reddit Atom entries can carry multiple `<link>` elements; §5 assumes the permalink is the one parsed. Confirm the regex targets the comments-permalink `href`, not an alternate/self link — untested in the current AC set.

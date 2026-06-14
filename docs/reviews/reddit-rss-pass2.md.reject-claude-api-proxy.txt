@@ -1,0 +1,39 @@
+I've already reviewed this PRD — what you've pasted back to me is my own Pass-1 output (the "PRIOR REVIEW (feed-forward)" block is verbatim my APPROVE WITH CHANGES with RC-1..5). The task now is **Pass-2**: verify each RC-1..5 + F1/F2 is *genuinely* resolved in v2, don't rubber-stamp, and flag anything still open or newly introduced.
+
+Let me do that against the v2 text.
+
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+None. This is an unwired single-file gatherer with a `[]`+warn floor (§3) and zero live blast radius (§2, §11, Evidence Pack "grep-confirmed not wired"). Every Pass-1 RC is genuinely closed in v2 — verified item-by-item below, not rubber-stamped. The two remaining nits are closeout-mechanics, not spec defects, and don't gate approval.
+
+## Required Changes
+
+These are **verification obligations at closeout**, not unresolved spec holes. The spec is approvable as written; what remains is proving the asserted-not-yet-proven claims it now correctly promises.
+
+- **CR-A (proof, not spec) — The two load-bearing live numbers don't exist yet.** v2 fixed the *contradiction* (RC-1): the 2 s default is now explicitly labeled the "back-to-back" cadence that 429s, and `delayMs` MUST come from "the spacing that empirically produced repeatable 200s (measured during Phase-2 closeout)" (§3 politeness invariant, D-4 is now superseded by that wording, AC-5). Good — but that measured number **and** the daily-cumulative-footprint number (Residual, last review) are still unmeasured. At closeout the live-proof artifact MUST record the *actual* delay that produced 200/200, or this silently ships OQ-1's "guessed 2 s" under a better-worded invariant. The wording is correct; the measurement is the gate.
+
+- **CR-B (proof) — The header-honoring 429 retry is asserted but only mock-tested.** §3/AC-5 now require honoring `Retry-After`/`x-ratelimit-reset` "when present, else exponential backoff." Correct fix. But Reddit RSS 429s in the Evidence Pack are not confirmed to *carry* a `Retry-After` header — if they don't, the code silently falls to the exponential-backoff branch, which is the same too-fast re-hit RC-1 warned about, just one layer down. Closeout obligation: the live spaced run (or a captured 429 response) must confirm whether the header is actually present; if absent, the backoff base must be the measured-200 spacing, not 2 s.
+
+## Lens Notes (one line each)
+
+- **RC-1 (politeness budget):** RESOLVED — §3 invariant now derives `delayMs` from measured 200-spacing and brands a fixed 2 s as the known-bad back-to-back cadence; AC-5 requires the recorded delay. (Residual: the measurement itself — CR-A.)
+- **RC-2 (CI vs live split):** RESOLVED, cleanly — new §5a makes it explicit and load-bearing: CI/`npm run verify` is HERMETIC (fixture+mocks, AC-8), live e2e is MANUAL/SPACED/committed artifact (AC-1/-5/-9 all now tagged "NOT in CI"). This was the most important Pass-1 change and it's done right.
+- **RC-3 (authorHandle drift):** RESOLVED — promoted to a named invariant (§3) with exact canonical form `u/<name>`, strip-leading-`/u/`-or-`/` rule, and AC-11 asserts the exact fixture string. "if Reddit prefixes it" is gone.
+- **RC-4 (empty-feed observability):** RESOLVED — dedicated invariant (§3) + AC-10, distinct warn string `empty feed (0 entries)` separated from the 429/error warns; the bad-sub-vs-throttle ambiguity is closed.
+- **RC-5 (fixture provenance/drift):** RESOLVED — §5a + AC-12 require the fixture header to carry capture date + source URL, and explicitly name the live artifact (not the fixture) as the schema authority. The config-drift trap is named and guarded.
+- **F1-2 (handoff invariant):** RESOLVED — the dedicated handoff block carries the "reddit `fetched`==0 for N days" warn obligation forward to the future live-wiring PRD so the silent-block death can't recur at the seam.
+- **F2-3 (intentional engagement degrade):** RESOLVED — the output-contract invariant now explicitly separates shape (byte-identical) from values (honest-zero, "deliberate behavioral degrade, not a parse bug"), AC-3 + a code comment required.
+- **F2-5 (broadened grep):** RESOLVED — D-6/Phase-3/AC-6 grep is broadened to `REDDIT_CLIENT|REDDIT_SECRET|REDDIT_APP_ITEM|oauth.?reddit|access_token|__resetRedditTokenCache` and includes the test dir.
+
+## Residual Risks / Open Questions
+
+- **Newly introduced, minor — `normalizeEngagement('reddit', 0, 1)` semantics unverified.** §5 specifies neutral normalized via that call, but nobody's confirmed `normalizeEngagement` returns a *neutral* (not min/penalizing) value for `(0,1)`. If it floors reddit candidates, the honest-zero degrade quietly becomes an honest-penalty when wired. Not a gatherer blocker (unwired), but the future live-wire PRD should assert the normalized value is genuinely neutral, not bottom-ranked. AC-7 only checks the raw `0`s, not the normalized output.
+- **OQ-2 (summary HTML strip):** still open but correctly defaulted (stripped content text, reuse `cleanSummary`/`stripTags`); the only watch is that `<content type="html">` goes through the proven stripper so no markup reaches a downstream render — low risk given the digest render escapes per-line, and harmless while unwired.
+- **Policy-gray RSS reliance (R1):** unchanged structural risk — RSS-as-programmatic-access is a path Reddit could close like it closed the API; the `[]` degrade keeps it honest and github-trending stays the resilient source, so it's an accepted risk, not a defect. Treat RSS as a source that will eventually die.
+- **Daily cumulative footprint:** still unmeasured (one-shot spaced runs ≠ a week of cold-start daily cron hits from the same IP) — recommend one week of probe `fetched`/`error` data before the separate gated live-wire, per the prior review.
+
+Net: v2 resolves every Pass-1 finding with real spec changes (named invariants + concrete ACs), not hand-waves. The verdict moves to **APPROVE** — with the two closeout proof-obligations (CR-A: record the measured delay; CR-B: confirm whether 429s carry `Retry-After`) that must land in the live-proof artifact, since the spec now correctly *promises* them but the numbers don't exist until the spaced live run is done.
