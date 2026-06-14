@@ -235,8 +235,15 @@ get silently swapped for the fixture. So the split is **explicit and load-bearin
 - **R4 — Engagement-zero degrades brief scoring quality** (if/when wired). *Mitigation:* documented
   honest-zero; brief scoring already tolerates a source with neutral engagement; revisit only if a
   metric becomes available. Not a blocker for the gatherer itself.
-- **R5 — Per-IP 429 during the daily cron window.** *Mitigation:* sequential + delay + bounded retry;
-  the cron hits ≤ a handful of subs once/day — well under the observed limit.
+- **R5 — Per-IP 429 during the daily cron window.** *Mitigation:* sequential + delay + bounded retry.
+  **MEASURED LIMITATION (live, 2026-06-14, see `docs/reviews/reddit-rss-live-proof.md`):** from the
+  Mac Studio datacenter IP, Reddit RSS allows ≈ **1 successful fetch per rolling window (~minutes)** —
+  the inter-sub gap (tested 4 s, 8 s) does NOT buy a second 200; whichever sub leads gets its data,
+  the other 429s and degrades to `[]`+warn. The graceful-degrade invariant held in every run. The
+  durable multi-sub fix is a **residential egress lane** for Reddit RSS (`egress-lanes` skill; the
+  residential macbook-pro lane would dodge the datacenter throttle) — scoped as a handoff to the
+  live-wiring PRD, NOT built here (this PRD restores the gatherer; it does not wire it). Treat the
+  gatherer as **best-effort, ≥1 sub/run**; github-trending is the resilient source.
 
 ## 9. Open Questions
 

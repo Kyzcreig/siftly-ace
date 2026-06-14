@@ -7,77 +7,25 @@ const DEFAULT_LIMIT = 25
 const USER_AGENT = 'siftly-ace reddit gatherer (https://github.com/Kyzcreig/siftly-ace)'
 const ENGAGEMENT_NORMALIZE_MODULE: string = '../lib/engagement-normalize'
 
-// --- Reddit app-only OAuth (durable fix for the datacenter-IP 403 on anon .json reads) ---
-// Reddit blocks UNAUTHENTICATED .json reads from datacenter / non-residential IPs (Mac Studio
-// host returns 403 on every UA + egress lane; the access_token endpoint returns 401, i.e. the
-// IP is fine for AUTH). With a free app-only token we read via oauth.reddit.com and bypass the
-// block. Creds (optional): REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET. Absent -> anon fallback.
-const OAUTH_BASE = 'https://oauth.reddit.com'
-const ANON_BASE = 'https://www.reddit.com'
-const TOKEN_URL = 'https://www.reddit.com/api/v1/access_token'
-const TOKEN_SKEW_MS = 60_000 // refresh 60s before expiry
-
-type TokenState = { token: string; expiresAt: number }
-let tokenCache: TokenState | null = null
-let tokenInFlight: Promise<string | null> | null = null
-
-function readEnv(name: string): string | null {
-  const v = process.env[name]
-  return typeof v === 'string' && v.trim() ? v.trim() : null
-}
-
-async function fetchAppOnlyToken(fetchImpl: FetchLike, logger: Logger): Promise<string | null> {
-  const id = readEnv('REDDIT_CLIENT_ID')
-  const secret = readEnv('REDDIT_CLIENT_SECRET')
-  if (!id || !secret) return null
-  const now = Date.now()
-  if (tokenCache && tokenCache.expiresAt - TOKEN_SKEW_MS > now) return tokenCache.token
-  if (tokenInFlight) return tokenInFlight
-  const basic =
-    typeof btoa === 'function'
-      ? btoa(id + ':' + secret)
-      : Buffer.from(id + ':' + secret).toString('base64')
-  tokenInFlight = (async () => {
-    try {
-      const resp = await fetchImpl(TOKEN_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: 'Basic ' + basic,
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': USER_AGENT,
-        },
-        body: 'grant_type=client_credentials',
-      } as RequestInit)
-      if (!resp.ok) {
-        await drainJson(resp)
-        logger.warn('reddit oauth: token endpoint HTTP ' + resp.status + '; falling back to anon reads')
-        return null
-      }
-      const body = asRecord(await resp.json())
-      const token = body && typeof body.access_token === 'string' ? body.access_token : null
-      const ttl = body && typeof body.expires_in === 'number' ? body.expires_in : 3600
-      if (!token) {
-        logger.warn('reddit oauth: token response missing access_token; falling back to anon reads')
-        return null
-      }
-      tokenCache = { token, expiresAt: Date.now() + ttl * 1000 }
-      return token
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.warn('reddit oauth: token fetch failed (' + message + '); falling back to anon reads')
-      return null
-    } finally {
-      tokenInFlight = null
-    }
-  })()
-  return tokenInFlight
-}
-
-/** Test-only: clear the module-level token cache so unit tests are hermetic. */
-export function __resetRedditTokenCacheForTests(): void {
-  tokenCache = null
-  tokenInFlight = null
-}
+// --- Reddit discovery via PUBLIC RSS (Atom) ---------------------------------
+// WHY RSS, not the API: Reddit's "Responsible Builder Policy" (Nov 2025) closed
+// self-service API access (personal "script" apps don't qualify), and anonymous
+// .json reads return HTTP 403 from datacenter/non-residential IPs (the Mac Studio
+// host). But /r/<sub>/hot.rss returns HTTP 200 from the same IP. RSS gives exactly
+// what a discovery gatherer needs (what's hot in N subs today). See
+// docs/plans/PRD-reddit-rss-pivot.md.
+//
+// IMPORTANT BEHAVIORAL NOTE: Atom carries NO engagement metrics (score/upvotes/
+// comments). Unlike the old JSON path, those fields are INTENTIONALLY honest-zero
+// here, not fabricated. A zero-engagement reddit candidate is correct, not a bug.
+const RSS_BASE = 'https://www.reddit.com'
+// Politeness: Reddit per-IP rate-limits RSS hard (back-to-back probes -> 429; a
+// single spaced request -> 200). Sequential + delay + bounded 429 retry. The
+// delay is operator-tunable (measured live, recorded in the live-proof artifact),
+// NOT a guessed default baked in as truth.
+const DEFAULT_DELAY_MS = 2500
+const DEFAULT_MAX_RETRIES = 2
+const DEFAULT_BACKOFF_BASE_MS = 3000
 
 type NormalizeEngagement = (source: string, raw: number, n: number) => number
 
@@ -86,10 +34,13 @@ type Logger = { warn: (message: string) => void }
 type FetchResponse = {
   ok: boolean
   status: number
-  json: () => Promise<unknown>
+  text: () => Promise<string>
+  headers?: { get(name: string): string | null }
 }
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<FetchResponse>
+
+type SleepLike = (ms: number) => Promise<void>
 
 export type RedditCandidate = {
   title: string
@@ -111,6 +62,14 @@ export type GatherRedditOptions = {
   limit?: number
   fetchImpl?: FetchLike
   logger?: Logger
+  /** Delay between sequential per-sub fetches (politeness). Default DEFAULT_DELAY_MS. */
+  delayMs?: number
+  /** Max retries on HTTP 429. Default DEFAULT_MAX_RETRIES. */
+  maxRetries?: number
+  /** Exponential backoff base for 429 when no Retry-After header. Default DEFAULT_BACKOFF_BASE_MS. */
+  backoffBaseMs?: number
+  /** Injectable sleep so tests run without real timers. */
+  sleepImpl?: SleepLike
 }
 
 let normalizeEngagementPromise: Promise<NormalizeEngagement> | null = null
@@ -144,10 +103,6 @@ async function loadNormalizeEngagement(): Promise<NormalizeEngagement> {
   return normalizeEngagementPromise
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
-}
-
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
@@ -162,8 +117,37 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'",
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+    const key = entity.toLowerCase()
+    if (key.startsWith('#x')) {
+      const code = Number.parseInt(key.slice(2), 16)
+      try { return Number.isFinite(code) ? String.fromCodePoint(code) : match } catch { return match }
+    }
+    if (key.startsWith('#')) {
+      const code = Number.parseInt(key.slice(1), 10)
+      try { return Number.isFinite(code) ? String.fromCodePoint(code) : match } catch { return match }
+    }
+    return NAMED_ENTITIES[key] ?? match
+  })
+}
+
+/** Strip tags + decode entities, collapse whitespace. RSS <content> is escaped HTML;
+ *  this is the parse-side guard so no markup reaches the brief render. */
+function stripTags(value: string): string {
+  return decodeHtmlEntities(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim()
+}
+
 function cleanSummary(value: unknown): string {
-  return text(value)?.replace(/\s+/g, ' ').slice(0, 600) ?? ''
+  if (typeof value !== 'string') return ''
+  // Atom <content> arrives entity-escaped; decode once so the inner tags become real,
+  // then strip them. Two passes: outer decode -> strip inner tags + decode text.
+  const decodedOnce = decodeHtmlEntities(value)
+  return stripTags(decodedOnce).slice(0, 600)
 }
 
 function redditUrl(value: string): string | null {
@@ -174,59 +158,109 @@ function redditUrl(value: string): string | null {
   }
 }
 
-function redditApiUrl(subreddit: string, limit: number, base: string): string {
+function rssApiUrl(subreddit: string, limit: number): string {
   const safeSubreddit = subreddit.replace(/^r\//i, '').replace(/[^A-Za-z0-9_]/g, '')
-  return `${base}/r/${safeSubreddit}/hot.json?limit=${limit}`
+  return `${RSS_BASE}/r/${safeSubreddit}/hot.rss?limit=${limit}`
 }
 
-function createdAtFromUtc(value: unknown): string | null {
-  const seconds = finiteNumber(value)
-  if (seconds <= 0) return null
-  const ms = seconds * 1000
-  const d = new Date(ms)
+/** Canonical author handle: u/<name>, no leading slash. Atom gives /u/<name> (or
+ *  occasionally bare <name>); normalize to match the prior JSON bare-handle shape. */
+function normalizeAuthorHandle(raw: string | null): string | null {
+  const t = text(raw)
+  if (!t) return null
+  const name = t.replace(/^\/?u\//i, '').replace(/^\//, '').trim()
+  return name ? `u/${name}` : null
+}
+
+function createdAtFromIso(value: string | null): string | null {
+  const t = text(value)
+  if (!t) return null
+  const d = new Date(t)
   return Number.isFinite(d.getTime()) ? d.toISOString() : null
 }
 
-async function drainJson(response: FetchResponse): Promise<void> {
-  try {
-    await response.json()
-  } catch {
-    // Best-effort body drain so failed live fetches do not keep sockets open.
+function firstMatch(block: string, re: RegExp): string | null {
+  const m = block.match(re)
+  return m ? m[1] : null
+}
+
+/** Parse one Atom <entry> into a RedditCandidate. Defensive: missing required
+ *  fields -> null (caller counts as malformed, never throws). */
+function parseAtomEntry(
+  entry: string,
+  subreddit: string,
+  normalizeEngagement: NormalizeEngagement,
+): RedditCandidate | null {
+  const title = text(decodeHtmlEntities(firstMatch(entry, /<title[^>]*>([\s\S]*?)<\/title>/i) ?? ''))
+  const href = firstMatch(entry, /<link\b[^>]*\bhref=["']([^"']+)["']/i)
+  const url = href ? redditUrl(href) : null
+  if (!title || !url) return null
+
+  const authorRaw = firstMatch(entry, /<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/i)
+    ?? firstMatch(entry, /<name>([\s\S]*?)<\/name>/i)
+  const authorHandle = normalizeAuthorHandle(authorRaw)
+
+  const published = firstMatch(entry, /<published>([\s\S]*?)<\/published>/i)
+    ?? firstMatch(entry, /<updated>([\s\S]*?)<\/updated>/i)
+  const created_at = createdAtFromIso(published)
+
+  const contentRaw = firstMatch(entry, /<content[^>]*>([\s\S]*?)<\/content>/i)
+    ?? firstMatch(entry, /<summary[^>]*>([\s\S]*?)<\/summary>/i)
+  const summary = cleanSummary(contentRaw) || `r/${subreddit}${authorHandle ? ` • ${authorHandle}` : ''}`
+
+  // Atom carries NO engagement metrics -> honest zeros + neutral normalized.
+  return {
+    title,
+    url,
+    summary,
+    source: 'reddit',
+    authorHandle,
+    engagement_raw: {
+      score: 0,
+      upvotes: 0,
+      comments: 0,
+      normalized: clamp01(normalizeEngagement('reddit', 0, 1)),
+    },
+    created_at,
   }
 }
 
-function parsePost(child: unknown, subreddit: string, normalizeEngagement: NormalizeEngagement): RedditCandidate | null {
-  const wrapper = asRecord(child)
-  const data = asRecord(wrapper?.data)
-  if (!data) return null
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
 
-  const title = text(data.title)
-  const url = text(data.url) ? redditUrl(String(data.url)) : null
-  const permalink = text(data.permalink) ? redditUrl(String(data.permalink)) : null
-  if (!title || (!url && !permalink)) return null
+function parseRetryAfter(resp: FetchResponse): number | null {
+  const h = resp.headers
+  if (!h) return null
+  const ra = h.get('retry-after') ?? h.get('x-ratelimit-reset')
+  if (!ra) return null
+  const secs = Number(ra)
+  if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, 60_000)
+  const when = Date.parse(ra)
+  if (Number.isFinite(when)) return Math.max(0, Math.min(when - Date.now(), 60_000))
+  return null
+}
 
-  const score = Math.max(0, Math.trunc(finiteNumber(data.score)))
-  const upvotes = Math.max(0, Math.trunc(finiteNumber(data.ups || data.score)))
-  const comments = Math.max(0, Math.trunc(finiteNumber(data.num_comments)))
-  const summary = cleanSummary(data.selftext) || `r/${subreddit} • ${score} upvotes • ${comments} comments`
-  const rawForNormalizer = score || upvotes
-  const sampleSize = Math.max(rawForNormalizer + comments, 1)
-  const author = text(data.author)
-
-  return {
-    title,
-    url: url ?? permalink ?? '',
-    summary,
-    source: 'reddit',
-    authorHandle: author ? `u/${author}` : null,
-    engagement_raw: {
-      score,
-      upvotes,
-      comments,
-      normalized: clamp01(normalizeEngagement('reddit', rawForNormalizer, sampleSize)),
-    },
-    created_at: createdAtFromUtc(data.created_utc),
+/** Fetch with bounded 429 retry. Honors Retry-After/x-ratelimit-reset when present,
+ *  else exponential backoff off backoffBaseMs. Returns the final response (caller
+ *  decides on non-ok). Never throws for HTTP status; network throw bubbles to caller. */
+async function fetchWithRetry(
+  url: string,
+  fetchImpl: FetchLike,
+  sleepImpl: SleepLike,
+  maxRetries: number,
+  backoffBaseMs: number,
+): Promise<FetchResponse> {
+  let attempt = 0
+  let resp = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT } })
+  while (resp.status === 429 && attempt < maxRetries) {
+    const headerWait = parseRetryAfter(resp)
+    const wait = headerWait ?? backoffBaseMs * Math.pow(2, attempt)
+    await sleepImpl(wait)
+    attempt += 1
+    resp = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT } })
   }
+  return resp
 }
 
 export async function gatherRedditPosts(options: GatherRedditOptions = {}): Promise<RedditCandidate[]> {
@@ -234,58 +268,57 @@ export async function gatherRedditPosts(options: GatherRedditOptions = {}): Prom
   const limit = Math.max(1, Math.min(100, Math.trunc(options.limit ?? DEFAULT_LIMIT)))
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init))
   const logger = options.logger ?? { warn: (message: string) => console.error(message) }
+  const delayMs = Math.max(0, Math.trunc(options.delayMs ?? DEFAULT_DELAY_MS))
+  const maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? DEFAULT_MAX_RETRIES))
+  const backoffBaseMs = Math.max(0, Math.trunc(options.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS))
+  const sleepImpl: SleepLike = options.sleepImpl ?? defaultSleep
   const normalizeEngagement = await loadNormalizeEngagement()
   const candidates: RedditCandidate[] = []
 
-  const token = await fetchAppOnlyToken(fetchImpl, logger)
-  const base = token ? OAUTH_BASE : ANON_BASE
-  const baseHeaders: Record<string, string> = { 'User-Agent': USER_AGENT }
-  if (token) baseHeaders.Authorization = 'Bearer ' + token
+  for (let i = 0; i < subreddits.length; i++) {
+    const subreddit = subreddits[i]
+    if (i > 0 && delayMs > 0) await sleepImpl(delayMs) // politeness gap (sequential)
 
-  for (const subreddit of subreddits) {
-    const apiUrl = redditApiUrl(subreddit, limit, base)
-    let payload: unknown
+    const url = rssApiUrl(subreddit, limit)
+    let xml: string
     try {
-      const response = await fetchImpl(apiUrl, { headers: baseHeaders })
+      const response = await fetchWithRetry(url, fetchImpl, sleepImpl, maxRetries, backoffBaseMs)
+      if (response.status === 429) {
+        logger.warn(`reddit gather ${subreddit}: HTTP 429 after ${maxRetries} retries; returning [] for that source`)
+        continue
+      }
       if (!response.ok) {
-        await drainJson(response)
         logger.warn(`reddit gather ${subreddit}: HTTP ${response.status}; returning [] for that source`)
         continue
       }
-      payload = await response.json()
+      xml = await response.text()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.warn(`reddit gather ${subreddit}: malformed or unreachable source (${message}); returning [] for that source`)
       continue
     }
 
-    const root = asRecord(payload)
-    const data = asRecord(root?.data)
-    const children = data?.children
-    if (!Array.isArray(children)) {
-      logger.warn(`reddit gather ${subreddit}: malformed payload; returning [] for that source`)
-      continue
-    }
-    if (children.length === 0) {
-      logger.warn(`reddit gather ${subreddit}: empty payload; returning [] for that source`)
+    const entries = xml.match(/<entry\b[\s\S]*?<\/entry>/gi)
+    if (!entries || entries.length === 0) {
+      logger.warn(`reddit gather ${subreddit}: empty feed (0 entries); returning [] for that source`)
       continue
     }
 
     let malformed = 0
     const before = candidates.length
-    for (const child of children) {
+    for (const entry of entries) {
       let parsed: RedditCandidate | null = null
       try {
-        parsed = parsePost(child, subreddit, normalizeEngagement)
+        parsed = parseAtomEntry(entry, subreddit, normalizeEngagement)
       } catch {
         parsed = null
       }
       if (parsed) candidates.push(parsed)
       else malformed += 1
     }
-    if (malformed > 0) logger.warn(`reddit gather ${subreddit}: malformed post(s) ignored (${malformed})`)
+    if (malformed > 0) logger.warn(`reddit gather ${subreddit}: malformed entr(y/ies) ignored (${malformed})`)
     if (candidates.length === before && malformed === 0) {
-      logger.warn(`reddit gather ${subreddit}: empty payload after filtering; returning [] for that source`)
+      logger.warn(`reddit gather ${subreddit}: empty feed after filtering; returning [] for that source`)
     }
   }
 
@@ -313,9 +346,11 @@ function intOf(value: string | undefined, fallback: number): number {
 async function main(): Promise<number> {
   const subreddits = allFlags('subreddit')
   const limit = intOf(flag('limit'), DEFAULT_LIMIT)
+  const delayMs = flag('delay-ms') !== undefined ? intOf(flag('delay-ms'), DEFAULT_DELAY_MS) : undefined
   const candidates = await gatherRedditPosts({
     subreddits: subreddits.length ? subreddits : DEFAULT_SUBREDDITS,
     limit,
+    delayMs,
     logger: { warn: (message) => console.error(message) },
   })
   process.stdout.write(`${JSON.stringify({ candidates })}\n`)
