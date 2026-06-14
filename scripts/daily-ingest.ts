@@ -18,7 +18,12 @@ export const DEFAULT_LOG_CHANNEL_ID = '1480525090331561984'
 
 const SOURCE_COUNT = 2
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+// Structured front-door (v4 alert system): cronobs queue → house envelope + severity
+// routing + dedup. notify.py (raw transport) stays as the fail-open fallback only.
+const NOTIFY_WRAPPER = resolve(homedir(), '.hermes/scripts/notify')
 const NOTIFY_SCRIPT = resolve(homedir(), '.hermes/scripts/notify.py')
+const ALERT_SOURCE = 'siftly-daily-ingest'
+const ALERT_TITLE = 'Siftly Daily Ingest'
 const CRON_ENV_FLAG = 'SIFTLY_DAILY_CRON'
 
 export type DailyIngestSourceName = 'bookmark' | 'like'
@@ -342,10 +347,18 @@ export async function sendDiscordAlert(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const target = envChannel(env.SIFTLY_ALERT_CHANNEL, DEFAULT_ALERT_CHANNEL_ID)
+  // Failures are high-severity → #alerts. Structured so they get the house envelope +
+  // dedup; the body carries the verbatim failure detail (identity preserved).
   try {
-    await sendDiscordNotify(message, target, env)
+    await sendStructuredNotify({
+      severity: 'high',
+      status: _failure ? `${_failure.stage} failed` : 'failed',
+      body: message,
+      target,
+      env,
+    })
   } catch (err) {
-    console.error(`daily-ingest targeted alert failed; falling back to Home Discord: ${errorMessage(err)}`)
+    console.error(`daily-ingest targeted alert failed; falling back to raw notify.py + Home Discord: ${errorMessage(err)}`)
     await spawnAndWait('python3', [NOTIFY_SCRIPT, '--send', message, '--channel', 'discord'], {
       cwd: REPO_ROOT,
       env,
@@ -357,16 +370,47 @@ export async function sendDiscordAlert(
 
 export async function sendDiscordHeartbeat(
   message: string,
-  _summary: DailyIngestSuccessSummary,
+  summary: DailyIngestSuccessSummary,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  await sendDiscordNotify(message, envChannel(env.SIFTLY_LOG_CHANNEL, DEFAULT_LOG_CHANNEL_ID), env)
+  const target = envChannel(env.SIFTLY_LOG_CHANNEL, DEFAULT_LOG_CHANNEL_ID)
+  // Healthy heartbeat is low-severity → #logs (⚪ routine, not ✅ which the renderer
+  // reserves for recovery). Facts surface the real counts without overstating saves.
+  await sendStructuredNotify({
+    severity: 'low',
+    status: `+${summary.created} new`,
+    body: message,
+    facts: heartbeatFacts(summary),
+    target,
+    env,
+  })
 }
 
-async function sendDiscordNotify(message: string, target: string, env: NodeJS.ProcessEnv): Promise<void> {
-  await spawnAndWait('python3', [NOTIFY_SCRIPT, '--send', message, '--channel', 'discord', '--target', target], {
+interface StructuredNotifyOptions {
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  status: string
+  body: string
+  facts?: string[][]
+  target: string
+  env: NodeJS.ProcessEnv
+}
+
+async function sendStructuredNotify(opts: StructuredNotifyOptions): Promise<void> {
+  const args = [
+    '--severity', opts.severity,
+    '--source', ALERT_SOURCE,
+    '--title', ALERT_TITLE,
+    '--status', opts.status,
+    '--body', opts.body,
+    '--channel', 'discord',
+    '--target', opts.target,
+  ]
+  for (const [label, value] of opts.facts ?? []) {
+    args.push('--fact', `${label}=${value}`)
+  }
+  await spawnAndWait(NOTIFY_WRAPPER, args, {
     cwd: REPO_ROOT,
-    env,
+    env: opts.env,
     stdio: 'inherit',
     killProcessGroup: false,
   })
@@ -424,11 +468,24 @@ function parseIngestSourceRows(output: string): DailyIngestStageRunResult {
 }
 
 function formatHeartbeatMessage(summary: DailyIngestSuccessSummary): string {
-  // Headline = net-new rows actually inserted (created). The per-source counts are
-  // tweets FETCHED from the API this run (mostly already-seen → deduped), so they are
-  // shown as context, not as "new saves" (which caused the misleading +180/+198 on 2026-06-10).
-  const seen = summary.bookmarks + summary.likes
-  return `✅ siftly daily ingest: +${summary.created} new (${summary.updated} updated) · scanned ${seen} (${summary.bookmarks} bookmarks + ${summary.likes} likes)`
+  // Body = what actually happened to the CORPUS (created/updated). The per-source
+  // counts are tweets RE-FETCHED from the API this run (the daily incremental re-scans
+  // a fixed newest-first window — DEFAULT_INGEST_MAX_PAGES×pageSize×sources — so almost
+  // all are already-seen and deduped). They are API READ volume, not new saves; calling
+  // them "scanned"/"bookmarks + likes" read as ingestion and caused the misleading
+  // +180/+198 confusion (2026-06-10 / 2026-06-14).
+  const newPart = `${summary.created} new saved`
+  const updPart = `${summary.updated} existing refreshed`
+  return `Daily ingest OK — ${newPart}, ${updPart}.`
+}
+
+function heartbeatFacts(summary: DailyIngestSuccessSummary): string[][] {
+  const reads = summary.bookmarks + summary.likes
+  return [
+    ['New saved', String(summary.created)],
+    ['Refreshed', String(summary.updated)],
+    ['API reads', `${reads} (${summary.bookmarks} bookmarks + ${summary.likes} likes)`],
+  ]
 }
 
 function numberFromEnv(value: string | undefined): number | undefined {

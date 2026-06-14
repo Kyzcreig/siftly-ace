@@ -99,17 +99,23 @@ describe('daily ingest Discord routing', () => {
   it('routes success heartbeats to the verified logs channel by default', async () => {
     mockNotifyExits([0])
 
-    await sendDiscordHeartbeat('✅ siftly daily ingest: +5 new (1 updated) · scanned 18 (7 bookmarks + 11 likes)', { bookmarks: 7, likes: 11, created: 5, updated: 1 }, testEnv())
+    await sendDiscordHeartbeat('Daily ingest OK — 5 new saved, 1 existing refreshed.', { bookmarks: 7, likes: 11, created: 5, updated: 1 }, testEnv())
 
     const args = spawnMock.mock.calls[0][1] as string[]
     expect(args).toEqual(expect.arrayContaining(['--channel', 'discord', '--target', DEFAULT_LOG_CHANNEL_ID]))
+    // structured (v4) contract: routed through the queue wrapper with source/title/severity, not raw --send
+    expect(args).toEqual(expect.arrayContaining(['--severity', 'low', '--source', 'siftly-daily-ingest', '--title', 'Siftly Daily Ingest']))
+    expect(args).not.toContain('--send')
+    // API reads are surfaced as a fact labelled to read as read-volume, never as new saves
+    expect(args).toEqual(expect.arrayContaining(['--fact', 'API reads=18 (7 bookmarks + 11 likes)']))
+    expect(args).toEqual(expect.arrayContaining(['--fact', 'New saved=5']))
   })
 
   it('honors alert and log channel environment overrides', async () => {
     mockNotifyExits([0, 0])
 
     await sendDiscordAlert('boom', failure, testEnv({ SIFTLY_ALERT_CHANNEL: 'alert-override' }))
-    await sendDiscordHeartbeat('ok', { bookmarks: 1, likes: 2, created: 0, updated: 0 }, testEnv({ SIFTLY_LOG_CHANNEL: 'log-override' }))
+    await sendDiscordHeartbeat('Daily ingest OK — 0 new saved, 0 existing refreshed.', { bookmarks: 1, likes: 2, created: 0, updated: 0 }, testEnv({ SIFTLY_LOG_CHANNEL: 'log-override' }))
 
     const alertArgs = spawnMock.mock.calls[0][1] as string[]
     const logArgs = spawnMock.mock.calls[1][1] as string[]
@@ -150,7 +156,7 @@ describe('daily ingest Discord routing', () => {
     expect(result.ok).toBe(true)
     expect(sendAlert).not.toHaveBeenCalled()
     expect(sendHeartbeat).toHaveBeenCalledTimes(1)
-    expect(sendHeartbeat.mock.calls[0][0]).toBe('✅ siftly daily ingest: +5 new (1 updated) · scanned 18 (7 bookmarks + 11 likes)')
+    expect(sendHeartbeat.mock.calls[0][0]).toBe('Daily ingest OK — 5 new saved, 1 existing refreshed.')
   })
 
   it('parses ingest stdout into net-new + per-source heartbeat counts', async () => {
