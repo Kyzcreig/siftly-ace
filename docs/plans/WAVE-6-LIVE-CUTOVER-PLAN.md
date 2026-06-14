@@ -1,6 +1,6 @@
 # Wave 6 — Live Cutover Plan (P1)
 
-**Status:** EXECUTED (shadow live 2026-06-13); embed promotion deferred to data-gated follow-up · **Owner:** Apollo · **Date:** 2026-06-13
+**Status:** EXECUTED (pf shadow live 2026-06-13; output-feature staging live 2026-06-14); embed promotion + output live-wire deferred to data-gated follow-ups · **Owner:** Apollo · **Date:** 2026-06-13/14
 **Principle:** ship the PLUMBING (shadow-mode, dedup, gatherers, diversity) which is byte-identical-safe; do NOT flip `embed` (no shadow data yet — AC#9 gate has zero evidence). `embed` promotion auto-surfaces to Ace in ~3+ days once shadow data accrues.
 
 ## What the cutover IS today (all safe / byte-identical)
@@ -51,3 +51,18 @@ After ≥3 daily shadow runs: read the pf-audit artifacts, compute the per-brief
 - Step 1/3: `git revert`.
 - Step 2: restore the `.bak` prompt.md files (kept per edit).
 - Nothing changes what posts (shadow returns keyword), so rollback risk is ~0 — the dedup/gatherer/diversity changes alter the candidate SET, which is the one real-output change; if a brief looks off, revert 2a/2b prompts.
+
+---
+
+## UPDATE 2026-06-14 — output-changing features STAGED (not yet wired)
+
+Step 2's output-changing pieces (cross-brief dedup, MMR diversity, discovery gatherers) were **NOT** wired into the live `prompt.md` at cutover — same reason `embed` wasn't flipped: they change the posted SET and had zero validation evidence. Instead they're now in a shadow/validation window mirroring the pf-score discipline (commit `a3f9e8f`):
+
+- **`scripts/output_shadow.ts`** — offline, read-only over both briefs' real run dumps using the REAL modules. Reports cross-brief would-suppress dedups + within-posted MMR author-cap drops/reorders + starts the saw-didn't-save provenance clock. Idempotent. Artifacts → `~/.hermes/state/x-bookmarks/output-shadow/`.
+- **`scripts/gatherer_probe.ts`** — live reddit+github-trending inflow probe; reports volume + net-new-vs-briefs. **Finding: reddit JSON = HTTP 403 from this host (datacenter-IP block); github-trending healthy.** Final placement deferred to the gated live-wire.
+- **`wave6-output-shadow-watch`** (no_agent cron, daily 9am, job `d8ff8fbce6b1`) drives both daily + reports staging-readiness once ≥3 runs/brief accrue. Silent until then.
+- Tests: `scripts/__tests__/output-shadow.test.ts` (8). `npm run verify` exit 0.
+
+**The gated live-wire (Step 2a/2b, the dedup/MMR/gatherer half) remains OUTSTANDING** — it waits on the staging window's evidence + Ace's sign-off, and (for reddit) on solving the 403. When ready: ONE `prompt.md` edit per brief, back up the `.bak` first, restore-the-`.bak` to roll back.
+
+Status line: **shadow live (pf + output-staging); both promotions/wire-ins evidence-gated and auto-surfacing.**
