@@ -30,3 +30,26 @@ backup. Second same-RUN_ID run short-circuits exactly as before.
 G1 APPLIED + dry-run-verified. NOT yet run live end-to-end (next real 7am morning-digest will be the
 first live run with Reddit+github). Rollback = restore the .bak. Phase 2 (silent-block watchdog, G2) and
 Phase 3 (output features, G3) remain gated/pending.
+
+---
+
+## LIVE RUN — 2026-06-14 04:56 PT (run-1781437991) — POSTED to #daily ✓
+First real end-to-end run with Reddit+github competing for posted slots.
+- Inflow: reddit=100, github=15, x=117, hn=30 (gather_reddit=194s < 240s box; github=1s).
+- 262 scanned → 230 kept → top=5 + also=2 posted.
+- **A Reddit item PLACED:** r/singularity "US government switched off Anthropic's most powerful
+  AI..." → Also Noted, scored B-(82), posted with u/ attribution + clean <url>. The full loop
+  (rotation → fetch → score → gate → post) is proven live, not just at the gather seam.
+- Note: a second (gateway-queued) run raced and correctly hit the Step 0 one-post short-circuit
+  (🛑 already ran today) — the anti-double-post guard working under a real race.
+
+## G2 — INSTALLED + tested
+- `~/.hermes/scripts/siftly-gatherer-silentblock-watch.py` (repo copy + 7 tests in docs/gates/).
+- cron `756794b1d652`, daily 9:30am (after 9am probe) → #alerts (1480528231286181948).
+- Alerts on: aggregate-zero N=3 consecutive run-days (rotation-aware), stale probe (>2d), schema drift.
+- Silent on healthy. 7/7 tests pass. OQ-2 N=3 default (env-tunable SIFTLY_SILENTBLOCK_N).
+
+## G3 — RUNNING (auto-READY at 3 runs/brief)
+- `wave6-output-shadow-watch` (cron, daily 9am) drives output_shadow.ts + gatherer_probe.ts.
+- Currently 2 runs/brief accumulated; computes real cross-brief-dedup / MMR / provenance over live
+  dumps. Emits STAGING-READY once ≥3 runs/brief exist (silent until then — correct).
