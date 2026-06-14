@@ -3,7 +3,7 @@
 **Status:** PASS for the shipped staging surface (output-shadow harness, gatherer probe, watcher cron).  
 **Correctly open / not closed:** `PF_AFFINITY_MODE=embed` promotion and the live `prompt.md` output-feature wire-in remain gated until their shadow windows produce evidence and Ace signs off.
 
-**Ran against:** project commit `46f8f4d` initially; hardening fix commit `8f01117`; docs closeout commit `46f8f4d`; closeout report commit `e665b87`.  
+**Ran against:** project commit `46f8f4d` initially; hardening fix commit `8f01117`; docs closeout commit `46f8f4d`; closeout report introduced in `e3447a7` (follow-up commits may correct this report text).  
 **Repo:** `Kyzcreig/siftly-ace`.
 
 ## Hardening pass
