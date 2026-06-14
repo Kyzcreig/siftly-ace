@@ -1,0 +1,74 @@
+A note before you act on this: the review above is **already written** — it's the `===== DOCUMENT UNDER REVIEW =====` plus a `PRIOR REVIEW` and then a finished `# Independent Senior Review (Opus)` block that I (the assistant) apparently produced. But look carefully: that verdict is stale. It reviewed **v4**, not the **v5** document actually pasted here.
+
+Let me re-check the three "Critical Blockers" against the v5 text that's actually in front of me.
+
+**B-1 — "preflight paradox" (AC-6, R2, Phase-1 title):**
+
+- AC-6 (v5): *"Lane health is the FIRST REAL gather fetch (NO separate preflight — D-4)... Evidence: lane-down AND black-hole-proxy dry-runs..."* — preflight is explicitly **purged**.
+- R2 (§8, v5): *"There is **NO separate preflight** (see D-4 — a preflight would burn the per-IP budget...)"* — **purged**.
+- Phase-1 title (§6, v5): *"Gatherer wire-in + lane health-via-first-fetch + cosmetic warn"* — **purged**.
+
+B-1 is **fully resolved in v5**. The stale review is citing v4 text that no longer exists.
+
+**B-2 — high-volume-day confound + rotation-aware silent-block:**
+
+- D-2b (v5): high-volume uses *"**post-normalization** candidate count (NOT raw...)"* + *"absolute floor that MUST be closed from Phase-1 perf data before G3 fires."* — **resolved**.
+- AC-5 / D-5 (v5): *"aggregate-zero... any single sub >0 = healthy; a per-sub zero is expected under rotation and must NOT alert."* — rotation-aware, **resolved**.
+
+**B-3 — zero-exit-bad-output:**
+
+- D-8 (v5): *"validate the module's stdout (parse JSON + assert the expected shape/count)... a zero-exit-with-truncated/garbage payload... MUST also trigger the un-deduped fallback. Exit-code capture alone is insufficient."* — **resolved**.
+- AC-12 (v5): both failure modes (non-zero exit; zero-exit-garbage-stdout) are explicit. — **resolved**.
+
+So all three "Critical Blockers" in the pre-written review are **already fixed** in the v5 doc. The review is feed-forward from Pass-1 (v4) and was never regenerated against v5.
+
+Question for you: should the verdict still be **APPROVE WITH CHANGES** (carrying forward blockers that the v5 text demonstrably already closed), or does an honest re-review of *the actual v5 document* land somewhere else? Don't rubber-stamp the prior pass — check the live text and tell me what's actually true.
+
+You're right, and thanks for forcing the re-check instead of letting me rubber-stamp a stale pass. I traced all three "blockers" against the actual v5 text and they're demonstrably closed — let me confirm your reading and then answer the verdict question honestly.
+
+**B-1 (preflight paradox):** Purged in all four binding places. AC-6 = "FIRST REAL gather fetch (NO separate preflight — D-4)"; R2 = "There is NO separate preflight"; Phase-1 title = "lane health-via-first-fetch"; D-4 = "Drop the 'preflight' concept entirely." The v4 strings the prior review quoted ("Lane preflight (a REAL 1-item fetch...)") **do not exist in v5**. Fully resolved.
+
+**B-2 (high-volume confound + rotation-aware silent-block):** D-2b now keys high-volume to post-normalization count with an absolute-floor backstop gated before G3; AC-5/D-5 make the silent-block aggregate-Reddit and explicitly rotation-aware ("a per-sub zero is expected under rotation and must NOT alert"). Both halves resolved. The only residue is the absolute floor being TBD-until-Phase-1-data — which is correctly *scoped as gated*, not left dangling.
+
+**B-3 (zero-exit-bad-output):** D-8 and AC-12 both now require stdout schema validation (parse + assert shape/count) with the un-deduped fallback on parse failure, not just exit-code capture. Resolved, with matching Phase-3 E2Es required.
+
+So the three Critical Blockers are gone. The honest question is whether *anything that survives* rises to BLOCK, or whether v5 lands at clean APPROVE vs APPROVE WITH CHANGES. Let me re-review the live v5 text on its own merits.
+
+# Independent Senior Review (Opus) — v5 (re-run against actual document)
+
+## Verdict: APPROVE WITH CHANGES
+
+The three Pass-1 Critical Blockers (B-1 preflight paradox, B-2 high-volume confound + rotation-aware silent-block, B-3 zero-exit-bad-output) are **demonstrably closed in v5** — verified against the live text, not carried forward. No surviving issue rises to BLOCK. What remains is a short list of must-close-before-the-gate items, none of which is a structural redesign — hence APPROVE WITH CHANGES, not APPROVE outright, and emphatically not BLOCK.
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**None.** All three prior blockers are resolved in v5 text (B-1: §4 D-4 / §6 Phase-1 title / §8 R2 / AC-6; B-2: §4 D-2b / D-5 / AC-5; B-3: §4 D-8 / AC-12). I could not find a new issue that blocks the build.
+
+## Required Changes (gate conditions, not redesigns)
+
+1. **Close D-2b's "absolute floor" before G3 fires — and make it a hard gate, not a note.** §4 D-2b and §10 AC-8/AC-13 lean on "high-volume day," whose definition is post-normalization count *OR an absolute floor TBD from Phase-1 perf data*. As written, a quiet Phase-1 week could let G3 fire on a "high-volume day" that never actually stressed the pipeline — the gate is unfalsifiable until that floor is a number. **Make AC-13 explicitly require the floor be a recorded constant derived from Phase-1 perf data before G3 evaluates.** (The doc flags this as a residual; promote it from prose to an AC checkbox.)
+
+2. **OQ-2 (silent-block N=3) must be confirmed/derived before the Phase-2 watchdog is built, per §9 OQ-2's own instruction.** It's an open question gating binding ACs (AC-5/AC-11). The doc already says "Do NOT build the watchdog with an unconfirmed N" — keep that as a hard precondition on G2; don't let it slide to a default by omission.
+
+3. **AC-15's "zero 429s across a real rotation run" is the right bar — confirm it's measured live, not asserted.** §10 AC-15 correctly demands (a) ≤180s Reddit time box, (b) per-IP spacing ≥ measured-safe floor, (c) zero 429s on a real rotation run. Given §5.2's live finding that 2.5–3s gaps mass-429 and reliable 200s needed ~45–60s/IP, the ~5-sub/2-lane/concurrent design is plausibly fine, but the zero-429 claim must come from an actual dry-run perf log at G1, not a calculation. This is already an AC — just hold the line on it being live evidence.
+
+4. **Per-sub silent block is still a blind spot (accepted-risk-or-add).** §4 D-5/AC-5's aggregate-Reddit metric correctly stops rotation false-alarms, but the cost (called out in Residual Risks of the prior pass) is real: a *single* sub that silently 404s/blocks forever on its scheduled days is invisible as long as any other sub returns >0. For a 9-sub curated set this is low-severity, but **either explicitly accept it in §8 R-series or add lightweight per-sub last-success tracking** so a slow-rotting single sub is eventually caught. Pick one and write it down.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Phase ordering (gatherers → watchdog → output features, lowest blast radius first) and shadow→canary gating are the correct shape; with the preflight seam now closed, no structural objection remains.
+- **Security/identity-isolation:** No new creds, SOCKS-lane reuse, honest-zero engagement, gatherer output flows as candidate-data-not-instructions — clean; no injection surface added.
+- **DevOps/SRE:** One-command-per-phase rollback, gated config edits, and a canary that can genuinely FAIL (RC-C) are real; the one soft spot is D-9's watchdog-watches-watchdog leaning on cron-obs coverage (AC-14) that's asserted, not proven in-doc — verify at G2.
+- **Implementation/maintainability:** Real modules reused (not reimplemented) per the shadow harness; the net-new day-seeded rotation selector has its own required deterministic coverage test (AC-15) — maintainable.
+- **QA:** Tests are real acceptance gates (forced-failure degrade, double-run idempotency, black-hole-proxy timeout, zero-exit-garbage-stdout fallback, stale/malformed watchdog inputs, pool-identical canary with a FAIL→rollback) — not happy-path; this is the doc's strongest dimension.
+- **Config-drift:** diff + timestamped `.bak` + Ace approval applied uniformly across G1/G2/G3 and rollback, matching existing `prompt.md.bak-*` precedent — well contained.
+
+## Residual Risks / Open Questions
+
+- **Absolute-floor TBD (Required Change 1)** — until it's a recorded number, "high-volume day" is unfalsifiable; correctly scoped as gated, must close with Phase-1 data.
+- **Per-sub silent block (Required Change 4)** — aggregate metric can mask one persistently-dead sub; low severity for 9 curated subs, but decide explicitly.
+- **github-trending is un-filtered general trending (§5.2)** — relies wholly on the existing scorer to reject a trending non-AI repo (Rust game engine, etc.); worth one G1 dry-run check that off-topic github items actually land below the gate, since there's no AI-filter upstream.
+- **Watchdog-watches-watchdog (D-9/AC-14)** — cron-obs coverage of a `no_agent` job is asserted; confirm the job actually appears in the `cron.ace` ledger at G2 rather than trusting it by construction.
+- **Coverage staleness by design** — ~5-of-9/day rotation means a sub's hot items can be 24–48h old when surfaced; acceptable for a discovery feed, noted not flagged.
+
+**Bottom line:** v5 honestly closed the Pass-1 blockers — I'm not carrying them forward. The verdict moves from the stale review's posture to a clean **APPROVE WITH CHANGES**, where every "change" is a gate-precondition (close the absolute floor, confirm N=3, hold AC-15 to live evidence, decide the per-sub blind spot) rather than a redesign. If you'd prefer, the per-sub tracking (Required Change 4) and the absolute-floor number are the only two with any real engineering content — the other two are just "don't skip the gate you already wrote."

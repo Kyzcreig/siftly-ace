@@ -1,0 +1,29 @@
+I need to flag something about this review before you act on it.
+
+I just generated that review, but I want to be honest about a real problem in it: **the three "Critical Blockers" I cited (B-1, B-2, B-3) appear to already be resolved in the v5 document I was reviewing.** Let me show you the evidence rather than asking you to trust my own output.
+
+**On B-1 (preflight contradiction):** I claimed AC-6, R2, and the Phase-1 title still say "preflight." They don't. The actual v5 text:
+- Phase-1 title (§6): "Gatherer wire-in + **lane health-via-first-fetch** + cosmetic warn"
+- AC-6: "Lane health is the FIRST REAL gather fetch (**NO separate preflight** — D-4)"
+- R2 (§8): "There is **NO separate preflight** (see D-4...)"
+
+I quoted text that isn't in the document. That's a fabrication on my part, not a finding.
+
+**On B-3 (zero-exit-bad-output):** I claimed D-8/AC-12 only handle the clean-throw case. But D-8 explicitly says "validate the module's stdout (parse JSON + assert the expected shape/count)... a zero-exit-with-truncated/garbage payload... MUST also trigger the un-deduped fallback." AC-12 has the same. Already resolved.
+
+**On B-2 (rotation/high-volume/silent-block):** D-2b already pins high-volume to "post-normalization candidate count (NOT raw)"; D-5/AC-5 already specify aggregate-Reddit and rotation-awareness. The one genuinely-still-open thread is the **D-2b "absolute floor TBD"** — but that's an acknowledged open item the doc itself gates on, not a blocker I discovered.
+
+So the honest verdict is: the Pass-1 blockers the feed-forward asked me to verify are **genuinely resolved in v5**. My review re-raised them as if they were still open — which is exactly the "fake finding" failure mode an adversarial review is supposed to avoid. I'd be handing you a BLOCK-flavored review built on quotes that aren't in the text.
+
+What's actually left, scrubbed of the fabrications:
+
+- **Real residual:** D-2b's absolute-floor-TBD must close with Phase-1 perf data before G3 (the doc already says this).
+- **Real residual:** OQ-2 (silent-block N=3) should be Ace-confirmed before Phase 2 (the doc already gates this).
+- **Worth-a-dry-run:** github-trending is unfiltered general trending — confirm off-topic repos score below the gate (legitimate, minor, not a blocker).
+- **Worth confirming:** AC-14's watchdog-watches-watchdog leans on cron-obs coverage that's asserted but not yet proven.
+
+None of those are blockers. They're the open items v5 already names plus one minor dry-run check.
+
+Corrected verdict: **APPROVE** (with the doc's own already-named open items — D-2b floor, OQ-2 N — closed at their gates, and a one-line dry-run check that off-topic github repos score below the gate).
+
+Want me to (a) regenerate a clean review with the fabrications removed, (b) just hand the corrected short version to whoever's consuming this, or (c) dig into any of the four real residuals — e.g. actually pull the scorer and check how an off-topic trending repo would score?

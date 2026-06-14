@@ -1,0 +1,36 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**B-1 — The "zero regression" invariant is unfalsifiable as written, because there is no captured un-wired baseline.** §3 and the canary (§5.4/D-2/AC-8) repeatedly diff the posted set "vs the un-wired baseline," but nothing in the PRD says *when* that baseline is captured, how it's frozen, or that it's captured on the SAME input candidate pool. A canary that runs after wiring, on a different day's candidates, against a baseline computed from a different pool, proves nothing — the digest changes day to day regardless of features. **Required:** the baseline must be a frozen artifact computed by running select/render on the *identical scored candidate pool* with features OFF, then the canary runs features ON over that *same frozen pool*. Until the diff is pool-identical, RC-C cannot distinguish "feature changed the set" from "it's Tuesday."
+
+**B-2 — AC-6 and R2/§6 Phase-1 contradict the spec's own D-4 decision and will reintroduce the preflight paradox.** D-4 explicitly *kills* the separate preflight ("Drop the 'preflight' concept entirely — it was the lying proxy signal"), yet AC-6 mandates "a REAL 1-item fetch" preflight, R2 specifies "a fast (~2s timeout) reachability check," and the Phase-1 negative test is "Starlink proxy down at preflight." This is a direct internal contradiction in an acceptance criterion. A "real 1-item fetch" preflight on a Reddit lane spends one of the ≈1-fetch/window/IP budget (§5.2) and *causes* the 429 it's checking for — the exact paradox D-4 names. **Required:** delete AC-6's preflight, delete R2's reachability check, and restate the AC as D-4 actually decided it: the first real per-lane gather fetch IS the health signal; non-200/throw marks the lane down for the run. The word "preflight" must not survive in the AC/risk text.
+
+**B-3 — AC-15's day-seeded rotating subset silently defeats cross-brief dedup and the seen-list on a ≤2-day cycle, and no AC tests the interaction.** With ~5 of 9 subs/day rotating, a hot post in a sub that isn't in today's subset simply doesn't appear until its rotation day — and a post that DOES appear gets written to `reddit-brief-seen.json` (D-4b), so when its sub rotates back in, freshly-hot follow-on discussion may be suppressed as "seen." More acutely: the measured budget (§5.2 addendum: "~45-60s/IP spacing," 2 lanes, ~5 subs) is *still* ~2-3 fetches/IP at sub-60s gaps — the same regime that mass-429'd. AC-15 asserts coverage-over-rotation but never asserts the run actually stays at safe spacing AND under the 20-min budget simultaneously; those two constraints are in tension (5 subs × 60s/IP ÷ 2 lanes ≈ 2.5 min Reddit-only, plausible, but unproven). **Required:** add an AC that the dry-run perf log shows actual per-IP fetch spacing ≥ the measured-safe floor AND zero 429s across a real rotation run, not just deterministic coverage.
+
+## Required Changes
+
+1. **Freeze the canary baseline (B-1):** define the baseline as features-OFF select/render over a captured, identical scored pool; the canary is features-ON over that same pool. Make AC-8/AC-13 cite the frozen-pool artifact path.
+2. **Remove the preflight (B-2):** strike AC-6's "REAL 1-item fetch," R2's reachability check, and the Phase-1 "proxy down at preflight" framing; replace with D-4's first-fetch-is-the-signal wording.
+3. **Prove the budget at runtime (B-3):** add an AC asserting measured per-IP spacing ≥ safe floor and zero 429s on a full rotation dry-run; resolve OQ-2's N against *measured lane uptime*, not a guessed 3.
+4. **Pin the high-volume floor (D-2b):** "absolute floor TBD from Phase-1 perf data" is an open hole inside a go-live gate. Phase 1 MUST emit the raw-candidate distribution so the 75th-percentile/floor is a recorded number before G3, not a TBD.
+5. **Define github-trending's AI relevance handling:** §5.2 admits it's "general trending (not AI-filtered)" flowing through the existing scorer. Add a dry-run AC that github candidates don't drown the digest with non-AI repos (the scorer's off-topic gate must demonstrably down-rank them), else R1 is unmitigated for github.
+6. **Seen-list write timing (D-4b):** specify that a candidate is written to `*-brief-seen.json` only if it was *posted/considered*, not merely *fetched* — otherwise a fetched-but-unselected hot item is permanently suppressed before it ever competes.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Sound layering (gather→score→select→render unchanged; features additive), but the rotating-subset + seen-list + cross-brief-dedup triad interact in ways no single AC exercises (B-3, change 6).
+- **Security/identity-isolation:** Clean — no new creds, lanes reuse existing SOCKS; injection guard implicit since gatherer text is data, not instructions; no concern.
+- **DevOps/SRE:** Rollback is genuinely one-command-per-phase (§11, good); launch contract weakened by the preflight contradiction (B-2) and the unfrozen baseline (B-1); D-9 watchdog-self-death coverage is the strongest part.
+- **Implementation/maintainability:** Honest-zero/never-throw/no-new-dep carried correctly; the curl-warn cosmetic (D-6) riding the same file is right-sized.
+- **QA:** Most ACs are real gates (forced-failure degrade, double-post short-circuit, stale/malformed watchdog inputs — genuinely adversarial), but AC-8's canary is only a real gate once B-1 freezes the pool; AC-15 is coverage-theater without B-3's spacing assertion.
+- **Config-drift:** Strong — every prompt/plist edit is diff+`.bak`+approval, rollback defined; the one drift vector is OQ-2's N and D-2b's floor being guessed rather than measured (changes 3, 4).
+
+## Residual Risks / Open Questions
+
+- **Cross-brief dedup spans both briefs but only morning-digest gains gatherers** — could the x-feed brief's posted set now be suppressed by a reddit item the morning-digest surfaced first? §2 says dedup still spans both; confirm the suppression direction can't degrade the x-feed brief (a regression in a brief this PRD claims not to touch).
+- **D-2 ceilings (≤20%/≤2/≤30%) are pre-committed but unjustified** — no evidence ties those specific numbers to "Ace won't notice a regression." They're better than fitting-to-data, but document *why* 20% not 10%.
+- **The 20-min cron wall budget is now shared** by Reddit (up to ~2.5 min), github, the existing gatherers, AND scoring/embedding — no AC proves the wired brief still finishes inside 20 min on a high-volume day. Add a wall-clock ceiling assertion to AC-10 or AC-15.
+- **OQ-4 / shadow READY signal** depends on `wave6-output-shadow-watch` which itself depends on the reddit/github probes — if Phase 1's rotation means a probe source is empty on a given day, does the shadow-watch miscount it as a "run"? Confirm the shadow-watch's ≥3-run counter isn't polluted by rotation-empty days.
