@@ -69,7 +69,7 @@ def run_pf_score(pf_score: Path, input_arg: str | None, profile: str, config: st
     cmd = [sys.executable, str(pf_score)]
     if input_arg:
         cmd.append(input_arg)
-    cmd += ["--profile", profile, "--config", config]
+    cmd += ["--profile", profile, "--config", config, "--include-affinity-audit"]
     try:
         proc = subprocess.run(
             cmd,
@@ -117,6 +117,16 @@ def classify(raw_stdout: str, timed_out: bool) -> tuple[dict[str, Any], bool, st
 def build_audit(parsed: dict[str, Any], brief: str, ts: datetime, fired: bool,
                 reason: str) -> dict[str, Any]:
     items = parsed.get("items") or []
+    affinity_audit = parsed.get("affinity_audit") if isinstance(parsed.get("affinity_audit"), dict) else {}
+    audit_item_by_index: dict[Any, dict[str, Any]] = {}
+    audit_item_by_id: dict[str, dict[str, Any]] = {}
+    for audit_item in affinity_audit.get("items", []) if isinstance(affinity_audit, dict) else []:
+        if not isinstance(audit_item, dict):
+            continue
+        if "index" in audit_item:
+            audit_item_by_index[audit_item.get("index")] = audit_item
+        if audit_item.get("id") is not None:
+            audit_item_by_id[str(audit_item.get("id"))] = audit_item
     audit_items: list[dict[str, Any]] = []
     n_positive = 0
     n_negative = 0
@@ -133,13 +143,34 @@ def build_audit(parsed: dict[str, Any], brief: str, ts: datetime, fired: bool,
         elif delta_num < 0:
             n_negative += 1
         # RC3: id + scores + top-2 signals ONLY. Drop raw text/title/url.
-        audit_items.append({
+        audit_item = {
             "id": it.get("id"),
             "personal_fit_affinity": it.get("personal_fit_affinity"),
             "personal_fit_raw": it.get("personal_fit_raw"),
             "personal_fit_delta": it.get("personal_fit_delta"),
             "top_signals": top_signals(it.get("signals") or {}),
-        })
+        }
+        audit_extra = audit_item_by_index.get(it.get("index")) or audit_item_by_id.get(str(it.get("id"))) or {}
+        for key in (
+            "affinity_source",
+            "keyword_personal_fit_affinity",
+            "keyword_personal_fit_raw",
+            "keyword_personal_fit_delta",
+            "shadow_personal_fit_affinity",
+            "shadow_personal_fit_raw",
+            "shadow_personal_fit_delta",
+            "embedding_affinity",
+            "keyword_secondary_affinity",
+            "vec_metric",
+        ):
+            if key in it:
+                audit_item[key] = it.get(key)
+            if key in audit_extra and key != "affinity_source":
+                audit_item[key] = audit_extra.get(key)
+        audit_items.append(audit_item)
+    vec_metric = parsed.get("vec_metric")
+    if not vec_metric and isinstance(affinity_audit, dict):
+        vec_metric = affinity_audit.get("vec_metric")
     return {
         "ts": ts.isoformat(),
         "brief": brief,
@@ -148,6 +179,9 @@ def build_audit(parsed: dict[str, Any], brief: str, ts: datetime, fired: bool,
         "ok": bool(parsed.get("ok", False)),
         "pf_weight": parsed.get("pf_weight"),
         "pf_baseline": parsed.get("pf_baseline"),
+        "affinity_mode": parsed.get("affinity_mode"),
+        "affinity_source": parsed.get("affinity_source"),
+        "vec_metric": vec_metric,
         "n_items": len(audit_items),
         "n_positive": n_positive,
         "n_negative": n_negative,
@@ -227,6 +261,9 @@ def main() -> int:
             "ok": audit["ok"],
             "pf_weight": audit["pf_weight"],
             "pf_baseline": audit["pf_baseline"],
+            "affinity_mode": audit.get("affinity_mode"),
+            "affinity_source": audit.get("affinity_source"),
+            "vec_metric": audit.get("vec_metric"),
             "n_items": audit["n_items"],
             "n_positive": audit["n_positive"],
             "n_negative": audit["n_negative"],
@@ -245,6 +282,10 @@ def main() -> int:
                 print(json.dumps({
                     "ok": False, "base_score_only": True, "reason": reason, "items": [],
                 }, ensure_ascii=False))
+            elif isinstance(parsed, dict) and "affinity_audit" in parsed:
+                emitted = dict(parsed)
+                emitted.pop("affinity_audit", None)
+                print(json.dumps(emitted, ensure_ascii=False))
             else:
                 sys.stdout.write(raw_stdout if raw_stdout.endswith("\n") else raw_stdout + "\n")
         return 0

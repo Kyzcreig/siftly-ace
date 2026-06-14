@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3'
 import { existsSync } from 'node:fs'
 
+export { SIFTLY_VEC_METRIC } from './vec-metric'
+
 export type VecMode = 'sqlite-vec' | 'bruteforce'
 
 export interface VecStatus {
@@ -59,6 +61,17 @@ export function openVectorStore(options: VecOptions): VectorStore {
   return new BetterSqliteVectorStore(options)
 }
 
+export function l2NormalizeVector(vector: number[]): number[] {
+  assertVector(vector)
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0))
+  if (!Number.isFinite(norm) || norm === 0) return [...vector]
+  return vector.map((value) => value / norm)
+}
+
+export function l2DistanceToScore(distance: number): number {
+  return 1 / (1 + Math.max(0, distance))
+}
+
 export function ensureEmbeddingTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${EMBEDDING_TABLE} (
@@ -108,6 +121,7 @@ class BetterSqliteVectorStore implements VectorStore {
 
   upsert(record: VectorRecord): void {
     assertVector(record.vector)
+    const normalizedRecord = { ...record, vector: l2NormalizeVector(record.vector) }
     ensureEmbeddingTable(this.db)
 
     const tx = this.db.transaction(() => {
@@ -120,14 +134,14 @@ class BetterSqliteVectorStore implements VectorStore {
           dimensions = excluded.dimensions,
           embedded_at = excluded.embedded_at
       `).run({
-        bookmarkId: record.bookmarkId,
-        vectorJson: JSON.stringify(record.vector),
-        model: record.model,
-        dimensions: record.vector.length,
+        bookmarkId: normalizedRecord.bookmarkId,
+        vectorJson: JSON.stringify(normalizedRecord.vector),
+        model: normalizedRecord.model,
+        dimensions: normalizedRecord.vector.length,
       })
 
       if (this.mode === 'sqlite-vec') {
-        this.upsertSqliteVec(record)
+        this.upsertSqliteVec(normalizedRecord)
       }
     })
 
@@ -145,10 +159,10 @@ class BetterSqliteVectorStore implements VectorStore {
           dimensions = excluded.dimensions,
           embedded_at = excluded.embedded_at
       `).run({
-        bookmarkId: record.bookmarkId,
-        vectorJson: JSON.stringify(record.vector),
-        model: record.model,
-        dimensions: record.vector.length,
+        bookmarkId: normalizedRecord.bookmarkId,
+        vectorJson: JSON.stringify(normalizedRecord.vector),
+        model: normalizedRecord.model,
+        dimensions: normalizedRecord.vector.length,
       })
     }
   }
@@ -157,18 +171,19 @@ class BetterSqliteVectorStore implements VectorStore {
     assertVector(vector)
     assertModel(model)
     const safeLimit = normalizeLimit(limit)
+    const normalizedVector = l2NormalizeVector(vector)
 
     if (this.mode === 'sqlite-vec' && this.sqliteVecReady) {
       try {
-        if (this.sqliteVecTableMatches(model, vector.length)) {
-          return this.searchSqliteVec(vector, safeLimit, model)
+        if (this.sqliteVecTableMatches(model, normalizedVector.length)) {
+          return this.searchSqliteVec(normalizedVector, safeLimit, model)
         }
       } catch (err) {
         this.demoteToFallback('sqlite-vec query failed; using brute-force fallback', err)
       }
     }
 
-    return this.searchBruteForce(vector, safeLimit, model)
+    return this.searchBruteForce(normalizedVector, safeLimit, model)
   }
 
   close(): void {
@@ -280,6 +295,7 @@ class BetterSqliteVectorStore implements VectorStore {
   }
 
   private insertSqliteVecRow(bookmarkId: string, vector: number[]): void {
+    const normalizedVector = l2NormalizeVector(vector)
     this.db.prepare(`
       INSERT OR IGNORE INTO ${SQLITE_VEC_ROWIDS_TABLE} (bookmark_id)
       VALUES (?)
@@ -299,7 +315,7 @@ class BetterSqliteVectorStore implements VectorStore {
     this.db.prepare(`
       INSERT INTO ${SQLITE_VEC_TABLE} (rowid, embedding)
       VALUES (?, ?)
-    `).run(rowid, JSON.stringify(vector))
+    `).run(rowid, JSON.stringify(normalizedVector))
   }
 
   private sqliteVecTableMatches(model: string, dimensions: number): boolean {
@@ -343,7 +359,7 @@ class BetterSqliteVectorStore implements VectorStore {
     return rows.map((row) => ({
       bookmarkId: row.bookmarkId,
       distance: row.distance,
-      score: 1 / (1 + Math.max(0, row.distance)),
+      score: l2DistanceToScore(row.distance),
       mode: 'sqlite-vec' as const,
     }))
   }

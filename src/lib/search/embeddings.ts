@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 import Database from 'better-sqlite3'
 
 import { buildImageContext } from '../../../lib/image-context'
-import { ensureEmbeddingTable, openVectorStore, type VecOptions, type VecStatus } from '../vec'
+import { ensureEmbeddingTable, l2NormalizeVector, openVectorStore, type VecOptions, type VecStatus } from '../vec'
 
 export interface EmbeddingProvider {
   readonly model: string
@@ -73,7 +73,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       ...(this.dimensions ? { dimensions: this.dimensions } : {}),
     })
 
-    return response.data.map((item) => item.embedding.map((value) => Number(value)))
+    return response.data.map((item) => l2NormalizeVector(item.embedding.map((value) => Number(value))))
   }
 }
 

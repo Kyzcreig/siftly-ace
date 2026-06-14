@@ -1,0 +1,2879 @@
+{
+  "_meta": {
+    "purpose": "Wave-6 rank-metrics labeled-set scaffold. Fill with held-out saves and organic skips from dated surfaced-item provenance; promotion is deferred until this set matures.",
+    "minimum_slots": 150,
+    "negative_label": "organic_skip",
+    "positive_label": "heldout_save",
+    "allowed_labels": [
+      "heldout_save",
+      "organic_skip",
+      "known_good",
+      "known_bad",
+      "neutral"
+    ],
+    "random_negatives_allowed": false,
+    "organic_skip_rule": "Only label organic_skip after the item was surfaced and no bookmark/like/save appeared by matures_at (>=14 days after surfaced_at). Do not use random feed negatives.",
+    "score_fields": [
+      "keyword",
+      "mean_cosine",
+      "probe"
+    ],
+    "source_log_dir": "docs/eval/surfaced-items/",
+    "status_values": [
+      "unlabeled",
+      "labeled"
+    ]
+  },
+  "items": [
+    {
+      "slot": 1,
+      "id": "slot-001",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 2,
+      "id": "slot-002",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 3,
+      "id": "slot-003",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 4,
+      "id": "slot-004",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 5,
+      "id": "slot-005",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 6,
+      "id": "slot-006",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 7,
+      "id": "slot-007",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 8,
+      "id": "slot-008",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 9,
+      "id": "slot-009",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 10,
+      "id": "slot-010",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 11,
+      "id": "slot-011",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 12,
+      "id": "slot-012",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 13,
+      "id": "slot-013",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 14,
+      "id": "slot-014",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 15,
+      "id": "slot-015",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 16,
+      "id": "slot-016",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 17,
+      "id": "slot-017",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 18,
+      "id": "slot-018",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 19,
+      "id": "slot-019",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 20,
+      "id": "slot-020",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 21,
+      "id": "slot-021",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 22,
+      "id": "slot-022",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 23,
+      "id": "slot-023",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 24,
+      "id": "slot-024",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 25,
+      "id": "slot-025",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 26,
+      "id": "slot-026",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 27,
+      "id": "slot-027",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 28,
+      "id": "slot-028",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 29,
+      "id": "slot-029",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 30,
+      "id": "slot-030",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 31,
+      "id": "slot-031",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 32,
+      "id": "slot-032",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 33,
+      "id": "slot-033",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 34,
+      "id": "slot-034",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 35,
+      "id": "slot-035",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 36,
+      "id": "slot-036",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 37,
+      "id": "slot-037",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 38,
+      "id": "slot-038",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 39,
+      "id": "slot-039",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 40,
+      "id": "slot-040",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 41,
+      "id": "slot-041",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 42,
+      "id": "slot-042",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 43,
+      "id": "slot-043",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 44,
+      "id": "slot-044",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 45,
+      "id": "slot-045",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 46,
+      "id": "slot-046",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 47,
+      "id": "slot-047",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 48,
+      "id": "slot-048",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 49,
+      "id": "slot-049",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 50,
+      "id": "slot-050",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 51,
+      "id": "slot-051",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 52,
+      "id": "slot-052",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 53,
+      "id": "slot-053",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 54,
+      "id": "slot-054",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 55,
+      "id": "slot-055",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 56,
+      "id": "slot-056",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 57,
+      "id": "slot-057",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 58,
+      "id": "slot-058",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 59,
+      "id": "slot-059",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 60,
+      "id": "slot-060",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 61,
+      "id": "slot-061",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 62,
+      "id": "slot-062",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 63,
+      "id": "slot-063",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 64,
+      "id": "slot-064",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 65,
+      "id": "slot-065",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 66,
+      "id": "slot-066",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 67,
+      "id": "slot-067",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 68,
+      "id": "slot-068",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 69,
+      "id": "slot-069",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 70,
+      "id": "slot-070",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 71,
+      "id": "slot-071",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 72,
+      "id": "slot-072",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 73,
+      "id": "slot-073",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 74,
+      "id": "slot-074",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 75,
+      "id": "slot-075",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 76,
+      "id": "slot-076",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 77,
+      "id": "slot-077",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 78,
+      "id": "slot-078",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 79,
+      "id": "slot-079",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 80,
+      "id": "slot-080",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 81,
+      "id": "slot-081",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 82,
+      "id": "slot-082",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 83,
+      "id": "slot-083",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 84,
+      "id": "slot-084",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 85,
+      "id": "slot-085",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 86,
+      "id": "slot-086",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 87,
+      "id": "slot-087",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 88,
+      "id": "slot-088",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 89,
+      "id": "slot-089",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 90,
+      "id": "slot-090",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 91,
+      "id": "slot-091",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 92,
+      "id": "slot-092",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 93,
+      "id": "slot-093",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 94,
+      "id": "slot-094",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 95,
+      "id": "slot-095",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 96,
+      "id": "slot-096",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 97,
+      "id": "slot-097",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 98,
+      "id": "slot-098",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 99,
+      "id": "slot-099",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 100,
+      "id": "slot-100",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 101,
+      "id": "slot-101",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 102,
+      "id": "slot-102",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 103,
+      "id": "slot-103",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 104,
+      "id": "slot-104",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 105,
+      "id": "slot-105",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 106,
+      "id": "slot-106",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 107,
+      "id": "slot-107",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 108,
+      "id": "slot-108",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 109,
+      "id": "slot-109",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 110,
+      "id": "slot-110",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 111,
+      "id": "slot-111",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 112,
+      "id": "slot-112",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 113,
+      "id": "slot-113",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 114,
+      "id": "slot-114",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 115,
+      "id": "slot-115",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 116,
+      "id": "slot-116",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 117,
+      "id": "slot-117",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 118,
+      "id": "slot-118",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 119,
+      "id": "slot-119",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 120,
+      "id": "slot-120",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 121,
+      "id": "slot-121",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 122,
+      "id": "slot-122",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 123,
+      "id": "slot-123",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 124,
+      "id": "slot-124",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 125,
+      "id": "slot-125",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 126,
+      "id": "slot-126",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 127,
+      "id": "slot-127",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 128,
+      "id": "slot-128",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 129,
+      "id": "slot-129",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 130,
+      "id": "slot-130",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 131,
+      "id": "slot-131",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 132,
+      "id": "slot-132",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 133,
+      "id": "slot-133",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 134,
+      "id": "slot-134",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 135,
+      "id": "slot-135",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 136,
+      "id": "slot-136",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 137,
+      "id": "slot-137",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 138,
+      "id": "slot-138",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 139,
+      "id": "slot-139",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 140,
+      "id": "slot-140",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 141,
+      "id": "slot-141",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 142,
+      "id": "slot-142",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 143,
+      "id": "slot-143",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 144,
+      "id": "slot-144",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 145,
+      "id": "slot-145",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 146,
+      "id": "slot-146",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 147,
+      "id": "slot-147",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 148,
+      "id": "slot-148",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 149,
+      "id": "slot-149",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    },
+    {
+      "slot": 150,
+      "id": "slot-150",
+      "status": "unlabeled",
+      "label": null,
+      "source": null,
+      "url": null,
+      "text": null,
+      "surfaced_at": null,
+      "matures_at": null,
+      "saved_after_matured": null,
+      "brief_rank": null,
+      "scores": {
+        "keyword": null,
+        "mean_cosine": null,
+        "probe": null
+      },
+      "notes": ""
+    }
+  ]
+}

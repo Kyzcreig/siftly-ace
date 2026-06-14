@@ -114,6 +114,72 @@ class PfAuditTest(unittest.TestCase):
             self.assertFalse(audit['fired'])
             self.assertIn('kill-switch', audit['reason'])
 
+    def test_affinity_source_and_shadow_embed_delta_are_persisted(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile, config, candidates, audit_dir = self._setup(d)
+            fake = Path(d) / 'fake-pf-score.py'
+            fake.write_text(textwrap.dedent('''
+                import json
+                print(json.dumps({
+                    "ok": True,
+                    "base_score_only": False,
+                    "pf_weight": 30,
+                    "pf_baseline": 0.18,
+                    "affinity_mode": "shadow",
+                    "affinity_source": "keyword_fallback",
+                    "items": [{
+                        "id": "tweet-1",
+                        "index": 0,
+                        "personal_fit_affinity": 0.42,
+                        "personal_fit_raw": 0.24,
+                        "personal_fit_delta": 7.2,
+                        "affinity_source": "keyword_fallback",
+                        "signals": {"topic_score": 0.4},
+                    }],
+                    "affinity_audit": {
+                        "vec_metric": "l2norm",
+                        "items": [{
+                            "id": "tweet-1",
+                            "index": 0,
+                            "shadow_personal_fit_affinity": 0.91,
+                            "shadow_personal_fit_raw": 0.73,
+                            "shadow_personal_fit_delta": 21.9,
+                            "embedding_affinity": 0.88,
+                            "keyword_secondary_affinity": 0.084,
+                            "vec_metric": "l2norm",
+                        }],
+                    },
+                }))
+            '''), encoding='utf-8')
+            config.write_text(json.dumps({'PF_WEIGHT': 30}), encoding='utf-8')
+            proc = run(str(candidates), '--brief', 'x-feed-brief', '--profile', str(profile),
+                       '--config', str(config), '--audit-dir', str(audit_dir), '--pf-score', str(fake))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            emitted = json.loads(proc.stdout)
+            self.assertNotIn('affinity_audit', emitted)
+            self.assertEqual(emitted['affinity_source'], 'keyword_fallback')
+            audit = json.loads(next(audit_dir.glob('x-feed-brief-*.json')).read_text())
+            self.assertEqual(audit['affinity_mode'], 'shadow')
+            self.assertEqual(audit['affinity_source'], 'keyword_fallback')
+            self.assertEqual(audit['vec_metric'], 'l2norm')
+            item = audit['items'][0]
+            self.assertEqual(item['affinity_source'], 'keyword_fallback')
+            self.assertEqual(item['shadow_personal_fit_delta'], 21.9)
+            self.assertEqual(item['embedding_affinity'], 0.88)
+            self.assertEqual(item['vec_metric'], 'l2norm')
+
+    def test_forced_vec_failure_records_keyword_fallback(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile, config, candidates, audit_dir = self._setup(d)
+            config.write_text(json.dumps({'PF_WEIGHT': 30}), encoding='utf-8')
+            proc = run(str(candidates), '--brief', 'x-feed-brief', '--profile', str(profile),
+                       '--config', str(config), '--audit-dir', str(audit_dir),
+                       env={'PF_AFFINITY_MODE': 'shadow', 'PF_EMBED_AFFINITY_FORCE_FAILURE': '1'})
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            audit = json.loads(next(audit_dir.glob('x-feed-brief-*.json')).read_text())
+            self.assertEqual(audit['affinity_source'], 'keyword_fallback')
+            self.assertEqual(audit['items'][0]['affinity_source'], 'keyword_fallback')
+
     def test_declined_when_profile_missing(self):
         with tempfile.TemporaryDirectory() as d:
             _, config, candidates, audit_dir = self._setup(d)

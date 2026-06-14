@@ -33,12 +33,18 @@ CANDIDATES = {
 
 
 def run(*args, env=None):
+    run_env = os.environ.copy()
+    for key, value in (env or {}).items():
+        if value is None:
+            run_env.pop(key, None)
+        else:
+            run_env[key] = value
     return subprocess.run(
         ['python3', str(SCRIPT), *args],
         cwd=ROOT.parent,
         text=True,
         capture_output=True,
-        env={**os.environ, **(env or {})},
+        env=run_env,
         check=False,
     )
 
@@ -54,7 +60,10 @@ class PfScoreTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             data = json.loads(proc.stdout)
             self.assertTrue(data['ok'])
+            self.assertEqual(data['affinity_mode'], 'shadow')
+            self.assertEqual(data['affinity_source'], 'keyword_fallback')
             item = data['items'][0]
+            self.assertEqual(item['affinity_source'], 'keyword_fallback')
             self.assertGreater(item['personal_fit_raw'], 0)
             self.assertAlmostEqual(item['personal_fit_delta'], item['personal_fit_raw'] * 30, places=2)
             self.assertTrue(item['signals']['topic_hits'])
@@ -87,6 +96,86 @@ class PfScoreTest(unittest.TestCase):
         data = json.loads(proc.stdout)
         self.assertFalse(data['ok'])
         self.assertTrue(data['base_score_only'])
+        self.assertEqual(data['affinity_source'], 'sentinel')
+
+    def test_embed_failure_returns_keyword_item_in_embed_and_shadow_modes(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile = Path(d) / 'profile.json'
+            candidates = Path(d) / 'candidates.json'
+            profile.write_text(json.dumps(PROFILE), encoding='utf-8')
+            candidates.write_text(json.dumps(CANDIDATES), encoding='utf-8')
+            keyword = json.loads(run(
+                str(candidates), '--profile', str(profile),
+                env={'PF_WEIGHT': '30', 'PF_AFFINITY_MODE': 'keyword'},
+            ).stdout)
+            for mode in ('embed', 'shadow'):
+                proc = run(
+                    str(candidates), '--profile', str(profile),
+                    env={
+                        'PF_WEIGHT': '30',
+                        'PF_AFFINITY_MODE': mode,
+                        'PF_EMBED_AFFINITY_FORCE_FAILURE': '1',
+                    },
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                data = json.loads(proc.stdout)
+                self.assertEqual(data['affinity_mode'], mode)
+                self.assertEqual(data['affinity_source'], 'keyword_fallback')
+                self.assertIn('embed_error', data)
+                self.assertEqual(data['items'], keyword['items'])
+
+    def test_affinity_mode_defaults_to_shadow_for_bad_or_missing_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile = Path(d) / 'profile.json'
+            candidates = Path(d) / 'candidates.json'
+            profile.write_text(json.dumps(PROFILE), encoding='utf-8')
+            candidates.write_text(json.dumps(CANDIDATES), encoding='utf-8')
+            clean_env = {'PF_AFFINITY_MODE': None, 'SIFTLY_PF_AFFINITY_MODE': None}
+
+            for config_body in (None, '', '{not json', json.dumps({'PF_AFFINITY_MODE': 'unknown'})):
+                config = Path(d) / f'config-{len(str(config_body))}.json'
+                if config_body is not None:
+                    config.write_text(config_body, encoding='utf-8')
+                proc = run(str(candidates), '--profile', str(profile), '--config', str(config), env=clean_env)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                data = json.loads(proc.stdout)
+                self.assertTrue(data['ok'], proc.stdout)
+                self.assertEqual(data['affinity_mode'], 'shadow')
+
+    def test_affinity_mode_empty_or_unknown_env_defaults_to_shadow(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile = Path(d) / 'profile.json'
+            candidates = Path(d) / 'candidates.json'
+            profile.write_text(json.dumps(PROFILE), encoding='utf-8')
+            candidates.write_text(json.dumps(CANDIDATES), encoding='utf-8')
+
+            cases = [
+                {'PF_AFFINITY_MODE': '', 'SIFTLY_PF_AFFINITY_MODE': 'embed'},
+                {'PF_AFFINITY_MODE': 'unknown', 'SIFTLY_PF_AFFINITY_MODE': None},
+            ]
+            for env in cases:
+                proc = run(str(candidates), '--profile', str(profile), env=env)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                data = json.loads(proc.stdout)
+                self.assertTrue(data['ok'], proc.stdout)
+                self.assertEqual(data['affinity_mode'], 'shadow')
+
+    def test_weight_zero_preserves_keyword_item_scores_under_shadow(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile = Path(d) / 'profile.json'
+            candidates = Path(d) / 'candidates.json'
+            profile.write_text(json.dumps(PROFILE), encoding='utf-8')
+            candidates.write_text(json.dumps(CANDIDATES), encoding='utf-8')
+            keyword = json.loads(run(
+                str(candidates), '--profile', str(profile),
+                env={'PF_WEIGHT': '0', 'PF_AFFINITY_MODE': 'keyword'},
+            ).stdout)
+            shadow = json.loads(run(
+                str(candidates), '--profile', str(profile),
+                env={'PF_WEIGHT': '0', 'PF_AFFINITY_MODE': 'shadow'},
+            ).stdout)
+            self.assertEqual(shadow['items'], keyword['items'])
+            self.assertEqual(shadow['items'][0]['personal_fit_delta'], 0)
 
     def test_baseline_downshift_penalizes_low_affinity(self):
         # A low-affinity off-interest candidate should go NEGATIVE under the default
