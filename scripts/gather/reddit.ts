@@ -70,6 +70,12 @@ export type GatherRedditOptions = {
   backoffBaseMs?: number
   /** Injectable sleep so tests run without real timers. */
   sleepImpl?: SleepLike
+  /** Egress lanes to round-robin subreddits across. Each entry is '' (direct/native
+   *  fetch, the Mac Studio's own residential WAN) or a SOCKS proxy URL like
+   *  'socks5://192.168.1.217:1080' (Starlink). Independent residential IPs each get
+   *  their own Reddit per-IP RSS budget, so spreading subs lifts the 1-fetch/window
+   *  limit. Default ['']. Ignored when `fetchImpl` is injected (tests). */
+  lanes?: string[]
 }
 
 let normalizeEngagementPromise: Promise<NormalizeEngagement> | null = null
@@ -268,6 +274,52 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+/** Dep-free SOCKS-capable fetch transport via curl. Node's built-in fetch can't do
+ *  SOCKS without an npm dep (which the no-new-dep invariant forbids), so a proxied
+ *  lane shells out to curl --socks5-hostname (the exact call proven live). Returns a
+ *  FetchResponse-shaped object. Used only for the DEFAULT lane fetchers; tests inject
+ *  their own fetchImpl and never hit this. */
+function curlFetch(proxyUrl: string): FetchLike {
+  return async (url: string): Promise<FetchResponse> => {
+    const { execFile } = await import('node:child_process')
+    const { promisify } = await import('node:util')
+    const run = promisify(execFile)
+    // -s silent, -S show errors, write the HTTP code as a trailer we split off.
+    const args = [
+      '-s', '-S', '--max-time', '20',
+      '--socks5-hostname', proxyUrl.replace(/^socks5:\/\//i, ''),
+      '-A', USER_AGENT,
+      '-w', '\n%{http_code}',
+      url,
+    ]
+    try {
+      const { stdout } = await run('curl', args, { maxBuffer: 8 * 1024 * 1024 })
+      const nl = stdout.lastIndexOf('\n')
+      const body = nl >= 0 ? stdout.slice(0, nl) : stdout
+      const status = nl >= 0 ? Number(stdout.slice(nl + 1).trim()) : 0
+      return {
+        ok: status >= 200 && status < 300,
+        status: Number.isFinite(status) ? status : 0,
+        text: async () => body,
+        headers: { get: () => null }, // curl -w doesn't surface response headers here
+      }
+    } catch (err) {
+      // curl process failure (proxy down, timeout) -> surface as a thrown network error
+      throw err instanceof Error ? err : new Error(String(err))
+    }
+  }
+}
+
+function nativeFetch(url: string, init?: RequestInit): Promise<FetchResponse> {
+  return fetch(url, init) as unknown as Promise<FetchResponse>
+}
+
+/** Build one FetchLike per lane: '' -> native fetch (direct WAN), a socks5:// url ->
+ *  curl transport. */
+function laneFetchers(lanes: string[]): FetchLike[] {
+  return lanes.map((lane) => (lane ? curlFetch(lane) : nativeFetch))
+}
+
 function parseRetryAfter(resp: FetchResponse): number | null {
   const h = resp.headers
   if (!h) return null
@@ -305,18 +357,28 @@ async function fetchWithRetry(
 export async function gatherRedditPosts(options: GatherRedditOptions = {}): Promise<RedditCandidate[]> {
   const subreddits = options.subreddits?.length ? options.subreddits : DEFAULT_SUBREDDITS
   const limit = Math.max(1, Math.min(100, Math.trunc(options.limit ?? DEFAULT_LIMIT)))
-  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init))
   const logger = options.logger ?? { warn: (message: string) => console.error(message) }
   const delayMs = Math.max(0, Math.trunc(options.delayMs ?? DEFAULT_DELAY_MS))
   const maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? DEFAULT_MAX_RETRIES))
   const backoffBaseMs = Math.max(0, Math.trunc(options.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS))
   const sleepImpl: SleepLike = options.sleepImpl ?? defaultSleep
+  // Lane round-robin: spread subreddits across independent residential egress IPs, each
+  // with its own Reddit per-IP RSS budget. An injected fetchImpl (tests) overrides lanes
+  // entirely (single fetcher). The politeness delay applies only BETWEEN subs ON THE SAME
+  // lane — consecutive subs on different IPs need no gap.
+  const lanes = options.lanes?.length ? options.lanes : ['']
+  const fetchers: FetchLike[] = options.fetchImpl ? [options.fetchImpl] : laneFetchers(lanes)
+  const lastFetchAtPerLane: number[] = new Array(fetchers.length).fill(0)
   const normalizeEngagement = await loadNormalizeEngagement()
   const candidates: RedditCandidate[] = []
 
   for (let i = 0; i < subreddits.length; i++) {
     const subreddit = subreddits[i]
-    if (i > 0 && delayMs > 0) await sleepImpl(delayMs) // politeness gap (sequential)
+    const laneIdx = i % fetchers.length
+    const fetchImpl = fetchers[laneIdx]
+    // politeness gap only if THIS lane fetched recently (same-IP cadence)
+    if (delayMs > 0 && lastFetchAtPerLane[laneIdx] > 0) await sleepImpl(delayMs)
+    lastFetchAtPerLane[laneIdx] = 1
 
     const url = rssApiUrl(subreddit, limit)
     let xml: string
@@ -392,10 +454,14 @@ async function main(): Promise<number> {
   const subreddits = allFlags('subreddit')
   const limit = intOf(flag('limit'), DEFAULT_LIMIT)
   const delayMs = flag('delay-ms') !== undefined ? intOf(flag('delay-ms'), DEFAULT_DELAY_MS) : undefined
+  // --lane '' (direct) and/or --lane socks5://host:port (e.g. Starlink). Repeatable;
+  // subreddits round-robin across them. Default: direct WAN only.
+  const lanes = allFlags('lane')
   const candidates = await gatherRedditPosts({
     subreddits: subreddits.length ? subreddits : DEFAULT_SUBREDDITS,
     limit,
     delayMs,
+    lanes: lanes.length ? lanes : undefined,
     logger: { warn: (message) => console.error(message) },
   })
   process.stdout.write(`${JSON.stringify({ candidates })}\n`)

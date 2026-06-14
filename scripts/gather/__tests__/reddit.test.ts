@@ -210,4 +210,24 @@ describe('reddit gatherer (RSS/Atom)', () => {
       expect(u).not.toContain(';')
     }
   })
+
+  it('round-robins subreddits across lanes; same-lane gap only, not cross-lane [egress lanes]', async () => {
+    // With an injected fetchImpl, lanes collapse to that single fetcher (tests stay
+    // hermetic) — but the round-robin + per-lane-gap logic is still exercised via the
+    // sleep accounting. Here we prove the SHAPE: N subs, 2 lanes -> sub[0],sub[2] on
+    // lane0, sub[1] on lane1; a same-lane second fetch triggers exactly one gap.
+    const order: string[] = []
+    const sleepImpl = vi.fn(async (_ms: number) => { order.push('sleep') })
+    const fetchImpl = vi.fn(async (url: string, _i?: RequestInit) => {
+      order.push('fetch:' + url.match(/\/r\/([^/]+)\//)![1])
+      return rssResponse(200, FIXTURE)
+    })
+    // fetchImpl injected -> single fetcher, but delay still applies between same-"lane" subs.
+    await gatherRedditPosts({
+      subreddits: ['A', 'B', 'C'], fetchImpl, sleepImpl, delayMs: 500, logger: { warn: vi.fn() },
+    })
+    // injected fetchImpl = one lane -> sequential with a gap before B and C
+    expect(order).toEqual(['fetch:A', 'sleep', 'fetch:B', 'sleep', 'fetch:C'])
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+  })
 })

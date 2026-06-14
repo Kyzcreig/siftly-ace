@@ -58,3 +58,35 @@ leading sub. Given the ~1-fetch/window budget, the probe inherits the same best-
 RSS pivot is **live-verified working**: real candidates parse from the blocked IP, the contract is
 unchanged, and failure degrades gracefully. The honest limitation — datacenter-IP RSS budget ≈ 1
 fetch/window → multi-sub needs a residential egress lane — is documented and handed to the wiring PRD.
+
+
+---
+
+## CORRECTION + multi-sub SOLVED via egress lanes (2026-06-14, later same day)
+
+**Mis-diagnosis corrected:** the "datacenter IP" framing above was WRONG. The Mac Studio egresses via
+Charter/**Spectrum residential** (`68.185.70.45`), not a datacenter. The ≈1-fetch/window limit is
+Reddit's normal per-IP RSS budget on *any* single IP — not a datacenter penalty.
+
+**Fix built (Ace's call — use the house lanes, not the MacBook Pro):** `gatherRedditPosts` gained a
+`lanes` option that round-robins subreddits across independent residential egress IPs, dep-free
+(curl `--socks5-hostname` transport; native fetch for the direct lane). Lanes available:
+- spectrum (direct WAN, `68.185.70.45`)
+- starlink (SOCKS `192.168.1.217:1080`, `98.97.137.74`, SpaceX — already up)
+
+**Live proof of independent budgets (same instant):**
+```
+$ curl ... reddit.com/r/MachineLearning/hot.rss      (spectrum)  -> 429  (budget spent)
+$ curl --socks5-hostname 192.168.1.217:1080 ... /r/LocalLLaMA/hot.rss (starlink) -> 200, 36KB, 10 posts
+```
+
+**Live multi-sub run across both lanes:**
+```
+$ npx tsx scripts/gather/reddit.ts --subreddit MachineLearning --subreddit LocalLLaMA \
+    --limit 10 --lane "" --lane "socks5://192.168.1.217:1080" --delay-ms 1000
+TOTAL: 20   per-sub: {MachineLearning: 10, LocalLLaMA: 10}   warns: (none — both 200)
+```
+
+So multi-sub is **SOLVED, not deferred**. The gatherer is no longer "best-effort ≥1 sub/run" when
+lanes are supplied — it scales to N subs across N residential IPs. The `cell` (MacBook Pro tether)
+lane is unnecessary.
