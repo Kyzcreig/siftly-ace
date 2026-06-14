@@ -1,0 +1,38 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**B1 — "≥3 shadow runs/brief" is a quantity gate masquerading as a safety gate; the acceptance bar is undefined.** §5.4/D-2/AC-8 gate G3 on "≥3 runs/brief with *acceptable* deltas" but never define what makes a delta acceptable vs. a regression. Three runs is a tiny sample and the morning-digest is heavily input-dependent (a slow news day vs. a launch day produce wildly different sets). Evidence pack notes the shadow harness reports "within-posted MMR author-cap drops/reorders (scoring-basis-clean floor; **pool-replacement deferred to live wiring**)" — meaning the shadow run does *not* exercise the actual live behavior (pool replacement) you're gating on. So G3's evidence is structurally incapable of proving the thing it gates. This is the exact "demo works ≠ production-safe" trap. Define numeric acceptance thresholds AND make the shadow harness exercise pool-replacement, or G3 is theater.
+
+**B2 — Lane preflight reachability ≠ lane works; SOCKS port-open is not "Reddit fetch succeeds."** §5.2/D-4/R2/AC-6 preflight checks the Starlink SOCKS proxy is "reachable" (~2s port check). A reachable SOCKS proxy with no upstream (Starlink down behind it, DNS dead, Reddit 429 on that egress) passes preflight then fails the actual fetch. The mitigation you built (never-throw, honest-zero) catches the *crash*, but the preflight gives false confidence and the design treats "preflight passed" as "lane usable." Per the project's own root-cause-over-proxy-signal doctrine (the vec0 brute-force-demotion and "endpoint returned 200" lessons all over the evidence pack), a port-open check is precisely the proxy signal that hid bugs before. Either make preflight a real 1-item fetch probe or stop calling it a preflight and rely solely on the never-throw fallback.
+
+## Required Changes
+
+**RC1 (from B1) — Define G3 acceptance numerically and fix shadow coverage.** Specify the deltas that constitute "acceptable" (e.g. max % of posted-set items suppressed by cross-brief dedup per run; max author-cap-driven reorders; max set-size shrink). Make `output_shadow.ts` exercise pool-replacement (currently deferred) so G3 evidence reflects live behavior, OR add a 4th gate: a canary live run reviewed before full go-live. §5.4, AC-8.
+
+**RC2 (from B2) — Preflight must probe, not ping.** Replace the SOCKS reachability check with a bounded real fetch of one cheap sub through the lane; treat any non-200 as "lane down → direct-only." Keep the ~2s budget via timeout. §5.2/D-4.
+
+**RC3 — Define the dedupe-vs-seen-list semantics for new sources.** §5.2 says gatherer candidates "dedupe against the seen-list," but `x-brief-seen.json` is X-specific and cross-brief-dedup has its own DB. State explicitly: do reddit/github candidates get written to a seen-list (and which one), or can the same HN-crossposted reddit item appear day after day? Without this, R1 (saw/drown) recurs silently. §5.2, R1.
+
+**RC4 — N-consecutive-zero watchdog has a cold-start / gap blind spot.** §5.3/D-5/AC-5: "fetched==0 for N=3 consecutive days" — define behavior when the probe artifact is *missing* for a day (cron didn't run, machine asleep). Missing ≠ zero, but a 3-day silent outage of the probe itself should also alert. Currently §6 Phase-2 negative test says "missing dir → silent, exit 0" — that means a dead watchdog input is indistinguishable from health. Add a staleness check (newest artifact older than N days → alert).
+
+**RC5 — Specify the github-trending budget/dedup story.** OQ-3 leans "both," but the doc only ground-truths Reddit's ≈1-fetch/window/IP limit and silent-block watch. github-trending has no rate-limit/HTML-drift/silent-block coverage in this PRD (only "healthy ~14 net-new/run" in evidence). If github-trending is wired, it needs the same silent-block treatment (HTML scrape drift → 0 results forever).
+
+## Lens Notes (one line each)
+
+- **Architecture:** Phasing (gatherers → watchdog → output features) is correctly blast-radius-ordered; the shadow-before-live discipline is sound — its *evidence sufficiency* (B1) is the weak joint.
+- **Security/identity-isolation:** Clean — no new creds, no new egress identity, gatherers credential-free; SOCKS lane is pre-existing; nothing to isolate that isn't already.
+- **DevOps/SRE:** Rollback (per-phase `.bak`/`launchctl unload`) is genuinely one-command and reversible — the strongest part; healthcheck/preflight (B2) and watchdog staleness (RC4) are the gaps.
+- **Implementation/maintainability:** Reuses real modules (not reimplementations) per evidence pack — good; prompt.md is a 44K shell-in-prose program, the highest-maintenance surface, and this adds two more gather blocks to it.
+- **QA:** Dry-run forced-failure + double-post tests are *real* gates (not happy-path); the hole is G3's shadow evidence can't prove pool-replacement safety (B1) — that AC is currently unfalsifiable.
+- **Config-drift:** Gating discipline (diff + `.bak` + approval) is strong and precedented; subreddit list and N live in-prompt/in-cron — pin them version-controlled (like `primary-handles.txt`) not inline, or they drift.
+
+## Residual Risks / Open Questions
+
+- **Prompt.md as program:** at 44K, adding gather blocks compounds an already-large untyped surface; a TS gather-orchestrator the prompt calls once would shrink blast radius — out of scope but flag for the next refactor.
+- **Three-run shadow on a quiet-news week** proves nothing about a launch-day pile-up (the exact R1 scenario). Consider gating on runs-that-include-a-high-volume-day, not just run-count.
+- **Cross-brief dedup spans both briefs but only morning-digest gains gatherers** — confirm a reddit item surfaced in morning-digest correctly suppresses a later X-feed duplicate (and that this is desired directionality).
+- **OQ-2 (N=3):** with Reddit's ≈1-fetch/window budget, a single bad-egress day already yields zero; N=3 may be too twitchy or too slow depending on lane reliability — tie N to measured lane uptime once Phase 1 has data.
+- **RC4 staleness** and **probe-artifact schema stability** — the watchdog parses gatherer-probe artifacts; if that schema changes, the watchdog silently mis-reads. Version the artifact or assert its shape.

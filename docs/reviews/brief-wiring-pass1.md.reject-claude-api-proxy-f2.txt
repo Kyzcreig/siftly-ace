@@ -1,0 +1,42 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**B-1 — The dry-run "valid set" oracle is undefined; every never-regress proof rests on it.** §3 Invariant-1 closeout proof and AC-2 both certify success as "digest still posts a valid set," but nothing in the PRD defines what *valid* means beyond "not empty / not crashed / not double-posted." "A worse post than today" (§3, verbatim) is explicitly in-scope for the invariant yet has **no measurable gate**. Three dry-runs that each post *something* will pass AC-1/2/3 while silently degrading quality (R1 saw, R3 dislike) — exactly the failure the invariant claims to prevent. Without a pinned baseline (today's posted set captured pre-change) and a concrete diff assertion ("Top-N identical except for the N new candidates that out-scored an incumbent on the existing rubric"), the headline invariant is unfalsifiable. This is the same model-adherence/"looks fine" trap the evidence pack's own history is littered with.
+
+**B-2 — Phase 1 ships gatherers BEFORE the shadow window, but cross-brief dedup (the thing that protects the X-feed brief from the new inflow) is gated to Phase 3.** D-3/§5.2 wire reddit+github into morning-digest at G1; D-2/§5.4 hold cross-brief dedup until G3 (≥3 shadow runs). Between G1 and G3, the new gatherer candidates flow into morning-digest with **no cross-brief dedup active** (it's offline-only, §5.1). The X-feed brief and morning-digest can now surface the same item with nothing suppressing it — a regression introduced by Phase 1 that Phase 1's own gates don't test (AC-1..7 never check cross-brief overlap). The sequencing claim "gatherers are lower blast radius" (D-3) is only true if the gatherers don't share an output surface with the deferred dedup; they do.
+
+**B-3 — Lane preflight reachability ≠ lane usability; a reachable-but-broken SOCKS proxy silently poisons the gather.** §5.2/D-4/R2 preflight is a TCP reachability/timeout check on `192.168.1.217:1080`. A Starlink SOCKS proxy that accepts the connection but fails the actual CONNECT (auth drift, upstream down, DNS) passes preflight, then the reddit fetch on that lane fails or hangs per-sub. The "never-throw / honest-zero" contract means this degrades to **silent zero candidates for the proxied subs** — indistinguishable from "nothing hot," and the silent-block watch (N=3 days) is the only catch, with a 3-day blind window. Preflight must validate a real fetch through the proxy (HTTP 200 on a cheap known URL via `--socks5-hostname`), not a port probe.
+
+## Required Changes
+
+1. **Define the regression oracle (fixes B-1).** Add to §3 Invariant-1 and AC-2: capture today's posted set as a pinned `baseline.json` before G1; the dry-run gate asserts the post-change posted set differs from baseline ONLY by candidates that out-scored an incumbent under the *unchanged* scorer, and Top-N count/structure is preserved. "Valid set" = that diff assertion, not "non-empty."
+
+2. **Activate cross-brief dedup with the gatherers, or scope gatherers to non-overlapping surface (fixes B-2).** Either pull cross-brief-dedup forward into G1 (it's read-only/suppression-only, lower risk than MMR/provenance and can ship independently), or add an explicit AC proving G1→G3 window has no cross-brief duplicate surfacing. Don't ship new inflow while its dedup is parked.
+
+3. **Preflight must be a real proxied fetch, not a port probe (fixes B-3).** §5.2/D-4: replace reachability with a ~2s HTTP-200-through-SOCKS check; on any non-200, direct-lane-only + log. Add an AC: proxy-reachable-but-CONNECT-broken → falls back, not silent-zero.
+
+4. **Silent-block watch reads gather truth, not probe artifacts (§5.3/D-5).** The watchdog reads `gatherer-probe/` artifacts produced by `gatherer_probe.ts` — a *separate* live probe, not the brief's actual gather. A brief whose in-line gather returns 0 while the standalone probe succeeds (different lane/timing/IP) will never alert. The watch must read the brief's own per-run `sources_reddit` from `digest-perf.jsonl` (§7), which is the real signal.
+
+5. **Pin idempotency to a real key (§3 Invariant-3, AC-3).** "Same RUN_ID short-circuits" tests the marker, not the hazard. The 2026-06-09 multi-post and the documented newest→older cursor class show the real risk is a *new* run mid-window. Add an AC: two runs with *different* RUN_IDs same PT-day → still one post.
+
+6. **Bound gatherer latency against the 20-min brief budget (R2, §7).** Preflight timeout is specified (~2s) but the gatherer fetch itself (sequential subs across lanes, bounded 429 retry honoring Retry-After) has no wall budget in the brief context. Add a hard per-gather timeout so a slow lane can't eat the digest's 20-min envelope.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Sound phase decomposition and "degrade to as-if-absent" framing; undermined by shipping inflow (Phase 1) ahead of its protecting dedup (Phase 3) — B-2.
+- **Security/identity-isolation:** Clean — no new creds, gatherers credential-free, SOCKS lane pre-existing; honest-zero engagement preserved (Invariant-4). No new attack surface.
+- **DevOps/SRE:** Gates/rollback are genuinely one-command `.bak`/`launchctl unload`; weak spots are healthcheck quality (port-probe preflight B-3) and the watchdog reading the wrong signal source (Required Change 4).
+- **Implementation/maintainability:** Reuses real modules (not reimpls) per evidence pack; cosmetic D-6 correctly bundled with the same file — good hygiene.
+- **QA:** Tests are mostly real (forced-failure degrade, double-run, synthetic+live watchdog) but the central "valid set" gate is a happy-path tautology until B-1's oracle is defined.
+- **Config-drift:** G1/G2/G3 diff+`.bak`+approval discipline is strong and matches existing precedent; ensure the silent-block watchdog's *signal source* doesn't drift from the brief's real gather (Required Change 4).
+
+## Residual Risks / Open Questions
+
+- **OQ-1 (sub list) is load-bearing, not cosmetic.** R1 (saw/drown) is governed entirely by an undecided list deferred to G1 gate-time; a noisy default (`LocalLLaMA` stickies/AutoMod) directly stresses B-1's missing quality oracle. Decide and pin the sub list + AutoMod/sticky filter *before* G1, not during.
+- **Shadow evidence acceptance threshold is undefined (D-2/§5.4/AC-8).** "Acceptable deltas" gates G3 but no numeric bound is given (what suppress-rate / reorder-rate is "acceptable"?). Define before the shadow window closes, or G3 becomes a vibe-approval.
+- **github-trending has no silent-block watch (asymmetry).** §5.3 watches Reddit zero-days only; github-trending can also silently go to zero (HTML scrape drift) with no catch. Confirm intentional or extend the watch.
+- **Reddit RSS ≈1 fetch/window/IP (R4) vs. daily cron + standalone probe + future X-feed.** Three consumers on two residential IPs share one budget; confirm the cron-time gather and the 9am probe can't collide and mutually 429.
+- **N=3 silent-block (OQ-2) = 3-day blind window** to a real block; acceptable for a discovery source, but pair with Required Change 4 so the signal is the brief's real gather, else the blind window is effectively unbounded.
