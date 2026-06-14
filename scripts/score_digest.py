@@ -900,14 +900,18 @@ def _selftest():
           f"(crowd={hn_placed['_breakdown']['engagement']})")
     # (3) end-to-end: a FRESHER on-topic HN story tied on _final with an X tweet is no longer
     # bumped out of the only TOP slot. Build an exact _final tie, give HN the fresher ts.
+    # NOTE: timestamps are RELATIVE TO NOW (both inside the 24h recency tier) so the fixture
+    # can't drift out of the tie as wall-clock advances — a hardcoded date silently fell into
+    # a different recency tier over time (HN 3-day vs X 7-day → 58≠55), breaking the tie.
+    _tie_now = datetime.datetime.now(datetime.timezone.utc)
     hn_tie = {"source": "hackernews", "content_type": "news", "actionability": "reference",
               "substance": "concrete", "on_topic": "core", "hn_points": 234,
               "title": "new on-topic ai model agent benchmark result released today",
-              "created_at": "2026-06-11T12:00:00Z"}
+              "created_at": (_tie_now - datetime.timedelta(hours=3)).isoformat()}
     x_tie = {"source": "x", "authorHandle": "nobody", "content_type": "news", "actionability": "reference",
              "substance": "concrete", "on_topic": "core", "likes": 5, "retweets": 0,
              "tweet_text": "an on-topic ai model agent news note worth reading today here",
-             "created_at": "2026-06-11T06:00:00Z"}
+             "created_at": (_tie_now - datetime.timedelta(hours=10)).isoformat()}
     hti, xti = score_item(hn_tie, tl_h, tl_a, trk), score_item(x_tie, tl_h, tl_a, trk)
     # Preconditions assert LOUDLY (Review RC-1) so a fixture that drifts out of the tie
     # fails instead of silently green-passing the one check that exercises select_shadow e2e.

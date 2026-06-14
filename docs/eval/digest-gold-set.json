@@ -238,7 +238,41 @@
       "substance": "vague",
       "on_topic": "off",
       "label_rationale": "Health/politics rage-bait (ivermectin), high engagement (2170 likes) \u2192 on_topic=off (\u221240) must override engagement. The exact off-topic-with-engagement case. known_bad."
+    },
+    {
+      "id": "adversarial-agent-loop-positive",
+      "source": "x",
+      "handle": "steipete",
+      "likes": 650,
+      "retweets": 40,
+      "text": "Claude Code agent orchestrator loop for maintaining repos with sqlite vector memory and resumable eval traces",
+      "label": "known_good",
+      "why": "T-A2 near-positive anchor: concrete agent orchestration workflow with repository maintenance, vector memory, and eval trace details. This is the positive embedding neighbor for the adversarial spam case.",
+      "content_type": "tutorial",
+      "actionability": "actionable_now",
+      "substance": "concrete",
+      "on_topic": "core",
+      "ab_affinity_role": "near_positive_anchor",
+      "label_rationale": "Concrete actionable Claude Code / agent-orchestrator workflow. High enough engagement to avoid low-reach cap even if the thought-leader file is absent; must clear ALSO/TOP."
+    },
+    {
+      "id": "adversarial-agent-loop-pump-spam",
+      "source": "x",
+      "handle": "agentnewsbot",
+      "likes": 5000,
+      "retweets": 500,
+      "text": "Claude Code agent orchestrator loop sqlite vector memory eval traces BUY NOW crypto pump spam casino gains",
+      "label": "known_bad",
+      "why": "T-A2 adversarial case: deliberately reuses the positive anchor's agent/vector/eval vocabulary so A1 embedding affinity scores it near the positive, but it is promo/pump spam and must stay below the gate.",
+      "content_type": "promo",
+      "actionability": "none",
+      "substance": "vague",
+      "on_topic": "off",
+      "personal_fit_delta": 30,
+      "adversarial_case": "near_positive_embedding_gate",
+      "near_positive_id": "adversarial-agent-loop-positive",
+      "label_rationale": "Embedding-near spam guard. Even with worst-case personal_fit_delta=30 (score_digest caps pf to +12), promo base + vague substance + off-topic penalty keep final below ALSO/TOP; pf cannot rescue it over the gate."
     }
   ],
-  "status": "RATIFIED 2026-06-11 by Ace (4/4 bars pass at engine SHA eecb9d1); 2 reclassifications: yohei neutral\u2192known_good (66 in low-TOP is acceptable, bug was 100), voxyz neutral\u2192known_good (36 likes clears the 5-engagement floor \u2192 cap can't fire; concrete on-topic template is genuinely TOP-worthy)"
+  "status": "RATIFIED 2026-06-11 by Ace (4/4 bars pass at engine SHA eecb9d1); 2 reclassifications: yohei neutral\u2192known_good (66 in low-TOP is acceptable, bug was 100), voxyz neutral\u2192known_good (36 likes clears the 5-engagement floor \u2192 cap can't fire; concrete on-topic template is genuinely TOP-worthy); W6 T-A2 adds adversarial embedding-near-positive pair pending review"
 }
