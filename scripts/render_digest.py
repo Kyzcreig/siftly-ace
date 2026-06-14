@@ -550,7 +550,12 @@ def render_full(data, apply_dedup=True):
 
 # ── Posting via notify.py (list args -> no shell -> no redaction mangling) ────
 def post_body(body, target):
-    cmd = ["python3", NOTIFY, "--send", body, "--channel", "discord", "--target", target]
+    # --suppress-embeds: wrap bare t.co/image URLs in verbatim tweet bodies in
+    #   <...> so Discord doesn't render preview embed cards (our own template
+    #   URLs are already wrapped). notify.py decodes HTML entities (&amp;→&) by
+    #   default, so feed/X text renders correctly.
+    cmd = ["python3", NOTIFY, "--send", body, "--channel", "discord",
+           "--target", target, "--suppress-embeds"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     return res.returncode, res.stdout, res.stderr
 
