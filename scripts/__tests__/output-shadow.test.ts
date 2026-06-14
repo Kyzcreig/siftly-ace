@@ -1,4 +1,6 @@
 import { mkdtemp, rm } from 'node:fs/promises'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -116,4 +118,81 @@ describe('output_shadow harness', () => {
       expect(res.would_suppress).toBe(0)
     })
   })
+
+  describe('idempotency claim (atomic, TOCTOU-safe)', () => {
+    // These drive the REAL script as a subprocess with env-overridden artifact +
+    // provenance dirs (hermetic — never touches ~/.hermes). They prove the atomic
+    // O_EXCL claim: concurrent + repeated runs of the SAME run-ts write the durable
+    // side-effects exactly once (a check-then-act statSync was TOCTOU-racy and
+    // multi-logged provenance, inflating the saw-didn't-save count).
+    let dir: string
+    const repo = path.resolve(__dirname, '..', '..')
+    const tsx = path.join(repo, 'node_modules/.bin/tsx')
+    const script = path.join(repo, 'scripts/output_shadow.ts')
+
+    beforeEach(async () => {
+      dir = await mkdtemp(path.join(tmpdir(), 'output-shadow-idem-'))
+    })
+    afterEach(async () => {
+      await rm(dir, { recursive: true, force: true })
+    })
+
+    function run(dumpPath: string): Promise<number> {
+      return new Promise((resolve) => {
+        const env = {
+          ...process.env,
+          OUTPUT_SHADOW_ARTIFACT_DIR: path.join(dir, 'artifacts'),
+          OUTPUT_SHADOW_PROVENANCE_DIR: path.join(dir, 'provenance'),
+        }
+        const proc = spawn(tsx, [script, '--brief', 'x-feed-brief', '--in', dumpPath], { env })
+        proc.on('close', (code) => resolve(code ?? -1))
+      })
+    }
+
+    function writeDump(): string {
+      const dump = {
+        ts: '2026-06-13T10:00:00Z',
+        selected_top_ids: ['t1', 't2'],
+        quick_hits_ids: ['t3'],
+        all_scored: [
+          { id: 't1', tweet_text: 'one', authorHandle: 'a', final_score: 70, url: 'https://x.com/a/1' },
+          { id: 't2', tweet_text: 'two', authorHandle: 'b', final_score: 65, url: 'https://x.com/b/2' },
+          { id: 't3', tweet_text: 'three', authorHandle: 'c', final_score: 55, url: 'https://x.com/c/3' },
+        ],
+      }
+      const p = path.join(dir, 'dump.json')
+      writeFileSync(p, JSON.stringify(dump))
+      return p
+    }
+
+    function provenanceLineCount(): number {
+      const provDir = path.join(dir, 'provenance')
+      if (!existsSync(provDir)) return 0
+      let total = 0
+      for (const f of readdirSync(provDir)) {
+        if (!f.endsWith('.jsonl')) continue
+        total += readFileSync(path.join(provDir, f), 'utf8').split('\n').filter((l) => l.trim()).length
+      }
+      return total
+    }
+
+    it('logs provenance exactly once across N CONCURRENT runs of the same run-ts', async () => {
+      const dump = writeDump()
+      await Promise.all([run(dump), run(dump), run(dump), run(dump)])
+      // 3 posted items -> exactly one set of 3 provenance records, not 3*4=12.
+      expect(provenanceLineCount()).toBe(3)
+      // exactly one artifact (run-ts keyed) + one winner log line.
+      const logPath = path.join(dir, 'artifacts', 'log.jsonl')
+      expect(existsSync(logPath)).toBe(true)
+      expect(readFileSync(logPath, 'utf8').split('\n').filter((l) => l.trim()).length).toBe(1)
+    }, 30000)
+
+    it('does not re-log provenance on a SEQUENTIAL re-run of the same run-ts', async () => {
+      const dump = writeDump()
+      await run(dump)
+      await run(dump)
+      expect(provenanceLineCount()).toBe(3)
+    }, 30000)
+  })
+
 })

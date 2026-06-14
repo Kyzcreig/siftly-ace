@@ -78,7 +78,11 @@ interface RenderInput {
   also?: ScoredItem[]
 }
 
-const ARTIFACT_DIR = path.join(HOME, '.hermes/state/x-bookmarks/output-shadow')
+// Env-overridable for hermetic test isolation (defaults unchanged in prod).
+const ARTIFACT_DIR =
+  process.env.OUTPUT_SHADOW_ARTIFACT_DIR ?? path.join(HOME, '.hermes/state/x-bookmarks/output-shadow')
+// Optional provenance log dir override (defaults to surfaced-provenance's own default).
+const PROVENANCE_DIR = process.env.OUTPUT_SHADOW_PROVENANCE_DIR ?? undefined
 const ARTIFACT_TTL_DAYS = 14
 const PER_AUTHOR_CAP = 2 // mmr author cap
 const SNIPPET_MAX = 120
@@ -149,6 +153,7 @@ interface BriefShadow {
     findings: DiversityFinding[]
   }
   provenance: { logged: number; path: string | null }
+  claimed: boolean
 }
 
 function parseArgs(argv: string[]) {
@@ -355,17 +360,6 @@ export async function shadowOneBrief(
 
   const runTs = dump.ts || new Date().toISOString()
   const ptDay = ptDayForDate(new Date(runTs))
-  // Idempotency: appendSurfacedProvenance is not dedup'd, so if we already wrote
-  // this run's artifact, this exact run was processed -> do NOT re-append
-  // provenance (would double-log the saw-didn't-save clock). We still recompute +
-  // reprint for visibility, but suppress the provenance write.
-  let alreadyProcessed = false
-  try {
-    statSync(artifactPathFor(brief, runTs))
-    alreadyProcessed = true
-  } catch {
-    alreadyProcessed = false
-  }
   const posted = postedItems(brief, dump)
   if (posted.length === 0) {
     console.error('[output_shadow] ' + brief + ': 0 posted items in dump -- nothing to shadow')
@@ -394,8 +388,25 @@ export async function shadowOneBrief(
     const dedup = runDedupShadow(store, brief, ptDay, posted)
     const diversity = runDiversityShadow(posted)
 
+    // Atomic idempotency claim: try to EXCLUSIVELY create this run's artifact file
+    // (O_EXCL). Only the winner owns the durable side-effects (provenance append +
+    // log line + final artifact). A check-then-act statSync would be TOCTOU-racy —
+    // N concurrent runs would all see "not processed" and all append provenance,
+    // inflating the saw-didn't-save "saw" count that gates the embed promotion eval.
+    // dryRun never claims/writes.
+    let claimed = false
+    if (!opts.dryRun) {
+      mkdirSync(ARTIFACT_DIR, { recursive: true })
+      try {
+        writeFileSync(artifactPathFor(brief, runTs), '{}', { flag: 'wx' })
+        claimed = true
+      } catch {
+        claimed = false // EEXIST: another run already processed this exact run
+      }
+    }
+
     let provenance: BriefShadow['provenance'] = { logged: 0, path: null }
-    if (opts.provenance && !opts.dryRun && !alreadyProcessed && posted.length > 0) {
+    if (opts.provenance && claimed && posted.length > 0) {
       const items: SurfacedItemInput[] = posted.map((p) => ({
         id: p.id,
         url: p.url,
@@ -403,7 +414,7 @@ export async function shadowOneBrief(
         source: p.source,
       }))
       try {
-        const res = await appendSurfacedProvenance(items, { brief, now: new Date(runTs) })
+        const res = await appendSurfacedProvenance(items, { brief, now: new Date(runTs), ...(PROVENANCE_DIR ? { logDir: PROVENANCE_DIR } : {}) })
         provenance = { logged: res.count, path: res.path }
       } catch (err) {
         console.error('[output_shadow] ' + brief + ': provenance append failed: ' + (err as Error).message)
@@ -418,6 +429,7 @@ export async function shadowOneBrief(
       dedup,
       diversity,
       provenance,
+      claimed,
     }
   } finally {
     store.close()
@@ -489,8 +501,11 @@ async function main(): Promise<void> {
     const inPath = args.inPath && args.brief === brief ? args.inPath : DUMP_PATH[brief]
     const shadow = await shadowOneBrief(brief, inPath, { dryRun: args.dryRun, provenance: args.provenance })
     if (!shadow) continue
+    // Only the run that won the atomic claim writes the durable artifact + log line.
+    // A non-dryRun run that lost the claim (concurrent duplicate) still prints its
+    // recomputed view but does NOT touch durable state.
     let artifactPath: string | null = null
-    if (!args.dryRun) artifactPath = writeArtifact(shadow)
+    if (!args.dryRun && shadow.claimed) artifactPath = writeArtifact(shadow)
     printSummary(shadow, artifactPath)
   }
 }
