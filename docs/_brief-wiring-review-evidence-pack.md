@@ -37,3 +37,16 @@
 - Honest-zero engagement, never-throw, no-new-dep all carry from the gatherer PRD.
 - Silent-block watch + proxy preflight must NOT be able to break the brief (decoupled watchdog + fast
   preflight with direct-lane fallback).
+
+## ADDENDUM — live ground truth (2026-06-14, Apollo)
+- All 9 locked subreddits return HTTP 200 (real, none 404): LocalLLaMA, MachineLearning, artificial, singularity, OpenAI, AI_Agents, LLMDevs, ChatGPTCoding, StableDiffusion.
+- RSS per-IP budget MEASURED tighter than DEFAULT_DELAY_MS=2500: 9 subs / 2 lanes (~4-5 fetches/IP) mass-429 at 2.5-3s gaps; reliable 200 needed ~45-60s/IP spacing. PRD v4 §5.2 resolves via day-seeded rotating ~5-sub subset + raised delay, AC-15.
+- github-trending.ts live run: 15 real candidates, exit 0, honest normalized engagement. General trending (not AI-filtered) — flows through existing scorer.
+- gatherer never-throw -> [] design intact: a 429'd sub contributes nothing that run (not a crash).
+
+
+## ADDENDUM — live ground truth (2026-06-14, Apollo)
+- All 9 locked subreddits return HTTP 200 (real, none 404): LocalLLaMA, MachineLearning, artificial, singularity, OpenAI, AI_Agents, LLMDevs, ChatGPTCoding, StableDiffusion.
+- RSS per-IP budget MEASURED tighter than DEFAULT_DELAY_MS=2500: 9 subs / 2 lanes (~4-5 fetches/IP) mass-429 at 2.5-3s gaps; reliable 200 needed ~45-60s/IP spacing. PRD v4 5.2 resolves via day-seeded rotating ~5-sub subset + raised delay, AC-15.
+- github-trending.ts live run: 15 real candidates, exit 0, honest normalized engagement. General trending (not AI-filtered) -- flows through existing scorer.
+- gatherer never-throw -> [] design intact: a 429'd sub contributes nothing that run (not a crash).

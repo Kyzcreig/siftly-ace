@@ -1,6 +1,9 @@
 # PRD — siftly-ace Brief Live-Wiring (gatherers + output features + ops)
 
-- **Status:** v3 (Pass-2 APPROVE WITH CHANGES applied — RC-A..E; B2 resolved, B1 closed via pre-committed ceilings + canary)
+- **Status:** v5 (Pass-1 v4 APPROVE WITH CHANGES from 3 independent Opus reviewers — all blockers fixed:
+  preflight-paradox purged, per-source Reddit time box + day-seeded rotation, bounded per-fetch timeout +
+  black-hole test, zero-exit-bad-output schema validation, pool-identical canary, rotation-aware aggregate
+  silent-block, OQ-2 gated. Re-review (Pass 2) before build.)
 - **Project:** siftly-ace (`Kyzcreig/siftly-ace`)
 - **Owner:** Apollo
 - **Scope:** wire the built-but-unwired discovery + output features into the LIVE morning-digest brief,
@@ -36,7 +39,8 @@ individually reversible, and each gated on evidence + Ace approval.
 - **No X-feed-brief gather change.** The X-feed brief (7:30am) sources X only; gatherers go into the
   morning-digest only (the general-news brief). (Cross-brief *dedup* still spans both — that's feature 2.)
 - **No new gatherer sources** beyond Reddit + github-trending (both already built).
-- **No always-on daemon** for the proxy — uptime is a cron-time preflight, not a new service.
+- **No always-on daemon** for the proxy — lane health is the first-real-fetch signal (D-4/D-11), not a
+  new service or a separate probe.
 - **No auto-flip of any gate.** Every prompt.md / plist / go-live edit is an explicit Ace-approved gate.
 - **No backfill / ingestion change** — this is the *brief* path, not the bookmark ingestion path.
 
@@ -78,13 +82,17 @@ individually reversible, and each gated on evidence + Ace approval.
   suppresses **≤20%** of a run's posted set; **≤2** author-cap-driven reorders/run; posted-set-size
   shrink **≤30%** (>30% = auto-block pending Ace). Fitting the bar to the observed numbers is forbidden
   — that's a circular gate. Because `output_shadow.ts` does NOT exercise live pool-replacement, the
-  **canary is the real gate**: wire → run ONE real brief → diff posted set vs un-wired baseline + shadow
-  prediction. **Canary FAIL condition (RC-C):** any posted item dropped that the shadow did NOT predict,
-  OR set-size shrink beyond the ceiling, OR a brand-new item the scorer didn't rank → **rollback the
-  `.bak` + re-shadow**. Only a clean canary leaves the features on.
-- **D-2b — ≥3 runs incl. a DEFINED high-volume day (B1 residual).** "High-volume" = a run whose raw
-  candidate count is ≥ the 75th percentile of the observed window (or an absolute floor TBD from Phase-1
-  perf data) — not a judgment call a quiet week silently satisfies.
+  **canary is the real gate**: wire → run ONE real brief over a **frozen candidate pool**, scored once,
+  then run select/render **twice over that identical pool** — features OFF (the frozen baseline) vs
+  features ON — and diff the two. The baseline MUST be the same-pool features-OFF artifact, NOT a prior
+  day's digest (the digest changes day to day regardless of features; a cross-day diff proves nothing —
+  Pass-1 f2-B-1). **Canary FAIL condition (RC-C):** any posted item dropped that the shadow did NOT
+  predict, OR set-size shrink beyond the ceiling, OR a brand-new item the scorer didn't rank → **rollback
+  the `.bak` + re-shadow**. Only a clean pool-identical canary leaves the features on.
+- **D-2b — ≥3 runs incl. a DEFINED high-volume day (B1 residual).** "High-volume" = a run whose
+  **post-normalization** candidate count (NOT raw — raw is confounded by which subs the rotation drew
+  that day, Pass-1 B-2) is ≥ the 75th percentile of the observed window, OR an absolute floor that MUST
+  be closed from Phase-1 perf data before G3 fires — not a judgment call a quiet week silently satisfies.
 - **D-5b — github-trending gets the SAME silent-block treatment (RC5).** An HTML-scrape source can drift
   to 0-results-forever just like Reddit can block. The silent-block watchdog (D-5) covers BOTH sources:
   alert if github `fetched==0` for N consecutive days too.
@@ -98,27 +106,49 @@ individually reversible, and each gated on evidence + Ace approval.
   marks that lane down for the rest of the run (remaining subs go to a healthy lane or direct). The
   gatherer already does bounded 429-retry + never-throw + graceful `[]`, so a dead lane self-degrades
   without spending budget twice. (Drop the "preflight" concept entirely — it was the lying proxy signal.)
-- **D-4b — Seen-list semantics for new sources (RC3).** Reddit/github candidates get written to a
-  **dedicated per-source seen-list** (`reddit-brief-seen.json`, `github-brief-seen.json`, same shape as
-  `x-brief-seen.json`) so the same item doesn't resurface day after day. Cross-brief dedup (feature 2,
-  its own DB) is orthogonal and additive. A reddit item crossposted from HN is also caught by the
-  existing URL-dedupe across sources.
-- **D-5 — Silent-block warn = a no_agent watchdog with STALENESS detection (RC4).** A small daily
-  `no_agent` cron reads the gatherer-probe artifacts; alerts `#alerts` if EITHER (a) Reddit `fetched==0`
-  for N=3 consecutive days, OR (b) the newest probe artifact is older than N days (a dead probe/cron is
-  NOT health — missing ≠ zero, but a stale input is its own alert). Asserts the probe-artifact shape it
-  parses (version/keys) and alerts on a schema mismatch rather than silently mis-reading. N=3 default,
+- **D-4b — Seen-list semantics for new sources (RC3) + rotation interaction (Pass-1 B-2).** Reddit/github
+  candidates get written to a **dedicated per-source seen-list** (`reddit-brief-seen.json`,
+  `github-brief-seen.json`, same shape as `x-brief-seen.json`) so the same item doesn't resurface day
+  after day. Cross-brief dedup (feature 2, its own DB) is orthogonal and additive. A reddit item
+  crossposted from HN is also caught by the existing URL-dedupe across sources. **Because D-10 rotates
+  ~5-of-9 subs/day, a sub not scheduled today is EXPECTED to contribute 0 — this is not a block.** The
+  seen-list is keyed by item id (not sub), so a sub rotating back in after 1-2 days surfaces its genuinely
+  new hot items and correctly suppresses ones already posted.
+- **D-5 — Silent-block warn = a no_agent watchdog with STALENESS detection (RC4) + rotation-aware metric
+  (Pass-1 B-2).** A small daily `no_agent` cron reads the gatherer-probe artifacts; alerts `#alerts` if
+  EITHER (a) **aggregate Reddit** `fetched==0` (i.e. ZERO across ALL scheduled subs that day — any single
+  sub >0 = healthy; a per-sub zero is expected under rotation and must NOT alert) for N=3 consecutive
+  RUN days, OR (b) the newest probe artifact is older than N days (a dead probe/cron is NOT health —
+  missing ≠ zero, but a stale input is its own alert). Asserts the probe-artifact shape it parses
+  (version/keys) and alerts on a schema mismatch rather than silently mis-reading. N=3 default,
   tunable; tie N to measured lane uptime once Phase 1 has data.
 - **D-6 — Cosmetic curl-warn fix is a 1-line change** in `scripts/gather/reddit.ts`: the proxy-down
   catch emits `reddit gather <sub> via <lane>: proxy unreachable (<short msg>)` instead of echoing the
   full curl argv. Ships with the gatherer-wire phase (it's the same file).
 - **D-7 — No new dep, honest-zero engagement, never-throw** — all carried from the gatherer PRD; the
   wiring must not violate them.
-- **D-8 — Fallback-on-throw lives IN the prompt block, exit-code-captured (RC-D).** The output features
-  are TS modules invoked from a prompt.md shell step — a throw there does NOT auto-degrade. The Phase-3
-  gather/transform block MUST capture the module's exit code and, on non-zero, pass through the
-  **pre-feature (un-deduped) candidate set** rather than aborting or posting nothing. This explicit
-  catch is part of the G3 diff and a required Phase-3 E2E (forced module throw → un-deduped set posts).
+- **D-8 — Fallback-on-throw AND on-bad-output lives IN the prompt block (RC-D + Pass-1 B-3).** The output
+  features are TS modules invoked from a prompt.md shell step — a throw there does NOT auto-degrade. The
+  Phase-3 block MUST (a) capture the module's exit code and, on non-zero, pass through the **pre-feature
+  (un-deduped) candidate set**; AND (b) **validate the module's stdout** (parse JSON + assert the expected
+  shape/count) before trusting the deduped set — a zero-exit-with-truncated/garbage payload (OOM mid-write,
+  partial JSON, half-flushed lane timeout) MUST also trigger the un-deduped fallback. Exit-code capture
+  alone is insufficient. Both paths are part of the G3 diff and required Phase-3 E2Es (forced throw →
+  un-deduped; forced zero-exit-garbage-stdout → un-deduped).
+- **D-10 — Per-source Reddit time box + day-seeded rotation (Pass-1 B-1/B-2, f1-B-1).** Live-measured
+  budget (§5.2) means the Reddit step must be bounded: (a) each run fetches a **day-seeded rotating
+  ~5-of-9-sub subset** (`subset = rotate(SUBS, dayOfYear)[:5]`, deterministic, full 9-sub coverage over a
+  ≤2-day cycle); (b) the two lanes fetch **concurrently** (Spectrum direct ‖ Starlink SOCKS), not
+  serialized; (c) the Reddit step has a hard wall-clock cap (≤180s) independent of the global 20-min
+  AbortController, so a slow/throttled Reddit never starves enrich/embed/export/score. The **high-volume-day**
+  definition for the shadow/G3 gate uses **post-normalization candidate count** (or an absolute floor from
+  Phase-1 perf data), NOT raw count — so the rotation schedule can't confound it (D-2b's "absolute floor
+  TBD" MUST close with Phase-1 perf data before G3 fires).
+- **D-11 — Bounded per-fetch lane timeout (f1-B-2).** Every gather fetch (direct + SOCKS) uses a bounded
+  connect+read timeout (≤8s). A black-hole proxy (connects, never responds) fails that one fetch within
+  the timeout → lane marked down for the run → remaining subs route to the healthy lane/direct. Required
+  Phase-1 test: a black-hole proxy degrades within the time box, not a hang. (R2 mentioned a ~2s preflight
+  check — that preflight is DELETED per D-4; this timeout is on the real gather fetch.)
 - **D-9 — The watchdog must be able to report its own death (RC-E).** The silent-block watchdog reads
   artifacts from a *different* cron; if both die (sleep, launchd unload) it can't alert. Backstop
   (preferred, quiet): cover the watchdog with the **cron-observability stack** (`cron.ace` ledger /
@@ -150,8 +180,27 @@ individually reversible, and each gated on evidence + Ace approval.
   via the gatherer's existing never-throw + graceful-`[]`. No separate probe (it would double-spend the
   per-IP budget and cause the 429 it detects). Lane-down is noted in the perf log.
 - **Cosmetic (D-6):** the proxy-down warn in `reddit.ts` becomes a clean message.
-- **Subreddit set:** an explicit small list (e.g. `LocalLLaMA`, `MachineLearning`, + a few Ace-aligned
-  subs — TBD with Ace at gate time), spread across the two lanes.
+- **Subreddit set (LOCKED with Ace, OQ-1 resolved):** a curated 9-sub AI set, technically-literate /
+  builder-aligned, spread across the two lanes (round-robin by index):
+  `LocalLLaMA`, `MachineLearning`, `artificial`, `singularity`, `OpenAI`, `AI_Agents`, `LLMDevs`,
+  `ChatGPTCoding`, `StableDiffusion`. Rationale: open-model + research + agent-builder + AI-coding +
+  image-gen niches; marketing-heavy/low-signal subs (`r/ChatGPT`, general `r/ArtificialIntelligence`)
+  deliberately excluded to keep candidate quality high. List is config (CLI `--subreddit` flags in the
+  prompt block), trivially tunable post-launch.
+- **RSS budget ground-truth (LIVE-MEASURED 2026-06-14, all 9 subs):** every sub returns HTTP 200 and is
+  real (none 404). BUT the per-IP RSS budget is tighter than the `DEFAULT_DELAY_MS=2500` assumed: 9 subs
+  across 2 lanes (~4-5 fetches/IP) **mass-429 at 2.5-3s gaps**; reliable 200s needed **~45-60s spacing
+  per IP** in testing. Implication for Phase 1 (no spec change to the never-throw design, but a tuning +
+  honesty requirement): (a) a 429'd sub contributes `[]` that run — correct, not a crash, but with 9
+  subs and a 20-min-budget cron we must NOT serialize at 60s/sub (that's 9-10 min just on Reddit). So
+  Phase 1 MUST either (i) raise `DEFAULT_DELAY_MS` AND cap subs-per-run to a rotating subset (e.g. 4-5
+  subs/day, rotated by day-of-year so all 9 get covered over ~2 days), or (ii) accept partial coverage
+  per run as designed. Decision: **rotating subset of ~5 subs/run across the 2 lanes**, day-seeded, so
+  no single run exceeds the budget and the cron stays well inside 20 min. This is now an AC (AC-7).
+- **github-trending (LOCKED with Ace, OQ-3 resolved): IN from Phase 1**, alongside Reddit (both built,
+  both wired same gate). github-trending is the more reliable source (HTML scrape, no per-IP RSS budget).
+  LIVE-VERIFIED 2026-06-14: returns 15 real candidates, exit 0, honest normalized engagement. Note it is
+  general trending (not AI-filtered) — candidates flow through the existing scorer like any other source.
 
 ### 5.3 Phase 2 — silent-block + staleness watchdog (additive cron)
 - New `no_agent` cron `siftly-gatherer-silentblock-watch` (daily): read the last N gatherer-probe
@@ -182,16 +231,24 @@ individually reversible, and each gated on evidence + Ace approval.
 
 ## 6. Implementation Phases
 
-- **Phase 1 — Gatherer wire-in + lane preflight + cosmetic warn (gate G1).**
+- **Phase 1 — Gatherer wire-in + lane health-via-first-fetch + cosmetic warn (gate G1).**
   - *Unit/script check:* `reddit.ts` proxy-down warn is the clean message (assert in the existing test);
-    a gather-block dry-run helper emits reddit+github candidates in the digest candidate shape.
+    a gather-block dry-run helper emits reddit+github candidates in the digest candidate shape; the
+    day-seeded rotation selector has a deterministic unit test (full 9-sub coverage over the rotation).
   - *E2E/integration check:* **required** — dry-run the FULL morning-digest brief (no post) 3×: (a)
     reddit+github candidates appear in `_debug_candidates.json`; (b) a forced reddit failure
     (bad lane + bad direct) → digest still posts a valid set; (c) second same-RUN_ID run short-circuits
-    (no double-post).
-  - *Negative/adversarial:* Starlink proxy down at preflight → direct-lane-only, logged, brief unaffected.
-  - *Verify with:* the 3 dry-runs' `_debug_candidates.json` + perf log show reddit/github source counts;
-    `git diff` of `prompt.md` + `.bak` recorded.
+    (no double-post); (d) **github off-topic check** — confirm a trending NON-AI repo (e.g. a game
+    engine, an IPTV list) scores BELOW the post gate, i.e. the existing scorer rejects un-filtered
+    github-trending noise (Pass-2 residual #4). **The perf log MUST be captured and inspected for the actual Reddit-step wall time
+    and per-IP fetch spacing across all 6 sources (D-10) — recorded before G1, not promised.**
+  - *Negative/adversarial:* Starlink lane down → its first real gather fetch returns non-200/throws
+    within the bounded per-fetch timeout (D-11), that lane is marked down for the run, remaining subs go
+    to the healthy lane/direct, logged, brief unaffected. Includes a **black-hole proxy** case (connects,
+    never responds) that must degrade within the per-fetch timeout, not hang.
+  - *Verify with:* the 3 dry-runs' `_debug_candidates.json` + perf log show reddit/github source counts
+    AND Reddit-step wall time under the per-source time box with zero 429s; `git diff` of `prompt.md` +
+    `.bak` recorded.
 
 - **Phase 2 — Silent-block + staleness watchdog (gate G2 for the plist).**
   - *Unit/script check:* synthetic probe artifacts → 3 consecutive `fetched==0` (reddit OR github)
@@ -231,23 +288,31 @@ individually reversible, and each gated on evidence + Ace approval.
 - **R1 — Gatherer inflow drowns/saws the digest** (too many low-value reddit stickies). *Mitigation:*
   small curated sub list; gatherer candidates compete in the same scorer (no special weight); AutoMod
   sticky filter if needed (observed in dry-runs before go-live).
-- **R2 — Lane preflight adds latency to the brief.** *Mitigation:* a fast (~2s timeout) reachability
-  check; on timeout, direct-lane-only — never block the brief on the proxy.
+- **R2 — A down/black-hole lane adds latency to the brief.** *Mitigation (D-11):* every per-fetch on
+  the SOCKS lane (and direct) has a bounded timeout (≤8s connect+read); a black-hole proxy (connects,
+  never responds) fails that one fetch within the timeout, the lane is marked down for the run, remaining
+  subs route to the healthy lane/direct. There is **NO separate preflight** (see D-4 — a preflight would
+  burn the per-IP budget and cause the 429 it's checking for); the first real fetch IS the health signal.
 - **R3 — Output features change the posted set in a way Ace dislikes.** *Mitigation:* that's exactly
   what the ≥3-run shadow window + G3 review is for; reviewed with real numbers before go-live.
-- **R4 — Reddit RSS budget (≈1 fetch/window/IP) limits multi-sub at cron time.** *Mitigation:* lane
-  round-robin (built) spreads subs across Spectrum + Starlink; the silent-block watch catches a
-  persistent zero.
+- **R4 — Reddit RSS budget (≈1 fetch/window/IP) limits multi-sub at cron time.** *Mitigation:* a
+  **day-seeded rotating ~5-of-9-sub subset** (D-10) spread across Spectrum + Starlink lanes, with raised
+  inter-fetch spacing, so a single run never exceeds the budget; full coverage over a ≤2-day rotation.
+  The silent-block watch (rotation-aware, aggregate-Reddit) catches a persistent zero.
 - **R5 — A wiring bug empties the digest** (the 2026-06-09 class). *Mitigation:* the never-regress
   invariant + 3 dry-runs at G1 + forced-failure degrade test; gatherers omit-on-failure like every source.
 
 ## 9. Open Questions
 
-- **OQ-1:** Final subreddit list for `gather_reddit` (decide with Ace at G1). Default seed:
-  `LocalLLaMA`, `MachineLearning`, + Ace-aligned subs.
-- **OQ-2:** Silent-block N (consecutive zero-days before alert) — default 3; confirm.
-- **OQ-3:** Does the morning-digest want github-trending too, or Reddit-only first? (Lean: both, they're
-  both ready; github-trending is the more reliable source.)
+- **OQ-1 [RESOLVED with Ace]:** subreddit list LOCKED — `LocalLLaMA`, `MachineLearning`, `artificial`,
+  `singularity`, `OpenAI`, `AI_Agents`, `LLMDevs`, `ChatGPTCoding`, `StableDiffusion` (9 subs, lane
+  round-robin). See §5.2.
+- **OQ-2 [must close before Phase 2]:** Silent-block N (consecutive aggregate-zero RUN days before alert)
+  — default 3. This is a binding constant gating AC-5/AC-11; confirm with Ace at the G2 gate before the
+  watchdog is built, OR tie N to measured lane uptime from Phase-1 perf data. Do NOT build the watchdog
+  with an unconfirmed N.
+- **OQ-3 [RESOLVED with Ace]:** github-trending IS included in the morning-digest from Phase 1,
+  alongside Reddit. Both wired the same gate.
 - **OQ-4:** Output-feature go-live (G3) timing — driven by the shadow watcher's READY signal, not a date.
 
 ## 10. Acceptance Criteria
@@ -259,10 +324,13 @@ individually reversible, and each gated on evidence + Ace approval.
 - [ ] **AC-3** The one-run-one-post invariant holds. Evidence: double dry-run, second short-circuits.
 - [ ] **AC-4** Gatherer engagement stays honest-zero through scoring. Evidence: dry-run shows reddit
   candidates `engagement=0`.
-- [ ] **AC-5** Silent-block watch alerts on N consecutive zero-days **for Reddit OR github**, silent
-  otherwise. Evidence: unit (synthetic) + live (real dir) runs.
-- [ ] **AC-6** Lane preflight (a REAL 1-item fetch, not a port-ping) degrades to direct-only when the
-  lane fails. Evidence: lane-down dry-run logs the fallback, brief unaffected.
+- [ ] **AC-5** Silent-block watch alerts on N consecutive **aggregate-zero** RUN days **for Reddit OR
+  github** (a per-sub zero under rotation does NOT alert; only zero-across-all-scheduled-subs does),
+  silent otherwise. Evidence: unit (synthetic) + live (real dir) runs.
+- [ ] **AC-6** Lane health is the FIRST REAL gather fetch (NO separate preflight — D-4): a down/black-hole
+  lane's first fetch fails within the bounded per-fetch timeout (D-11), the lane is marked down for the
+  run, remaining subs route to the healthy lane/direct. Evidence: lane-down AND black-hole-proxy dry-runs
+  log the fallback and degrade within the time box (no hang); brief unaffected.
 - [ ] **AC-7** Cosmetic: proxy-down warn is a clean message (no curl argv). Evidence: test asserts the
   message shape.
 - [ ] **AC-8** Output features wired only after the shadow window meets the numeric thresholds over ≥3
@@ -273,13 +341,24 @@ individually reversible, and each gated on evidence + Ace approval.
 - [ ] **AC-11** The watchdog alerts on a STALE input (newest probe artifact older than N days) and a
   schema mismatch — a dead probe/cron is not health. Evidence: stale-dir + malformed-artifact unit runs
   both alert (not silent).
-- [ ] **AC-12** A forced output-module non-zero exit (D-8) → the prompt block passes through the
-  un-deduped set and the brief still posts. Evidence: Phase-3 forced-throw E2E posts a valid digest.
+- [ ] **AC-12** Output-module degrade is robust to BOTH failure modes (D-8): (a) forced non-zero exit →
+  un-deduped set posts; (b) forced **zero-exit-with-garbage/truncated stdout** → stdout fails schema
+  validation → un-deduped set posts. Evidence: two Phase-3 E2Es each post a valid digest.
 - [ ] **AC-13** G3 uses the PRE-COMMITTED ceilings (≤20% dedup-suppress, ≤2 reorders, ≤30% shrink) —
   tightened-not-loosened — and the canary has a defined FAIL→rollback condition. Evidence: G3 record
   cites the ceilings + the canary diff decision.
 - [ ] **AC-14** The watchdog's own silence is detectable (D-9, via the cron-obs stack). Evidence: the
   watchdog job appears in the `cron.ace` ledger / obs coverage.
+- [ ] **AC-15** RSS budget respected (Pass-1 B-1/f1-B-1/f2-B-3): each morning-digest run fetches a
+  **day-seeded rotating subset** (~5 of the 9 subs) across the two lanes **concurrently**, all 9 covered
+  over a ≤2-day rotation. The dry-run perf log MUST show (a) the Reddit step under its hard ≤180s time box
+  (D-10), (b) actual per-IP inter-fetch spacing ≥ the measured-safe floor, AND (c) **zero 429s** across a
+  real rotation run — not just deterministic coverage. The full 6-source dry-run completes enrich+embed+
+  export+score within the 20-min cron budget. Evidence: deterministic selector unit test (full coverage)
+  + a real dry-run perf log meeting (a)/(b)/(c) + total wall-clock under budget.
+- [ ] **AC-16** The canary diff is **pool-identical** (Pass-1 f2-B-1): the same frozen scored candidate
+  pool run through select/render with features OFF (baseline) vs ON, NOT a cross-day comparison. Evidence:
+  the canary record cites one pool hash used for both arms.
 
 ## 11. Rollback
 
@@ -291,6 +370,6 @@ its current behavior in one command per phase.
 
 | Phase | Ships | Gate | Trigger |
 |---|---|---|---|
-| 1 | gatherer wire-in + lane preflight + cosmetic | G1 (prompt diff + 3 dry-runs) | now |
+| 1 | gatherer wire-in + lane health-via-first-fetch + cosmetic | G1 (prompt diff + 3 dry-runs) | now |
 | 2 | silent-block watchdog | G2 (plist install) | with/after Phase 1 |
 | 3 | output features (dedup/MMR/provenance) | G3 (prompt diff + shadow evidence) | when shadow-watch says READY (≥3 runs/brief) |

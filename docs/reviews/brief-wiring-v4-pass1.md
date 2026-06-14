@@ -1,0 +1,36 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**B-1 — AC-6/R2/§6-Phase-1 contradict the document's own D-4 "no preflight" resolution. The spec ships a self-contradiction.** D-4 (§4) and §5.2 explicitly *kill* the separate preflight ("Drop the 'preflight' concept entirely — it was the lying proxy signal"). Yet AC-6 demands "Lane preflight (a REAL 1-item fetch...) degrades to direct-only", R2 (§8) mitigates "Lane preflight adds latency", and the Phase-1 header (§6) is literally titled "Gatherer wire-in + **lane preflight** + cosmetic warn". A builder reading the AC will implement the exact thing D-4 forbids — and a preflight fetch *spends one of Reddit's ≈1-fetch/window/IP budget*, directly causing the 429 it's meant to detect (the document says this itself). This is not cosmetic: AC-6 is a binding acceptance gate that contradicts the architecture. **Resolve before build:** rewrite AC-6/R2/Phase-1 title to "first-real-fetch IS the health signal" per D-4, or the build ships the preflight paradox.
+
+**B-2 — AC-15's day-seeded rotation breaks D-4b/AC-8's "high-volume day" gate and the seen-list rotation interacts badly.** §5.2 mandates a day-seeded ~5-of-9 rotating subset. But (a) D-4b defines "high-volume" as ≥75th percentile of *observed candidate count* — with a rotating sub-subset, raw candidate volume now varies by *which subs are scheduled that day*, not by genuine news volume, so the high-volume-day signal is confounded by the rotation schedule, not real load. The shadow window can satisfy "high-volume" on a day that just happened to draw the busiest 5 subs. (b) Per-source seen-list (D-4b/RC3): a sub only fetched every-other-day means its items are 24–48h stale by the time that sub rotates back in — fine, but the dedup window and "fetched==0 for N=3 days" silent-block (D-5) must be **rotation-aware**: a sub legitimately not scheduled for 2 days will read as `fetched==0` and could either false-alarm or, worse, mask a real block. The watchdog (§5.3) reads "Reddit fetched==0" at the *aggregate* level, but if rotation means only ~5 subs run/day the per-sub zero is expected. **Resolve:** define the silent-block metric as aggregate-Reddit-fetched (any sub >0 that day = healthy) AND state explicitly that the high-volume-day definition uses post-normalization candidate count, not raw, or pin it to an absolute floor from Phase-1 perf data (D-2b already hedges "absolute floor TBD" — that TBD must close before G3).
+
+**B-3 — D-8 fallback ("pass through pre-feature un-deduped set on module non-zero exit") has no defined behavior for partial/corrupt output, only clean throw.** §4 D-8 + AC-12 cover the binary case: module exits non-zero → use un-deduped set. But the real hazard for a TS module invoked from a shell block is a module that exits **0 with truncated/garbage stdout** (e.g. OOM-killed mid-write, partial JSON, lane timeout flushing half a result). The prompt block keys off exit code; a zero-exit-with-bad-payload silently feeds a corrupt deduped set into score/select/render — exactly the "worse post than today" the never-regress invariant (§3) forbids. **Resolve:** D-8/AC-12 must also require output **schema validation** (parse + assert shape) before the deduped set is trusted, with the same un-deduped fallback on parse failure — not just exit-code capture.
+
+## Required Changes
+
+1. **Fix B-1:** purge "preflight" from AC-6, R2, and the Phase-1 title; restate as D-4's first-fetch-is-health-signal. (The word appears in 4 binding places contradicting the resolved decision.)
+2. **Fix B-3:** add schema/shape validation of the output-module stdout to D-8 + AC-12; un-deduped fallback must trigger on parse failure, not only non-zero exit.
+3. **Fix B-2:** make the silent-block metric (D-5/AC-5) explicitly aggregate-Reddit (any sub fetched >0 = healthy) and rotation-aware; close the "absolute floor TBD" in D-2b before G3 can fire.
+4. **OQ-2 (silent-block N=3):** confirm before Phase 2 — it's an open question gating a binding AC (AC-5/AC-11). Don't build the watchdog with an unconfirmed constant.
+5. **Add an AC for the rotation selector's wall-clock under load:** AC-15 asserts "dry-run wall-clock under budget" but at the measured 45–60s/IP reliable spacing, even ~5 subs/2 lanes ≈ 2-3 fetches/IP × 45-60s = ~2-3 min *if* spacing is honored. State the actual per-run Reddit time budget and prove the 20-min cron still completes enrich+embed+export after it (the daily-ingest already has a 20-min AbortController — confirm the brief's budget is separate and sufficient).
+
+## Lens Notes (one line each)
+
+- **Architecture:** Sound phase-sequencing (lower-blast-radius first) and the shadow→canary gate is the right shape; the preflight contradiction (B-1) is the one structural seam left open.
+- **Security/identity-isolation:** No new creds, SOCKS lane reuse, honest-zero engagement, treat-fetched-content-as-data all hold; no injection surface added (gatherer output flows as candidates, not instructions) — clean.
+- **DevOps/SRE:** Rollback is genuinely one-command-per-phase and gated; the canary-can-FAIL (RC-C) is a real gate, not theater — but the watchdog-watches-watchdog (D-9) leans on the cron-obs stack covering a `no_agent` job, which is asserted (AC-14) but not proven here.
+- **Implementation/maintainability:** Reuses real modules (not reimplementations) per the shadow harness — good; the day-seeded rotation selector (AC-15) is net-new logic that needs its own deterministic test, which AC-15 does require.
+- **QA:** Tests are mostly REAL gates (forced-failure degrade, double-run idempotency, stale/malformed watchdog inputs, canary FAIL→rollback) not happy-path — strong; the gap is B-3 (zero-exit-bad-output) and the confounded high-volume-day definition (B-2).
+- **Config-drift:** Hard Config Rule (diff+.bak+Ace) is consistently applied across G1/G2/G3 and rollback; the `.bak-*` convention matches existing precedent — drift is well-contained.
+
+## Residual Risks / Open Questions
+
+- **Rotation vs. coverage staleness:** a 9-sub/~5-per-day rotation means any given sub's "hot" items are up to 48h old when surfaced — acceptable for a discovery feed, but if a sub blocks silently on its *off* days the aggregate watchdog (B-2 fix) won't catch a single-sub persistent block, only a total-Reddit-zero. Accept or add per-sub last-success tracking.
+- **Canary baseline integrity:** the canary diffs posted-set vs an "un-wired baseline" — but the baseline is yesterday's different news. Confirm the canary compares *same-run with-feature vs without-feature* (re-run the same candidate pool both ways), not against a prior day, or the diff is noise.
+- **github-trending is un-filtered general trending (§5.2):** relies entirely on the existing scorer to reject non-AI repos; no evidence here of how the scorer handles a trending Rust game engine — worth one dry-run check that off-topic github items actually score below the gate.
+- **D-2b absolute floor still TBD:** flagged in the doc; must close with Phase-1 perf data before G3, else the "high-volume day" gate is unfalsifiable.
+- **OQ-4 (G3 timing) is correctly evidence-driven**, not a date — no risk, noted for completeness.
