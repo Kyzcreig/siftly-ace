@@ -79,6 +79,24 @@ else
   echo "with-secrets.sh: X OAuth2 client creds not loaded from 1Password (webapp Connect-X flow will fall back to DB if present)" >&2
 fi
 
+# Reddit app-only OAuth client credentials for the discovery gatherer (scripts/gather/reddit.ts).
+# WHY: Reddit blocks UNAUTHENTICATED .json reads from datacenter/non-residential IPs (the Mac
+# Studio host gets HTTP 403 on every UA + egress lane; the access_token endpoint returns 401,
+# proving the IP is fine for AUTH). A free "script"-type Reddit app + app-only token bypasses the
+# block. One-time setup (Ace, browser): https://www.reddit.com/prefs/apps -> create app -> type
+# "script" -> note client id (under the app name) + secret. Store BOTH in 1Password Engineering and
+# point the two refs below at that item. Until then the gatherer auto-falls-back to anon reads.
+REDDIT_ID_REF="op://Engineering/REDDIT_APP_ITEM/client_id"
+REDDIT_SECRET_REF="op://Engineering/REDDIT_APP_ITEM/client_secret"
+if REDDIT_CLIENT_ID=$(op read "$REDDIT_ID_REF" 2>/dev/null) \
+   && REDDIT_CLIENT_SECRET=$(op read "$REDDIT_SECRET_REF" 2>/dev/null) \
+   && [[ -n "$REDDIT_CLIENT_ID" && -n "$REDDIT_CLIENT_SECRET" ]]; then
+  export REDDIT_CLIENT_ID REDDIT_CLIENT_SECRET
+  echo "with-secrets.sh: REDDIT_CLIENT_ID loaded (len=${#REDDIT_CLIENT_ID}); REDDIT_CLIENT_SECRET loaded (len=${#REDDIT_CLIENT_SECRET})" >&2
+else
+  echo "with-secrets.sh: Reddit app creds not loaded from 1Password (reddit gatherer will fall back to anon reads, which 403 from datacenter IPs)" >&2
+fi
+
 # Default the real sqlite-vec extension so the live path is used, not the brute-force fallback.
 if [[ -z "${SIFTLY_SQLITE_VEC_EXTENSION_PATH:-}" && -f "$REPO_ROOT/.local/vec0.dylib" ]]; then
   export SIFTLY_SQLITE_VEC_EXTENSION_PATH="$REPO_ROOT/.local/vec0.dylib"

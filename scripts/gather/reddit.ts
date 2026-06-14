@@ -7,6 +7,78 @@ const DEFAULT_LIMIT = 25
 const USER_AGENT = 'siftly-ace reddit gatherer (https://github.com/Kyzcreig/siftly-ace)'
 const ENGAGEMENT_NORMALIZE_MODULE: string = '../lib/engagement-normalize'
 
+// --- Reddit app-only OAuth (durable fix for the datacenter-IP 403 on anon .json reads) ---
+// Reddit blocks UNAUTHENTICATED .json reads from datacenter / non-residential IPs (Mac Studio
+// host returns 403 on every UA + egress lane; the access_token endpoint returns 401, i.e. the
+// IP is fine for AUTH). With a free app-only token we read via oauth.reddit.com and bypass the
+// block. Creds (optional): REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET. Absent -> anon fallback.
+const OAUTH_BASE = 'https://oauth.reddit.com'
+const ANON_BASE = 'https://www.reddit.com'
+const TOKEN_URL = 'https://www.reddit.com/api/v1/access_token'
+const TOKEN_SKEW_MS = 60_000 // refresh 60s before expiry
+
+type TokenState = { token: string; expiresAt: number }
+let tokenCache: TokenState | null = null
+let tokenInFlight: Promise<string | null> | null = null
+
+function readEnv(name: string): string | null {
+  const v = process.env[name]
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+async function fetchAppOnlyToken(fetchImpl: FetchLike, logger: Logger): Promise<string | null> {
+  const id = readEnv('REDDIT_CLIENT_ID')
+  const secret = readEnv('REDDIT_CLIENT_SECRET')
+  if (!id || !secret) return null
+  const now = Date.now()
+  if (tokenCache && tokenCache.expiresAt - TOKEN_SKEW_MS > now) return tokenCache.token
+  if (tokenInFlight) return tokenInFlight
+  const basic =
+    typeof btoa === 'function'
+      ? btoa(id + ':' + secret)
+      : Buffer.from(id + ':' + secret).toString('base64')
+  tokenInFlight = (async () => {
+    try {
+      const resp = await fetchImpl(TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Basic ' + basic,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': USER_AGENT,
+        },
+        body: 'grant_type=client_credentials',
+      } as RequestInit)
+      if (!resp.ok) {
+        await drainJson(resp)
+        logger.warn('reddit oauth: token endpoint HTTP ' + resp.status + '; falling back to anon reads')
+        return null
+      }
+      const body = asRecord(await resp.json())
+      const token = body && typeof body.access_token === 'string' ? body.access_token : null
+      const ttl = body && typeof body.expires_in === 'number' ? body.expires_in : 3600
+      if (!token) {
+        logger.warn('reddit oauth: token response missing access_token; falling back to anon reads')
+        return null
+      }
+      tokenCache = { token, expiresAt: Date.now() + ttl * 1000 }
+      return token
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.warn('reddit oauth: token fetch failed (' + message + '); falling back to anon reads')
+      return null
+    } finally {
+      tokenInFlight = null
+    }
+  })()
+  return tokenInFlight
+}
+
+/** Test-only: clear the module-level token cache so unit tests are hermetic. */
+export function __resetRedditTokenCacheForTests(): void {
+  tokenCache = null
+  tokenInFlight = null
+}
+
 type NormalizeEngagement = (source: string, raw: number, n: number) => number
 
 type Logger = { warn: (message: string) => void }
@@ -102,9 +174,9 @@ function redditUrl(value: string): string | null {
   }
 }
 
-function redditApiUrl(subreddit: string, limit: number): string {
+function redditApiUrl(subreddit: string, limit: number, base: string): string {
   const safeSubreddit = subreddit.replace(/^r\//i, '').replace(/[^A-Za-z0-9_]/g, '')
-  return `https://www.reddit.com/r/${safeSubreddit}/hot.json?limit=${limit}`
+  return `${base}/r/${safeSubreddit}/hot.json?limit=${limit}`
 }
 
 function createdAtFromUtc(value: unknown): string | null {
@@ -165,11 +237,16 @@ export async function gatherRedditPosts(options: GatherRedditOptions = {}): Prom
   const normalizeEngagement = await loadNormalizeEngagement()
   const candidates: RedditCandidate[] = []
 
+  const token = await fetchAppOnlyToken(fetchImpl, logger)
+  const base = token ? OAUTH_BASE : ANON_BASE
+  const baseHeaders: Record<string, string> = { 'User-Agent': USER_AGENT }
+  if (token) baseHeaders.Authorization = 'Bearer ' + token
+
   for (const subreddit of subreddits) {
-    const apiUrl = redditApiUrl(subreddit, limit)
+    const apiUrl = redditApiUrl(subreddit, limit, base)
     let payload: unknown
     try {
-      const response = await fetchImpl(apiUrl, { headers: { 'User-Agent': USER_AGENT } })
+      const response = await fetchImpl(apiUrl, { headers: baseHeaders })
       if (!response.ok) {
         await drainJson(response)
         logger.warn(`reddit gather ${subreddit}: HTTP ${response.status}; returning [] for that source`)
