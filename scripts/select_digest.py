@@ -501,6 +501,7 @@ def build_render_input(data, tl_handles, tl_aliases, tracked, now=None, engine="
             "discarded_bare": sum(1 for d in discarded if d.get("_drop") == "bare_fragment"),
             "discarded_below_gate": sum(1 for d in discarded if d.get("_drop") == "below_gate_or_cap"),
             "discarded_event_dup": sum(1 for d in discarded if d.get("_drop") == "event_dup"),
+            "discarded_author_cap": sum(1 for d in discarded if d.get("_drop") == "author_cap"),
             "low_reach_capped": sum(1 for x in (selected + also + discarded)
                                     if x.get("_low_reach_capped")),
             # Required #2: instrument the no-source _is_x fallback. On live data
@@ -553,6 +554,7 @@ def main(argv=None):
     aud = render_input["_select_audit"]
     print(f"select_digest[{args.engine}]: pool={aud['pool']} → top={aud['selected']} also={aud['also']} "
           f"| dropped bare={aud['discarded_bare']} event_dup={aud['discarded_event_dup']} "
+          f"author_cap={aud.get('discarded_author_cap', 0)} "
           f"below_gate={aud['discarded_below_gate']} "
           f"| low-reach capped={aud['low_reach_capped']} unsourced={aud['unsourced_items']} "
           f"boost-gated off-topic={len(aud['boost_gated_off_topic'])}")

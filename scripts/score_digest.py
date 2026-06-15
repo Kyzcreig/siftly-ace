@@ -78,6 +78,57 @@ MAX_ALSO = 2          # max Also Noted slots
 MAX_GE_90 = 2          # forced-distribution carries over; unreachable unless tuned
 MAX_EQ_100 = 1
 
+# ── Author-diversity cap (Wave 6 G3, Ace 2026-06-15) ─────────────────────────
+# Cap how many items from ONE author can appear in the COMBINED Top+Also output,
+# so a prolific account can't fill the brief. The shadow harness measured this as
+# the dominant diversity effect (live dumps carry no embeddings, so the TS "MMR"
+# already degrades to pure author-cap); we wire the same author-cap into the live
+# Python selection loop rather than plumbing the offline TS module into prod.
+#
+#   • General cap default = 2 (Ace: "2 per author").
+#   • Per-handle overrides (Ace: "no more than ONE emollick") loaded from
+#     ~/.hermes/digest/author-caps.txt  ("handle N" per line, '#' comments).
+#   • An item over its author's cap is SKIPPED; the next-best distinct author
+#     fills the slot (identical to the shadow's `author_cap_drop`).
+#   • Kill-switch: env SIFTLY_AUTHOR_CAP=0 disables the cap entirely (no-op),
+#     mirroring PF_WEIGHT=0. Non-X items (no authorHandle) are never capped.
+DEFAULT_AUTHOR_CAP = 2
+AUTHOR_CAPS_FILE = os.path.expanduser("~/.hermes/digest/author-caps.txt")
+
+
+def _load_author_cap_overrides(path=AUTHOR_CAPS_FILE):
+    """Parse 'handle N' lines → {handle_lower_no_@: int}. Missing file → {}.
+    A malformed line is skipped (never crashes selection)."""
+    out = {}
+    try:
+        with open(path) as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith("#"):
+                    continue
+                parts = ln.split()
+                if len(parts) < 2:
+                    continue
+                try:
+                    out[parts[0].lstrip("@").lower()] = int(parts[1])
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return out
+
+
+def _author_cap_disabled():
+    """env SIFTLY_AUTHOR_CAP=0/false/off → cap is a no-op (kill-switch)."""
+    return os.environ.get("SIFTLY_AUTHOR_CAP", "").strip().lower() in ("0", "false", "off", "no")
+
+
+def _cap_for(handle, overrides, default_cap):
+    """Effective cap for one handle: per-handle override wins, else the default."""
+    if not handle:
+        return None  # non-authored item (story/HN) — never capped
+    return overrides.get(handle, default_cap)
+
 # ── BASE: 36-cell categorical base, spec §4.1 ───────────────────────────────
 # rows = content_type, cols = actionability (actionable_now|reference|context_only|none)
 # Ordered high→low by base value so monotonicity is asserted over the real ladder.
@@ -615,21 +666,51 @@ def select_shadow(pool, tl_handles=None, tl_aliases=None, tracked=None, now=None
     scored = _sd_apply_forced_distribution(scored)
     scored.sort(key=lambda it: _placement_sort_key(it, now=now), reverse=True)
 
+    # Author-diversity cap (Wave 6 G3): count author appearances across the
+    # COMBINED Top+Also output; an item over its author's cap is skipped so the
+    # next-best DISTINCT author fills the slot. Kill-switch SIFTLY_AUTHOR_CAP=0
+    # disables it. Per-handle overrides (e.g. emollick=1) beat the default.
+    cap_enabled = not _author_cap_disabled()
+    cap_overrides = _load_author_cap_overrides() if cap_enabled else {}
+    author_counts = {}
+
+    def _author_capped(it):
+        """True if placing `it` would exceed its author's cap. Non-authored
+        items (stories/HN, no handle) are never capped."""
+        if not cap_enabled:
+            return False
+        h = _handle(it)
+        cap = _cap_for(h, cap_overrides, DEFAULT_AUTHOR_CAP)
+        if cap is None:
+            return False
+        return author_counts.get(h, 0) >= cap
+
+    def _record_author(it):
+        h = _handle(it)
+        if h:
+            author_counts[h] = author_counts.get(h, 0) + 1
+
     selected, also = [], []
     for it in scored:
         f = it["_final"]
+        if (f >= tg or f >= ag) and _author_capped(it):
+            d = dict(it); d["_drop"] = "author_cap"; d["_author_cap_handle"] = _handle(it)
+            discarded.append(d); continue
         if f >= tg and len(selected) < mt:
-            selected.append(it)
+            selected.append(it); _record_author(it)
         elif f >= ag and len(also) < ma:
-            also.append(it)
+            also.append(it); _record_author(it)
         else:
             d = dict(it); d["_drop"] = "below_gate_or_cap"; discarded.append(d)
 
     coercion = sum(1 for it in scored if it["_breakdown"]["label_coerced"])
     overrides = sum(1 for it in scored if it["_breakdown"]["on_topic_overridden"])
+    author_capped = sum(1 for d in discarded if d.get("_drop") == "author_cap")
     meta = {"scored": len(scored), "label_coercion_count": coercion,
             "on_topic_overrides": overrides,
             "gates": {"top": tg, "also": ag, "low_reach_cap": low_reach_cap_val},
+            "author_cap": {"enabled": cap_enabled, "default": DEFAULT_AUTHOR_CAP,
+                           "overrides": cap_overrides, "dropped": author_capped},
             "cleared_top": sum(1 for it in scored if it["_final"] >= tg),
             "cleared_also": sum(1 for it in scored if it["_final"] >= ag)}
     return selected, also, discarded, meta
