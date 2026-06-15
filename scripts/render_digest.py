@@ -320,6 +320,38 @@ def dedup_and_rank(selected, also, per_event_cap=PER_EVENT_CAP, primary_handles=
 
 # ── Discord markdown escaping ────────────────────────────────────────────────
 _MD_ESCAPE_RE = re.compile(r"([\\*_~|`>])")
+
+# Source feeds (esp. smol.ai) ship summaries containing INTENTIONAL markdown
+# emphasis (**bold**, __bold__, *italic*, _italic_). Backslash-escaping those
+# verbatim renders ugly literal `\*\*Context Engineering\*\*` in Discord. For
+# STORY text we first STRIP paired emphasis markers (keeping the inner words),
+# THEN escape — so intentional emphasis becomes clean plain text while any stray
+# unpaired metacharacter is still safely escaped (no markdown injection).
+_MD_EMPHASIS_RE = re.compile(r"(\*\*|__|\*|_)(.+?)\1", re.DOTALL)
+
+
+def strip_md_emphasis(text):
+    """Remove paired **bold**/__bold__/*italic*/_italic_ markers, keeping inner
+    text. Applied repeatedly to handle nested/stacked markers (e.g. ***x***).
+    Then drop any LEFTOVER run of 2+ asterisks/underscores — these are orphaned
+    bold/italic openers left dangling by upstream truncation (e.g. a summary cut
+    mid-'**Walden'), never legitimate plain text. A lone single * or _ is left
+    untouched (could be math/a_filename) for esc() to escape safely."""
+    if not text:
+        return text
+    out = str(text)
+    # Iterate to collapse nested emphasis; bounded so a pathological input can't loop.
+    for _ in range(5):
+        new = _MD_EMPHASIS_RE.sub(r"\2", out)
+        if new == out:
+            break
+        out = new
+    # Drop dangling 2+ marker runs (orphaned openers from truncation), tidy spaces.
+    out = re.sub(r"\*{2,}|_{2,}", "", out)
+    out = re.sub(r"[ \t]{2,}", " ", out).strip()
+    return out
+
+
 def esc(text):
     """Backslash-escape Discord markdown metacharacters in untrusted text.
     Operates per-line so leading list/header/quote markers are caught on EVERY
@@ -445,13 +477,13 @@ def render_top_block(item, index):
 
     # story: headline line, optional distinct summary line, url
     title = _story_title(item)
-    head = f"**{index}.** {esc(str(title).strip())} {source_suffix(item)} {emoji} {letter} ({s})"
+    head = f"**{index}.** {esc(strip_md_emphasis(str(title).strip()))} {source_suffix(item)} {emoji} {letter} ({s})"
     head = re.sub(r"[ \t]+", " ", head).strip()
     lines = [head]
     summary = item.get("summary")
     dropped = False
     if summary and not summary_echoes_headline(title, summary):
-        lines.append(esc(str(summary).strip()))
+        lines.append(esc(strip_md_emphasis(str(summary).strip())))
     elif summary and str(summary).strip():
         dropped = True  # had a summary but it echoed the headline
     if url:
@@ -469,7 +501,7 @@ def render_also_line(item):
         display = prefix + esc(snippet)
         suffix = f"{emoji} {letter} ({s})"
     else:
-        display = esc(str(_story_title(item)).strip())
+        display = esc(strip_md_emphasis(str(_story_title(item)).strip()))
         suffix = f"{source_suffix(item)} {emoji} {letter} ({s})"
     line = f"• {display} {suffix} — {url}"
     return re.sub(r"[ \t]+", " ", line).strip()
@@ -692,6 +724,23 @@ def _selftest():
     ok("story HN suffix", "· HN 210 pts / 88 comments" in sbody)
     ok("story grade", "✅ A- (90)" in sbody)
     ok("story no drop", sdrop == 0)
+
+    # STORY markdown-emphasis stripping (smol.ai ships **bold** in summaries):
+    # paired emphasis becomes clean plain text, NOT literal backslash-escaped \*\*.
+    ok("strip_md bold", strip_md_emphasis("**Context Engineering** matters") == "Context Engineering matters")
+    ok("strip_md underscore-bold", strip_md_emphasis("__Karpathy__ said") == "Karpathy said")
+    ok("strip_md italic", strip_md_emphasis("an *important* idea") == "an important idea")
+    ok("strip_md nested", strip_md_emphasis("***triple*** stacked") == "triple stacked")
+    ok("strip_md unpaired-left-untouched", strip_md_emphasis("2 * 3 = 6") == "2 * 3 = 6")
+    ok("strip_md dangling-opener-from-truncation", strip_md_emphasis("experts like Andrej Karpathy, **Walden") == "experts like Andrej Karpathy, Walden")
+    ok("strip_md dangling-underscore-run", strip_md_emphasis("a partial __thing") == "a partial thing")
+    mddata = {"date_label": "X", "selected": [{
+        "source": "smol.ai", "title": "**Context Engineering**: More than Prompts",
+        "summary": "**Context Engineering** emerges, per **Andrej Karpathy** and others.",
+        "score": 83, "url": "https://news.smol.ai/x"}], "footer": "f"}
+    mdbody, _ = render(mddata)
+    ok("rendered story has no literal escaped asterisks", "\\*\\*" not in mdbody)
+    ok("rendered story keeps inner words", "Context Engineering" in mdbody and "Andrej Karpathy" in mdbody)
 
     # STORY echo summary dropped, headline kept
     edata = {"date_label": "X", "selected": [{
