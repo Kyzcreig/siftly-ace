@@ -10,7 +10,11 @@ import { DEFAULT_SIFTLY_CREDIT_RESERVE } from '../lib/settings'
 
 export const DEFAULT_CREDIT_RESERVE = DEFAULT_SIFTLY_CREDIT_RESERVE
 export const DEFAULT_WALL_BUDGET_MS = 20 * 60 * 1000
-export const DEFAULT_INGEST_MAX_PAGES = 2
+// Incremental page ceiling. With early-stop (lib/incremental-early-stop.ts), normal-day
+// cost is independent of this ceiling (a source stops after K consecutive known tweets),
+// so we can afford a higher cap to absorb a heavy bookmarking day without dropping the
+// overflow. Raised 2→5 (2026-06-15, PRD §D-3). Env SIFTLY_DAILY_INGEST_MAX_PAGES overrides.
+export const DEFAULT_INGEST_MAX_PAGES = 5
 export const DEFAULT_PAGE_SIZE = 100
 export const DEFAULT_STAGE_LIMIT = 500
 export const DEFAULT_ALERT_CHANNEL_ID = '1480528231286181948'

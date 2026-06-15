@@ -111,6 +111,15 @@ export interface XurlIngestDb {
 
 export type RunXurl = (endpoint: string) => Promise<XurlTweetPage>
 
+// Early-stop (incremental only): given a page's tweetIds, return the subset already
+// in the corpus. Identity-only existence check (Bookmark.tweetId @unique, both sources
+// share the table, no soft-delete column) — matches upsertRows' findUnique notion of
+// "known". When provided AND resumeFromCursor===false, fetchSourcePages stops a source
+// after EARLY_STOP_K consecutive known tweets (newest→oldest ⇒ the frontier is passed).
+export type KnownTweetIdsLookup = (tweetIds: string[]) => Promise<Set<string>>
+
+export const DEFAULT_EARLY_STOP_K = 3
+
 export interface IngestOptions {
   db: XurlIngestDb
   runXurl?: RunXurl
@@ -124,6 +133,12 @@ export interface IngestOptions {
   retryCount?: number
   retryBaseMs?: number
   onCreditsDepleted?: (event: XurlCreditsDepletedEvent) => void | Promise<void>
+  // Optional early-stop seam. When provided AND resumeFromCursor===false (incremental),
+  // a source stops paginating after `earlyStopK` consecutive already-known tweets.
+  // Absent → today's behavior (walk to maxPages). Backfill (resumeFromCursor:true)
+  // NEVER early-stops even when this is provided.
+  knownTweetIds?: KnownTweetIdsLookup
+  earlyStopK?: number
   // REQUIRED (no default) so every ingest entrypoint MUST consciously choose:
   //  - BACKFILL / resume an interrupted run → true (resume from persisted cursor)
   //  - daily INCREMENTAL → false (start from the TOP; X paginates newest→older, so a
@@ -161,6 +176,10 @@ export interface IngestResult {
   perSource: Record<XurlSource, { pages: number; rows: number; nextCursor: string | null }>
   creditsDepleted?: XurlCreditsDepletedEvent
   interrupted?: XurlInterruptedEvent
+  // Early-stop observability (incremental only).
+  earlyStopped?: Partial<Record<XurlSource, boolean>>   // a source stopped early on a known-run
+  earlyStopError?: Partial<Record<XurlSource, string>>  // I7: known-IDs probe threw → fell back to full walk
+  fullWalkReason?: 'safety-net' | 'kill-switch'         // D-9: set by the WIRING layer when it deliberately omits the seam
 }
 
 const DEFAULT_APP = 'siftly-ace'
@@ -641,17 +660,29 @@ async function fetchSourcePages(params: {
   retryCount: number
   retryBaseMs: number
   initialCursor?: string | null
+  knownTweetIds?: KnownTweetIdsLookup
+  earlyStopK?: number
 }): Promise<{
   sourcePages: XurlSourcePage[]
   rows: number
   nextCursor: string | null
   creditsDepleted?: XurlCreditsDepletedEvent
   interrupted?: XurlInterruptedEvent
+  earlyStopped?: boolean
+  earlyStopError?: string
 }> {
   const sourcePages: XurlSourcePage[] = []
   let rows = 0
   let cursor: string | undefined = params.initialCursor ?? undefined
   let nextCursor: string | null = params.initialCursor ?? null
+
+  // Early-stop state (D-1). Enabled only when a probe is supplied; the CALLER gates
+  // incremental-vs-backfill by choosing whether to pass `knownTweetIds` at all.
+  let earlyStopEnabled = params.knownTweetIds != null
+  const earlyStopK = params.earlyStopK ?? DEFAULT_EARLY_STOP_K
+  let consecutiveKnown = 0 // persists ACROSS pages within this source (D-1)
+  let earlyStopped = false
+  let earlyStopError: string | undefined
 
   for (let pageIndex = 0; pageIndex < params.maxPages; pageIndex++) {
     if (params.limit !== undefined && rows >= params.limit) break
@@ -673,6 +704,8 @@ async function fetchSourcePages(params: {
           sourcePages,
           rows,
           nextCursor,
+          earlyStopped,
+          earlyStopError,
           creditsDepleted: {
             source: params.source,
             status: 402,
@@ -691,6 +724,8 @@ async function fetchSourcePages(params: {
         sourcePages,
         rows,
         nextCursor,
+        earlyStopped,
+        earlyStopError,
         interrupted: {
           source: params.source,
           message: xurlErrorMessage(err),
@@ -714,11 +749,40 @@ async function fetchSourcePages(params: {
     const wasTrimmed = trimmedRows.length !== pageRows.length
     nextCursor = wasTrimmed ? null : (page.meta?.next_token ?? null)
 
+    // Early-stop (D-1): newest→oldest ordering means a run of `earlyStopK` consecutive
+    // already-known tweets proves the new-items frontier has been fully passed. We have
+    // ALREADY pushed this whole page (so new items above the known run are kept) and done
+    // the cursor bookkeeping; we only suppress fetching the NEXT page. Fail-open (I3/I7):
+    // a probe throw degrades to a full walk and is recorded, never drops data.
+    if (earlyStopEnabled && params.knownTweetIds && trimmedRows.length > 0) {
+      let known: Set<string>
+      try {
+        known = await params.knownTweetIds(trimmedRows.map((t) => t.id))
+      } catch (err) {
+        earlyStopError = xurlErrorMessage(err)
+        earlyStopEnabled = false // I7: stop probing this source; finish the full walk
+        console.warn(
+          `xurl early-stop probe failed for source=${params.source}; falling back to full walk: ${earlyStopError}`,
+        )
+        if (!nextCursor || pageRows.length === 0) break
+        cursor = nextCursor
+        continue
+      }
+      for (const tweet of trimmedRows) {
+        consecutiveKnown = known.has(tweet.id) ? consecutiveKnown + 1 : 0
+        if (consecutiveKnown >= earlyStopK) {
+          earlyStopped = true
+          break
+        }
+      }
+      if (earlyStopped) break
+    }
+
     if (!nextCursor || pageRows.length === 0) break
     cursor = nextCursor
   }
 
-  return { sourcePages, rows, nextCursor }
+  return { sourcePages, rows, nextCursor, earlyStopped, earlyStopError }
 }
 
 export async function ingestXurlSources(options: IngestOptions): Promise<IngestResult> {
@@ -735,10 +799,17 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
   const fetchedSources: XurlSource[] = []
   let creditsDepleted: XurlCreditsDepletedEvent | undefined
   let interrupted: XurlInterruptedEvent | undefined
+  const earlyStopped: Partial<Record<XurlSource, boolean>> = {}
+  const earlyStopError: Partial<Record<XurlSource, string>> = {}
   const perSource = {
     bookmark: { pages: 0, rows: 0, nextCursor: null as string | null },
     like: { pages: 0, rows: 0, nextCursor: null as string | null },
   }
+
+  // I2: backfill (resumeFromCursor:true) NEVER early-stops — only pass the probe for
+  // incremental. The caller further gates incremental (kill switch / safety-net day, D-7/D-8)
+  // by choosing whether to supply `knownTweetIds` at all.
+  const incrementalEarlyStop = !options.resumeFromCursor ? options.knownTweetIds : undefined
 
   for (const source of sources) {
     const initialCursor = options.resumeFromCursor
@@ -754,6 +825,8 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
       retryCount,
       retryBaseMs,
       initialCursor,
+      knownTweetIds: incrementalEarlyStop,
+      earlyStopK: options.earlyStopK,
     })
     allSourcePages.push(...fetched.sourcePages)
     fetchedSources.push(source)
@@ -762,6 +835,8 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
       rows: fetched.rows,
       nextCursor: fetched.nextCursor,
     }
+    if (fetched.earlyStopped) earlyStopped[source] = true
+    if (fetched.earlyStopError) earlyStopError[source] = fetched.earlyStopError
 
     if (fetched.creditsDepleted) {
       creditsDepleted = fetched.creditsDepleted
@@ -793,5 +868,7 @@ export async function ingestXurlSources(options: IngestOptions): Promise<IngestR
     perSource,
     ...(creditsDepleted ? { creditsDepleted } : {}),
     ...(interrupted ? { interrupted } : {}),
+    ...(Object.keys(earlyStopped).length ? { earlyStopped } : {}),
+    ...(Object.keys(earlyStopError).length ? { earlyStopError } : {}),
   }
 }

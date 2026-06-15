@@ -4,6 +4,15 @@ import { pathToFileURL } from 'node:url'
 import prisma from '../lib/db'
 import { evaluateIngestCostGate, formatCostEstimate } from '../lib/cost-estimate'
 import { ingestXurlSources, type IngestResult, type XurlIngestDb, type XurlSource } from '../lib/xurl-ingest'
+import {
+  decideEarlyStop,
+  loadIngestStates,
+  makePrismaKnownTweetIds,
+  stampFullWalk,
+  type BookmarkFindManyDelegate,
+  type IngestStateReadDelegate,
+  type IngestStateUpsertDelegate,
+} from '../lib/incremental-early-stop'
 
 interface CliOptions {
   app: string
@@ -124,8 +133,28 @@ export async function runIngestCli(argv: string[], deps: IngestCliDependencies =
   }
 
   const ingest = deps.ingest ?? ingestXurlSources
+  const db = deps.db ?? (prisma as XurlIngestDb)
+
+  // Early-stop wiring (incremental only — D-4/D-7/D-8/D-9). For backfill, ingestXurlSources
+  // ignores the seam anyway (I2); we simply don't compute it.
+  let earlyStop: ReturnType<typeof decideEarlyStop> | undefined
+  if (options.incremental) {
+    const delegates = db as unknown as {
+      bookmark?: BookmarkFindManyDelegate
+      ingestState?: IngestStateReadDelegate
+    }
+    if (delegates.bookmark?.findMany) {
+      const probe = makePrismaKnownTweetIds(delegates.bookmark)
+      const states = await loadIngestStates(delegates.ingestState, options.sources)
+      earlyStop = decideEarlyStop({ probe, states })
+      if (earlyStop.fullWalkReason) {
+        log(`early-stop: SKIPPED (full walk) reason=${earlyStop.fullWalkReason}`)
+      }
+    }
+  }
+
   const result = await ingest({
-    db: deps.db ?? (prisma as XurlIngestDb),
+    db,
     app: options.app,
     userId: options.userId,
     maxPages: options.maxPages,
@@ -136,7 +165,33 @@ export async function runIngestCli(argv: string[], deps: IngestCliDependencies =
     // Incremental runs must start from the TOP of the list (X paginates newest→older;
     // resuming from a persisted cursor would skip new bookmarks). Full backfill resumes.
     resumeFromCursor: !options.incremental,
+    ...(earlyStop?.knownTweetIds ? { knownTweetIds: earlyStop.knownTweetIds } : {}),
+    ...(earlyStop?.earlyStopK ? { earlyStopK: earlyStop.earlyStopK } : {}),
   })
+
+  // D-7: after a safety-net full walk, stamp lastFullWalkAt — but ONLY for sources whose
+  // walk reached the frontier (nextCursor === null), NOT those capped by maxPages (Opus B1).
+  // A ceiling-capped walk didn't recover the deep history, so its cadence must NOT reset.
+  if (
+    options.incremental &&
+    !options.dryRun &&
+    earlyStop?.fullWalkReason === 'safety-net' &&
+    !result.creditsDepleted &&
+    !result.interrupted
+  ) {
+    const exhausted = options.sources.filter((s) => result.perSource[s]?.nextCursor === null)
+    if (exhausted.length > 0) {
+      await stampFullWalk(
+        (db as unknown as { ingestState?: IngestStateUpsertDelegate }).ingestState,
+        exhausted,
+      )
+    }
+  }
+
+  // D-9: surface why a full walk happened (distinct from a probe failure, I7).
+  if (earlyStop?.fullWalkReason) {
+    ;(result as IngestResult).fullWalkReason = earlyStop.fullWalkReason
+  }
 
   printResult(result, options, log)
 }

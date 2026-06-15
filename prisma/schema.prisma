@@ -86,6 +86,7 @@ model IngestState {
   source     String   @unique
   lastCursor String?
   lastRunAt  DateTime?
+  lastFullWalkAt DateTime?
   runCount   Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

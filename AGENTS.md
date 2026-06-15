@@ -3,6 +3,15 @@
 Fork of viperrcrypto/Siftly → Kyzcreig/siftly-ace. PRD: docs/plans/PRD-ace-x-knowledge-base.md (v5, approved).
 Swarm plan: docs/plans/SWARM-PLAN-phase1plus.md. Coding worker = Daedalus profile (openai-codex/gpt-5.5 xhigh).
 
+## Incremental ingest EARLY-STOP — DONE (2026-06-15), live-verified
+The daily incremental no longer re-scans a fixed window every run. PRD: `~/.hermes/plans/siftly-incremental-early-stop/PRD-incremental-early-stop.md` (Opus 2-pass APPROVED).
+- **Core (`lib/xurl-ingest.ts` `fetchSourcePages`):** optional `knownTweetIds` probe + `earlyStopK` (default 3). Incremental stops paginating a source after **K consecutive already-known tweets** (newest→oldest ⇒ frontier passed). Collects the whole page before stopping (new items above the known run kept). Backfill (`resumeFromCursor:true`) NEVER early-stops (I2). Fail-open: a probe throw → full walk + `IngestResult.earlyStopError` + WARN (I7).
+- **Wiring (`lib/incremental-early-stop.ts` + `scripts/ingest.ts`):** the incremental CLI branch builds a Prisma `knownTweetIds` over the shared `Bookmark` table (both sources, `tweetId @unique`) and decides per run: **kill-switch** (`SIFTLY_INCREMENTAL_EARLY_STOP=0`) > **safety-net** (full walk every `SIFTLY_INCREMENTAL_FULLWALK_EVERY_DAYS`, default 7, wall-clock via new `IngestState.lastFullWalkAt`) > early-stop on. `IngestResult.fullWalkReason` disambiguates a deliberate full walk from a probe failure (D-9).
+- **Ceiling raised 2→5** (`DEFAULT_INGEST_MAX_PAGES`, env `SIFTLY_DAILY_INGEST_MAX_PAGES`): early-stop makes normal-day cost ceiling-independent; the higher cap absorbs a heavy bookmarking day. The old 2 silently dropped >~180 bookmarks/day overflow.
+- **Migration:** additive nullable `IngestState.lastFullWalkAt` (`prisma/migrations/20260615000000_*`). A fresh `lastFullWalkAt=null` forces ONE baseline full walk per source, then early-stop engages.
+- **Live before/after (dry-run, real corpus):** full window **10 pages / 948 reads → early-stop 2 pages / 190 reads (~80% cut)**. ~$1.89/day → ~$0.38/day on normal days; safety-net day reverts to ~378 weekly.
+- **Tests:** `lib/__tests__/xurl-ingest-early-stop.test.ts` (12), `incremental-early-stop.test.ts` (helpers), `ingest-cli-early-stop.test.ts` (wiring), `credit-floor-raised-ceiling.test.ts`. Knobs: `SIFTLY_INCREMENTAL_EARLY_STOP`, `_EARLY_STOP_K`, `_FULLWALK_EVERY_DAYS`, `SIFTLY_DAILY_INGEST_MAX_PAGES`.
+
 ## Phase 0 — DONE (2026-06-07), live-verified
 - Dedicated X app `siftly-ace` registered under @angalexg, **Production** env. Creds in 1Password Engineering: "X API App — siftly-ace" (id n32tdp5kpvb7i4pga2thzatqwy).
 - OAuth2 PKCE grant OK. `xurl --app siftly-ace whoami` → angalexg / id 56282605.
