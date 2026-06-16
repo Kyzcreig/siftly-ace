@@ -1,0 +1,93 @@
+This is a Pass 2 review. The prior review (Pass 1, embedded) was BLOCK with 3 blockers; my job is to verify each genuinely closed in this v2 spec — not rubber-stamp — and surface any new gap. Let me work through the spec against the evidence pack carefully.
+
+# Source-Aware Backstop Exemption — Senior Review (Pass 2)
+
+## Verdict
+**APPROVE WITH CHANGES**
+
+v2 genuinely closes all three Pass-1 blockers — the dedicated `_topic_text` accessor is named and scoped, HN byte-identity is re-derived for Part B specifically, and B.4's fake-green is replaced with a shipped `OFF_TOPIC_REPO_MARKERS` guard plus a thin-pool probe. The split design is sound and the politics carve-out is airtight. What remains are correctness gaps in the *new* surface area v2 introduced, none of which is a wrong-product/irreversibility blocker given shadow-only status — but two of them will produce wrong verdicts on real rows and must be fixed in build.
+
+---
+
+## Pass-1 Blocker Verification (did v2 actually close them?)
+
+**Pass-1 Blocker 1 (accessor ambiguity) → CLOSED.** B.2 now mandates a NEW `_topic_text(item)`, explicitly forbids editing `_item_text` ("`_item_text` itself is left untouched"), keys on `source=="github"` not "has a summary", and §4 requires grep-enumerating `_item_text`'s callers and asserting none changed. This is exactly Required Change 1. Real close, not cosmetic.
+
+**Pass-1 Blocker 2 (HN byte-identity not re-proven for Part B) → CLOSED.** The accessor now keys on `source=="github"` rather than "anything carrying a summary" — the precise fix that pulls HN out of the blast radius. B.2 and the §4 acceptance line ("HN is NOT github → `_topic_text` returns title-only", a *separate* selftest from the Part-A predicate-false case) close it correctly. The Pass-1 root concern — "keys on has-a-summary, which HN satisfies" — is structurally eliminated.
+
+**Pass-1 Blocker 3 (B.4 fake-green) → CLOSED.** v2 ships `OFF_TOPIC_REPO_MARKERS` NOW (B.2a) instead of deferring, AND adds the thin-pool probe (§4: degraded pool, X removed, assert no github off-topic repo clears ALSO_GATE at either 45/50 regime). This is Required-Change-3 option (b) plus the probe. The strongest of the three closes.
+
+So all three Pass-1 blockers are genuinely closed. The verdict moves off BLOCK. Now the adversarial pass on v2's *new* surface — and against the six focus questions.
+
+---
+
+## Critical Blockers
+(None are BLOCK-level given shadow-only + same-cutover-gate; the two below are build-time correctness defects that will mis-score real rows. I'm listing them as must-fix-in-build rather than block-the-spec, because the spec's own acceptance can catch them if amended.)
+
+**1. `OFF_TOPIC_REPO_MARKERS` substring matching will mis-floor genuine on-topic repos — the marker set is specified as raw case-insensitive substrings with no word boundary (B.2a, §3).** B.2a says "Markers match as case-insensitive substrings of the description." Several listed markers are dangerous as bare substrings:
+- `"tv"` / `"iptv"`: substring `"tv"` hits "**tv**OS", "smar**tv**ision", and any description containing "TV" as part of a larger token. The spec lists `iptv` AND the phrase "tv channel" — but if `"tv"` alone ever enters the set it floors AI repos mentioning Apple TV / tvOS tooling.
+- `"interview"`: floors `coding-interview-university` (intended) but ALSO any legit "AI interview assistant" / "LLM mock-interview" repo (off-topic-marker fires on a genuinely on-topic AI dev tool).
+- `"study plan"` / `"curriculum"`: floors freeCodeCamp (intended) but an "LLM curriculum" / "ML study plan" repo is exactly the indie-builder content the whole spec is trying to RECOVER.
+- `"server"` is correctly NOT a marker (it's a generic on-topic-leak token, handled by the marker-before-generic ordering) — good — but `"media library"` as a substring floors `music-assistant/server` ("media library") which is the intended target, yet would also floor a hypothetical "vector media library for RAG."
+
+This is the **fail-direction-safe** case (it floors, never upgrades — consistent with §2), so it cannot leak politics or upgrade off→core. But it produces **false-negative exclusions** — the exact bug class the spec exists to fix, reintroduced through an over-broad blocklist. Required: specify markers as **word-boundary / whole-token or anchored-phrase matches**, not bare substrings, and pin the selftest to assert a near-miss on-topic repo ("AI interview copilot", "LLM curriculum") does NOT floor.
+
+**2. The thin-pool probe asserts a gate-clearance invariant but doesn't pin the marker set that makes it true — the probe can pass today and silently rot (B.2a, §4 thin-pool probe).** The §4 probe re-scores a degraded pool and asserts "NO github off-topic repo clears ALSO_GATE." That assertion holds **only because** every generic-token off-topic repo in today's pool happens to contain a listed marker (iptv, debloat, curriculum, tesla, …). The probe therefore tests the *current marker set against the current pool* — a tautology that goes green by construction today. The moment a new off-topic-but-generic-token repo trends with no listed marker (a "blazing-fast open-source CLI tool" for, say, crypto wallets — and note Ace explicitly excludes crypto), it reads on-topic on `open`/`source`/`tool`, clears no marker, and the probe would have caught it *only if that repo were in the probe pool*. The probe is necessary but is **not** the invariant it's presented as. Required: state plainly that the thin-pool probe is a regression guard against the **known** pool, not a proof that no unmarked off-topic repo can ever clear the gate; and record (Open Q) that the residual generic-token leak for *unmarked novel off-topic repos* is the accepted, bounded imperfection — explicitly scoped to "mildly off-topic dev/consumer repos, never politics," surfaced in `_breakdown` for audit.
+
+---
+
+## Required Changes
+
+1. **Word-boundary the markers.** Specify `OFF_TOPIC_REPO_MARKERS` as whole-token or anchored-phrase matches (regex `\b…\b` or tokenized membership), NOT bare `in`-substring. Add selftests for near-miss recovery: "AI interview copilot", "LLM curriculum/study plan", "media library for RAG" → must stay **ON** (not floored). Without this, Part B re-creates false-negatives.
+
+2. **Reframe the thin-pool probe as a known-pool regression guard, not an invariant.** Amend §4 wording: the probe asserts no *currently-known* off-topic repo clears the gate on a degraded pool; it does NOT prove an arbitrary unmarked off-topic repo cannot. Pair it with the `_breakdown` provenance (already specced — `offtopic_repo_marker` + `topic_text_source`) so the residual generic-token leak is auditable post-cutover.
+
+3. **Pin the github source-string contract.** B.2 keys `_topic_text` on `source == "github"`, but B.1/the SPEC header reference both `"github"` and `"github-trending"`, and `is_topic_curated_source` checks `src == "github"`. Specify the canonical source string ONE place and assert in a selftest that the live dump's actual `source` value (the gatherer writes it) matches the predicate's literal — otherwise `_topic_text` silently returns title-only for every github row (slug-only → everything floors → Part B is a no-op that *looks* shipped). This is the single highest-leverage "looks-green-but-inert" failure for Part B.
+
+4. **Add the empty-summary + whitespace-summary BOTH to the selftest.** B.4 covers empty. Add the adjacent real case: a summary that is present-but-tokenless after tokenization (emoji-only, pure-CJK that the tokenizer drops, or punctuation — note `krahets/hello-algo` is majority-CJK and `teslamate` carries an emoji 🚘). Assert tokenizer behavior on non-ASCII descriptions is defined: does CJK-only description floor (no ASCII tech token) the way empty does? `hello-algo` shows ON in the evidence pack's title+summary split — confirm WHY (the ASCII "Python"/"English" tail in its summary), and pin it, because a CJK repo with no ASCII tail would floor despite being a legit algorithms repo.
+
+5. **Selftest the token-vs-marker precedence on the REDDIT path too, explicitly.** A.2's precedence note is solid and the §4 acceptance line covers it. Keep it — but add the symmetric github case: a github repo whose description contains BOTH a real tech token AND an OFF_TOPIC_REPO_MARKER (e.g. "open-source IPTV player with an AI recommendation engine"). B.2a says the marker check fires BEFORE the generic-token check → floors on `iptv`. Confirm that ordering is also before the *real*-tech-token short-circuit, or you get an "AI" token rescuing an IPTV repo. Pin which wins for github; the spec only explicitly orders marker-vs-generic, not marker-vs-real-token.
+
+---
+
+## Focus-Question Findings (the six you flagged)
+
+1. **Does the reddit curated-source vouch ever let politics/insult through — is the OFF_TOPIC_MARKER carve-out airtight?** **Yes, airtight — with one documented seam.** The vouch (`is_topic_curated_source AND not (toks & OFF_TOPIC_MARKERS)`) fires only on the zero-tech-token path and is gated on no-marker, so a pure rage-thread floors exactly as today. The seam (A.2 documents it honestly): a curated-sub post with BOTH a tech token AND an insult marker short-circuits at `has_on_topic_token → None,None` BEFORE the vouch or the marker force-off — so Python doesn't floor it; the model label governs. This is **unchanged pre-existing X behavior**, the vouch adds no new bypass, and the model prompt classifies politics as off. Correct call to leave it. The @elonmusk-class miss (bogus topic_hits, no real tech token) still floors — the vouch can't rescue it because `topic_hits` is deliberately not trusted.
+
+2. **Part B reads title+summary for the topic check only — can richer text leak into base/actionability/rendering or change X/HN?** **No leak — structurally prevented in v2.** `_topic_text` is a NEW function used ONLY by `python_on_topic` + `is_structural_fragment`; `_item_text` is untouched; base/actionability read model labels; renderer reads `_item_text`. Keyed on `source=="github"` → X/HN/reddit all get `_item_text` verbatim → byte-identical. The §4 caller-enumeration acceptance line is what makes this *provable* rather than asserted. Only residual risk is Required-Change-3 (source-string literal must match) — if it mismatches, the leak direction is the safe one (title-only, everything floors), not a behavior change to X/HN.
+
+3. **Is B.4's "they never reach a posting gate" safe, or fake-green on a slow news day?** **v2 fixed the fake-green** by shipping `OFF_TOPIC_REPO_MARKERS` now + the thin-pool probe. The residual (Blocker 2) is narrower: the probe proves the *known* pool is safe on a thin day, not that an *unmarked novel* off-topic repo can't ride generic tokens. That residual is real but bounded (mildly-off-topic dev/consumer repos, never politics, fail-toward-floor), and is acceptable IF stated as a bounded imperfection with `_breakdown` audit rather than re-asserted as "never reaches a gate." Don't let the probe's by-construction green re-introduce the same false confidence one layer up.
+
+4. **Is the reddit-only-vouch / github-via-description split correct, or is there a source it mishandles?** **Split is correct; two edge cases need pinning.** (a) A curated-sub post that IS genuinely off-topic but tokenless and marker-less → vouched ON (false-negative-recovery's accepted cost; the sub vouches for topicality by construction — defensible). (b) A github repo with empty/CJK-only/emoji-only description → floors (B.4 + Required-Change-4) — correct fail-safe but the CJK case (`hello-algo`) needs the tokenizer behavior pinned, because it currently rides an ASCII tail that a different CJK repo won't have. The github=False-for-curated split is right: trending vouches popularity not topicality, exactly as B.1 argues and the evidence pack (freeCodeCamp/iptv next to SkillSpector) proves.
+
+5. **Byte-identity for X/HN — guaranteed by the predicate being false, or do shared code paths change?** **Guaranteed, by construction, for both parts** — provided Required-Change-3 holds. Part A: `is_topic_curated_source` reddit-only → X/HN predicate false → both backstops unchanged. Part B: `_topic_text` keys on `source=="github"` → X/HN get `_item_text` → identical; `_item_text` itself never edited → `_substance`/base/renderer unchanged. The guarantee is now structural (different function, source-keyed) not incidental. The §4 "X/HN slice diff = 0 (proven, not asserted)" + caller-enumeration lines are the right evidence. This is a genuine improvement over Pass-1's incidental claim.
+
+6. **Fail-safe direction — can any change upgrade an off→core?** **No.** Every change only relaxes a Python *force-floor* (returns `None` = "let model label stand") or *adds* a force-off (marker → "off"). Nothing returns/forces `"core"`; nothing upgrades a label. The vouch returns `(None, "source-curated-vouch")` = decline-to-floor, not promote. The marker path returns `("off", …)` = additional floor. Direction is monotonic toward exclusion, consistent with §2. The only way a previously-floored item now scores higher is by being *left to the model label* — which is the intended recovery, not an upgrade by this code.
+
+---
+
+## Lens Notes
+
+- **Product:** Split still the right call; v2's risk shifted from scope-creep (closed) to blocklist false-negatives (Blocker 1) — ironically the same false-negative class the spec exists to kill. Word-boundary the markers or you re-import the bug.
+- **Architecture:** `_topic_text` as a second, source-keyed accessor leaving `_item_text` untouched is the correct seam and is now explicit. Clean. The one unspecified contract is the canonical `source` literal (Required-Change-3).
+- **Security:** Politics/insult guard verified airtight; carve-out fires on zero-token path, gated on no-marker, token-short-circuit precedence matches X and is honestly documented. No exfil/irreversibility (shadow-only, no config gate). Best-covered dimension.
+- **Infra:** No gatherer/API/ingestion change — confirmed against evidence pack (summary already in dump). Purely additive read of in-hand data. Lowest risk.
+- **DevOps/SRE:** Same cutover gate, no independent go-live, no new cron/launchd. Correct. Add the source-string selftest to CI so a gatherer rename can't silently turn Part B into a no-op.
+- **Implementation:** Highest-leverage missing artifacts: (1) word-boundary marker matching + near-miss selftests, (2) the `source` literal assertion, (3) CJK/emoji tokenizer behavior pinned. All three are selftest-shaped and cheap.
+- **QA:** Acceptance is materially stronger than Pass-1 — caller enumeration, HN-Part-B selftest, thin-pool probe, empty-desc fail-safe, token-vs-marker precedence, `_breakdown` provenance are all present. Remaining holes are the marker-matching semantics and the non-ASCII description cases; both are catchable with the selftests named above.
+
+## Open Questions
+
+1. **What is the canonical `source` string the live github gatherer writes — `"github"` or `"github-trending"`?** `_topic_text` and `is_topic_curated_source` both literal-match it; a mismatch makes Part B a silent no-op (everything floors title-only) that still passes a naive "did it floor?" test. Must be pinned in a selftest against a real dump row.
+
+2. **Are `OFF_TOPIC_REPO_MARKERS` matched as whole tokens/anchored phrases or raw substrings?** Determines whether "AI interview copilot" / "LLM curriculum" / "media library for RAG" are wrongly floored. The spec says substring; I'm asserting that's a defect.
+
+3. **For github, does marker-force-off precede the REAL-tech-token short-circuit, or only the generic-token check?** B.2a orders marker-before-generic explicitly. If "open-source IPTV player with AI" carries a real tech token, does it still floor on `iptv`? Pin marker-vs-real-token for github.
+
+4. **Tokenizer behavior on CJK/emoji-only descriptions:** does a majority-CJK repo with no ASCII tech tail floor like an empty description? `hello-algo` shows ON only because its summary carries an ASCII "Python/English/日本語" tail — a different CJK-only repo would floor despite being legitimate. Acceptable fail-safe, but pin it.
+
+5. **Is there a `_breakdown` line for the *vouch-declined-to-floor* reddit path AND the *marker-floored* github path, both?** §4 records `source_curated_vouch` and `offtopic_repo_marker` — confirm both the positive (vouch fired) and negative (marker fired) provenance are emitted so a post-cutover audit can reconstruct every github/reddit topicality decision term-by-term.
+
+---
+
+**Bottom line:** v2 closed all three Pass-1 blockers for real — dedicated source-keyed accessor, HN byte-identity re-derived, B.4 guard shipped + thin-pool probe — so this moves to **APPROVE WITH CHANGES**. The remaining defects live entirely in the *new* B.2a marker surface: substring matching will re-create false-negatives (Required Change 1), the thin-pool probe is a known-pool regression guard mis-framed as an invariant (Required Change 2), and the `source` literal contract must be pinned or Part B silently no-ops (Required Change 3). None is live-fire — shadow-only behind the same cutover gate — and none can upgrade off→core or leak politics, which is why it's APPROVE-WITH-CHANGES and not BLOCK. Land Required Changes 1–3 and this is a clean APPROVE.

@@ -1,0 +1,67 @@
+I have everything I need. The three Pass-1 blockers are genuinely closed (verified against the evidence pack, not the prose). Two new gaps surfaced — both fail-safe in direction, so neither is a hard blocker, but one writes a foreseeable false-negative into a "cleanly separates" acceptance claim. Here's the review.
+
+# Source-Aware Backstop Exemption — Senior Review (Pass 2)
+
+## Verdict
+**APPROVE WITH CHANGES**
+
+The v2 spec genuinely closes all three Pass-1 blockers — I verified each against the evidence-pack code flow, not the prose. The split design is sound, the OFF_TOPIC_MARKER carve-out is airtight on the path that matters, X/HN byte-identity now holds structurally, and the fail-safe direction is correct (Python only ever floors; it never upgrades off→core). Two new gaps surfaced; both are fail-safe in direction (they over-exclude, not over-include), so neither blocks build, but one is written into acceptance as a clean-separation invariant it doesn't actually hold, and that must be de-fanged before the §3 evidence is filled.
+
+---
+
+## Pass-1 Blocker Verification (feed-forward — did v2 actually close them?)
+
+- **P1-1 (accessor ambiguity / shared `_item_text` mutation):** CLOSED. B.2 now mandates a NEW `_topic_text(item)`, explicitly forbids editing `_item_text`, scopes the two callers, and §4 adds the grep-enumerate-callers acceptance line. Simulated: `_topic_text` keys on `source=="github"`, so for every non-github source it returns exactly `_item_text` — byte-identical (HN: `'Show HN: a parser'` == `'Show HN: a parser'`).
+- **P1-2 (HN byte-identity not re-proven for Part B):** CLOSED. The accessor now keys on `source=="github"`, **not** "has a summary" — so an HN row with a summary returns title-only and is provably inert through the topic/fragment check. B.2 states it, §4 adds the separate HN-with-vs-without-summary selftest. The Pass-1 worry (keying on "has a summary," which HN satisfies) is structurally eliminated.
+- **P1-3 (B.4 fake-green "never reaches a gate"):** CLOSED. v2 ships `OFF_TOPIC_REPO_MARKERS` NOW instead of deferring, and §4 adds the thin-pool probe (degraded pool, X removed, assert no off-topic repo clears ALSO_GATE at 45/50). The rich-pool-only invariant is replaced by an explicit degraded-pool acceptance gate. This is the correct fix, not a downgrade-the-claim dodge.
+
+All three close. No rubber-stamp — the simulations back each one.
+
+---
+
+## Critical Blockers
+None. (Shadow-only, fail-toward-exclusion, Python never emits core/adjacent — verified: its only override is `"off"`.) The items below are Required Changes, not blockers.
+
+---
+
+## Required Changes
+
+**1. De-fang B.2a/B.3's "cleanly separates" claim — substring markers over-fire on genuine AI repos (B.2a, B.3, §3, §4).**
+B.2a matches markers as "case-insensitive **substrings** of the description." I stress-tested this against adversarial on-topic descriptions and it false-floors real AI/dev content:
+- `"an AI agent that scrapes IPTV metadata for ML training"` → floored on `iptv`
+- `"LLM coding-interview prep assistant"` → floored on `interview`
+- `"RAG over a study-plan curriculum generator using GPT"` → floored on `curriculum`
+- `"a live-chat support agent powered by an LLM"` → floored on `live-chat`
+- `"Tesla-stock LLM forecaster, a financial foundation model"` → floored on `tesla`
+
+This is **fail-safe in direction** (false-negative, not a false-positive — these get excluded, never rescued), so it is NOT a blocker. But B.3 and §3 assert the markers "cleanly separate … all genuine AI/dev repos stay ON." That's only true for *today's 18 rows*. The spec must (a) downgrade the claim from "cleanly separates" to "cleanly separates on the live pool; substring markers are intentionally aggressive and accept some on-topic false-floors as the safe direction," and (b) add a `_breakdown` provenance for `offtopic_repo_marker` (already in §4 — good) so the post-cutover audit can *measure* the false-floor rate. Do not write "all genuine AI/dev repos stay ON" into acceptance as an invariant; it's a one-day ranking artifact, exactly the P1-3 failure mode in a new costume.
+
+**2. Pin the thin-pool probe to assert the marker false-floor is the ONLY exclusion mode, not silent loss (§4 thin-pool probe).**
+The thin-pool probe asserts "no off-topic repo clears ALSO_GATE." Good — but with substring markers now aggressive (Required Change 1), the probe should ALSO assert the inverse on the degraded pool: that the known-on-topic recovery set (cua, SkillSpector, Kronos, Agent-Reach, meshery) still clears its gate when X is absent. Otherwise the marker set could pass the probe by over-flooring *everything* github, silently re-introducing the false-negative the whole spec exists to fix — and the probe wouldn't catch it. Add the positive-recovery assertion to the same degraded-pool probe.
+
+**3. State the reddit-vouch residual risk explicitly (A.2, §2).**
+The reddit vouch fires on the ZERO-tech-token, NO-marker path and returns `(None, "vouch")` → model label governs. The load-bearing assumption is: *a clean, token-less post in a curated AI sub is always topical-enough.* The counterexample class the spec never names: off-topic-but-clean posts that genuinely occur in AI subs — "what GPU should I buy," hiring threads, mod announcements, sub-drama, meta. None carry an OFF_TOPIC_MARKER, none carry a tech token, so the vouch lets a model `core` label ride. This is an **accepted** design trade (the sub vouches topicality, and it's fail-safe vs. the *politics* guard which is what's load-bearing), but the spec should name it in A.2 as the known residual and record `source_curated_vouch` in `_breakdown` (already specced) so the audit can quantify how often the vouch carried a non-topical post. Make the accepted risk explicit rather than implicit.
+
+**4. Add the github on-topic repo with a coincidental marker as a named selftest (B.2a, §4).**
+§4's marker selftest lists off-topic repos that must floor (iptv/freeCodeCamp/optimizerDuck/music-assistant) and on-topic that must stay ON (cua/SkillSpector/Kronos/meshery) — but none of the "ON" cases contain a marker substring. Add at least one adversarial selftest pinning the *accepted* behavior: a genuinely-on-topic repo whose description contains a marker substring (e.g. an AI-agent repo mentioning "iptv" or "interview") → document that it floors, and that this is the accepted safe-direction cost. This converts the silent over-fire into a tested, intentional decision rather than a production surprise.
+
+---
+
+## Lens Notes
+- **Product:** Split is still the right call; v2's decision to ship the marker guard now (not defer) is the correct response to P1-3. Risk moved from "under-exclusion on thin pool" to "mild over-exclusion always" — the safer trade.
+- **Architecture:** `_topic_text` as a second, narrowly-scoped accessor keyed on `source=="github"` is the clean seam P1-1 demanded; `_item_text` untouched, callers enumerated. Load-bearing seam handled correctly.
+- **Security:** Politics/insult guard verified airtight on the vouch path — truth table shows `curated=1, offmark=1 → ("off", offtopic-marker)`; the vouch only fires when `offmark=0`. The token-short-circuit precedence (A.2) matches existing X behavior and adds no new bypass. No exfil/irreversibility surface.
+- **Infra:** Still zero gatherer/API/ingestion change — description already in the dump (evidence-pack confirmed). Genuinely additive.
+- **DevOps/SRE:** Same cutover gate, no independent go-live, no new cron/launchd. Correct.
+- **Implementation:** Substring marker matching is the one rough edge — cheap and aggressive; acceptable because fail-safe, but must be documented as such, not sold as "clean separation."
+- **QA:** Acceptance is now strong (thin-pool probe, empty-desc fail-safe, HN byte-identity, token-vs-marker precedence all present). Two holes remain: the positive-recovery assertion on the degraded pool (RC-2) and the marker-collision selftest (RC-4).
+
+---
+
+## Open Questions
+1. Is the substring-marker false-floor rate acceptable as a standing cost, or should markers be word-boundary / token-matched (`\biptv\b`) to cut the `interview`-in-"coding-interview-prep" class of collision? Word-boundary still floors `coding-interview-university` (good) but spares "LLM interview-prep agent" — worth a deliberate decision, not an accident.
+2. Do any of the 9 curated subs (singularity, artificial) carry enough off-topic-but-clean traffic (drama, hiring, GPU-shopping) that the zero-token vouch meaningfully lifts non-topical `core`-labeled posts? The `source_curated_vouch` provenance will answer this post-cutover — is anyone committed to reading it?
+3. `_topic_text` keys on `source in ("github","github-trending")` — is the live dump's `source` field guaranteed to be exactly one of those two strings? If a future gatherer tags `"gh"` or `"github_trending"`, the description silently stops being read and github regresses to slug-only (fail-safe direction, but a silent recovery loss). Pin the exact source string in acceptance.
+4. Does the empty/whitespace-summary github row (B.4 fail-safe) actually appear in real dumps, or only in the selftest? If trending always scrapes *some* `<p>`, the fail-safe is dead code — fine, but confirm it's a guard, not a real path.
+
+**Bottom line:** v2 closed all three Pass-1 blockers for real — verified against the code flow, not the prose. What's left is two fail-safe-direction over-exclusion gaps (substring marker collisions, the reddit zero-token vouch residual) that are written into acceptance as cleaner than they are. None is a blocker — the fail-safe direction and shadow-gating hold — so this is APPROVE WITH CHANGES. Close RC-1 and RC-2 (de-fang the "cleanly separates" claim and add the positive-recovery assertion to the thin-pool probe) before filling the §3 evidence, and this ships.

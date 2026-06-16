@@ -466,28 +466,145 @@ def _tokens(text):
     return set(w.lower() for w in _substance(text))
 
 
+# ── Source-aware backstop exemption (SPEC-source-aware-backstop-exemption.md) ──
+# github-trending + curated-AI-subreddit items are topic-curated BY CONSTRUCTION:
+# a trending repo is dev content, a hand-picked AI sub is AI content — even when
+# the title is a terse repo slug or short thread title. The fragment/off-topic
+# backstops were tuned for X tweets ("thin text ⇒ noise"), which is false here and
+# force-floors genuine on-topic items. The SOURCE is itself an independent topic
+# signal, so for these sources we relax the Python force-floor (never upgrade; the
+# OFF_TOPIC_MARKER politics/insult guard still applies — see python_on_topic).
+#
+# The curated AI-sub set mirrors the G1 reddit gatherer's 9 hand-picked subs. A
+# reddit item from ANY OTHER sub is NOT exempt (defensive: a future wider gatherer
+# set doesn't silently inherit the vouch). GitHub is handled differently (it is NOT
+# a topic-curated source — trending = popular, not on-topic): github gets its real
+# topic signal from the repo DESCRIPTION via _topic_text (already in the dump), plus
+# an OFF_TOPIC_REPO_MARKERS guard. See SPEC §6 (Opus 2-pass review resolution).
+CURATED_AI_SUBREDDITS = {
+    "localllama", "machinelearning", "artificial", "singularity", "openai",
+    "ai_agents", "llmdevs", "chatgptcoding", "stablediffusion",
+}
+_REDDIT_SUB_RE = re.compile(r"reddit\.com/r/([A-Za-z0-9_]+)", re.I)
+
+# Off-topic-for-Ace repo-description markers (consumer/utility domains that are NOT
+# AI/dev-builder content). For a GITHUB item, if the description contains one of
+# these (word-boundary match — RC1, never raw substring), force off BEFORE the
+# generic-token short-circuit (RC2) so an "open-source IPTV tool" floors on `iptv`
+# rather than riding the incidental `open` token. Multi-word phrases match as a
+# bounded phrase. Data-driven + easily extended; tuning stays safe because matching
+# is word-bounded and the matched marker is recorded in _breakdown (OQ5).
+OFF_TOPIC_REPO_MARKERS = {
+    "iptv", "playlist", "m3u", "tv channel", "television", "debloat", "wallpaper",
+    "study plan", "curriculum", "interview", "tesla", "data logger",
+    "windows optimization", "media library", "live-chat", "omni-channel",
+    "autonomous robots", "self-hosting", "self-hosted",
+}
+# Precompiled word-boundary patterns (RC1). \b around each marker; for phrases the
+# internal spaces/hyphens are matched literally, ends are boundary-anchored.
+_OFF_REPO_MARKER_RES = [
+    (m, re.compile(r"(?<![A-Za-z0-9])" + re.escape(m) + r"(?![A-Za-z0-9])", re.I))
+    for m in OFF_TOPIC_REPO_MARKERS
+]
+
+
+def _is_github(item):
+    return str(item.get("source") or "").lower() in ("github", "github-trending")
+
+
+def _topic_text(item):
+    """Dedicated topic-check accessor (SPEC §B.2) — used ONLY by python_on_topic
+    and is_structural_fragment, NEVER the shared _item_text (which is left untouched
+    for substance/base/render callers). For a GITHUB item, return title+summary (the
+    repo description, already in the dump) so the topic/fragment checks read the real
+    signal instead of the opaque slug. Keyed on source=='github' (NOT 'has a
+    summary'), so HN/smol/X get exactly _item_text → byte-identical (RC2/blocker-2)."""
+    if _is_github(item):
+        title = str(item.get("title") or "").strip()
+        summary = str(item.get("summary") or "").strip()
+        return (title + " " + summary).strip()
+    return _item_text(item)
+
+
+def off_topic_repo_marker(item):
+    """Return the matched OFF_TOPIC_REPO_MARKER (string) for a github item whose
+    description is off-topic-for-Ace, else None. Word-boundary match (RC1)."""
+    if not _is_github(item):
+        return None
+    hay = _topic_text(item)
+    for marker, rx in _OFF_REPO_MARKER_RES:
+        if rx.search(hay):
+            return marker
+    return None
+
+
+def is_topic_curated_source(item):
+    """True when the item is from a curated AI subreddit (the sub itself vouches for
+    topicality). REDDIT-ONLY — github is deliberately NOT curated-for-topic (trending
+    = popular, not AI); github's topic signal comes from _topic_text + markers. Used
+    to relax the X-tweet-tuned backstops for reddit — never to upgrade a label or
+    bypass the politics/insult guard."""
+    if str(item.get("source") or "").lower() != "reddit":
+        return False
+    m = _REDDIT_SUB_RE.search(str(item.get("url") or ""))
+    return bool(m and m.group(1).lower() in CURATED_AI_SUBREDDITS)
+
+
+def is_structural_fragment(item):
+    """Source-aware fragment test. For a curated reddit sub OR a github repo, a short
+    thread title / repo slug is NOT a bare reply fragment — only a literally empty
+    topic-text floors. github reads _topic_text (title+summary), so a populated repo
+    description is non-fragment (RC4 — this is the fragment-recovery mechanism) while
+    an empty-summary repo (_topic_text==slug→still thin) floors via is_bare_fragment.
+    For every other source (X, HN, Perplexity) this is exactly is_bare_fragment on
+    _item_text → byte-identical."""
+    if is_topic_curated_source(item):
+        return not str(_item_text(item) or "").strip()  # reddit: only empty floors
+    if _is_github(item):
+        # github: judge the description (title+summary), not the opaque slug
+        return is_bare_fragment(_topic_text(item))
+    return is_bare_fragment(_item_text(item))
+
+
 def python_on_topic(item):
     """Independent topic check (does NOT trust the model label). Returns
     ('core'|'adjacent'|'off', reason). Fail-SAFE: only ever returns 'off' as an
     OVERRIDE signal; an item with real tech tokens is left to the model label."""
-    text = _item_text(item)
+    text = _topic_text(item)
     toks = _tokens(text)
     # NOTE: we deliberately do NOT trust item.signals.topic_hits here — the
     # enrichment auto-tags are as unreliable as the model label (the 2026-06-11
     # @elonmusk "scumbag and traitor" insult carried a bogus topic_hits=['ai']).
     # Only ACTUAL on-topic word tokens in the post body count as a topic signal.
+    # (For github, _topic_text is title+summary so the description is read, not the
+    # opaque slug — SPEC §B.2.)
+
+    # ── ORDER (SPEC §6 RC2 — do NOT reorder) ─────────────────────────────────
+    # (1) politics/insult OFF_TOPIC_MARKERS force-off ALWAYS wins, even over a tech
+    #     token — applies to github descriptions too (the load-bearing politics guard
+    #     is never bypassed by any source).
+    if toks & OFF_TOPIC_MARKERS:
+        return "off", "python:offtopic-marker"
+    # (2) github repo-description off-topic marker (iptv/playlist/debloat/…) force-off
+    #     runs BEFORE the generic-token short-circuit, so an "open-source IPTV tool"
+    #     floors on `iptv` and does NOT escape via the incidental `open` token.
+    repo_marker = off_topic_repo_marker(item)
+    if repo_marker is not None:
+        return "off", "github-offtopic-repo-marker"
+    # (3) real on-topic token → let the model label stand (X-consistent short-circuit).
     has_on_topic_token = bool(toks & ON_TOPIC_TOKENS)
-    # Stem fallback: catch dev/AI inflections the exact set misses (code→coded,
-    # extension→extensions). Prefix match, specific technical stems only.
     if not has_on_topic_token:
         has_on_topic_token = any(
             tok.startswith(stem) for tok in toks for stem in ON_TOPIC_STEMS
         )
     if has_on_topic_token:
-        return None, None  # real tech tokens present → let the model label stand
-    # zero on-topic signal at all → force off
-    if toks & OFF_TOPIC_MARKERS:
-        return "off", "python:no-tech-tokens+offtopic-marker"
+        return None, None
+    # (4) curated-reddit-sub vouch: the sub itself is a topic signal, so a thin AI
+    #     thread title with no exact token is NOT forced off (no-marker already
+    #     established above).
+    if is_topic_curated_source(item):
+        return None, "source-curated-vouch"
+    # (5) zero on-topic signal at all → force off.
     return "off", "python:no-tech-tokens"
 
 
@@ -499,7 +616,7 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
     # ── Backstop 1: fragment override (§3.1) — a bare reply fragment is forced to
     # content_type=reply_fragment (BASE 0) regardless of the model's label.
     frag_override = False
-    if labels["content_type"] != "reply_fragment" and is_bare_fragment(_item_text(item)):
+    if labels["content_type"] != "reply_fragment" and is_structural_fragment(item):
         labels = dict(labels); labels["content_type"] = "reply_fragment"
         frag_override = True
 
@@ -508,9 +625,14 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
     # downgrades core/adjacent→off, never upgrades off→core).
     eff_on_topic = labels["on_topic"]
     on_topic_override_reason = None
+    source_vouch = False
     py_ot, py_reason = python_on_topic(item)
     if py_ot == "off" and eff_on_topic != "off":
         eff_on_topic = "off"; on_topic_override_reason = py_reason
+    elif py_reason == "source-curated-vouch":
+        # Python would have force-floored a no-tech-token item to off, but the
+        # curated source vouched for topicality → label left to stand. Audit-only.
+        source_vouch = True
 
     ct, ac = labels["content_type"], labels["actionability"]
     base = BASE[ct][ac]
@@ -556,6 +678,15 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
         "effective_on_topic": eff_on_topic,
         "on_topic_overridden": on_topic_override_reason,
         "fragment_overridden": frag_override,
+        "source_curated_vouch": source_vouch,
+        "structural_fragment_exempt": (is_topic_curated_source(item)
+                                       and not frag_override
+                                       and is_bare_fragment(_item_text(item))),
+        # Provenance (SPEC §6 OQ5): which text decided topicality, and which repo
+        # marker (if any) fired — so post-cutover audits + marker-set tuning stay
+        # explainable. github reads title+summary; everything else reads _item_text.
+        "topic_text_source": "title+summary" if _is_github(item) else "item_text",
+        "offtopic_repo_marker": off_topic_repo_marker(item),
     }
     out = dict(item)
     out["_final"] = final
@@ -868,6 +999,91 @@ def _selftest():
     pol = {"source": "x", "authorHandle": "x",
            "tweet_text": "The election was stolen and the deport policy is communist nonsense"}
     check(python_on_topic(pol)[0] == "off", "stem fallback wrongly rescued politics")
+
+    # --- Source-aware backstop exemption (SPEC-source-aware-backstop-exemption v3) ---
+    # GitHub is NOT a curated source; it gets its topic signal from the DESCRIPTION
+    # (title+summary via _topic_text) + OFF_TOPIC_REPO_MARKERS. Reddit-curated subs ARE
+    # vouched. Order in python_on_topic: politics-marker > repo-marker > token > vouch.
+
+    # B.2 — github reads the DESCRIPTION: a slug with no token but an AI description recovers.
+    gh_ai = {"source": "github", "title": "NVIDIA/SkillSpector",
+             "url": "https://github.com/NVIDIA/SkillSpector",
+             "summary": "Security scanner for AI agent skills. Detect vulnerabilities.",
+             "content_type": "launch", "actionability": "reference",
+             "substance": "concrete", "on_topic": "core"}
+    check(not is_topic_curated_source(gh_ai), "github wrongly treated as curated source")
+    check(python_on_topic(gh_ai)[0] is None, f"AI-description repo wrongly floored: {python_on_topic(gh_ai)}")
+    gab = score_item(gh_ai, tl_h, tl_a, trk)
+    check(gab["_breakdown"]["effective_on_topic"] != "off", "AI repo wrongly forced off")
+    check(gab["_breakdown"]["labels"]["content_type"] != "reply_fragment", "AI repo wrongly fragment-floored")
+    check(gab["_breakdown"]["topic_text_source"] == "title+summary", "github topic_text_source not recorded")
+    # RC4 — fragment recovery rides _topic_text: slug alone is a bare fragment, but the
+    # populated description makes it non-fragment.
+    check(is_bare_fragment("NVIDIA/SkillSpector") and not is_structural_fragment(gh_ai),
+          "github fragment recovery did not ride _topic_text")
+    # B.2a/RC2 — an off-topic repo with a marker floors even with a generic 'open' token,
+    # because the repo-marker force-off runs BEFORE the token short-circuit.
+    gh_iptv = {"source": "github", "title": "iptv-org/iptv",
+               "url": "https://github.com/iptv-org/iptv",
+               "summary": "Collection of publicly available open-source IPTV channels from around the world",
+               "content_type": "news", "actionability": "reference", "substance": "concrete", "on_topic": "core"}
+    ot, reason = python_on_topic(gh_iptv)
+    check(ot == "off" and reason == "github-offtopic-repo-marker",
+          f"iptv repo not floored by marker (rode generic token?): {(ot, reason)}")
+    check(off_topic_repo_marker(gh_iptv) == "iptv", "iptv marker not recorded")
+    # RC1 — word-boundary match: 'tv' must NOT collide inside an on-topic word, and a
+    # legit 'chatbot'/'agent' repo must NOT be floored by the 'live-chat' marker.
+    gh_chatbot = {"source": "github", "title": "acme/agentkit",
+                  "url": "https://github.com/acme/agentkit",
+                  "summary": "A chatbot agent framework with tool-calling and RAG",
+                  "content_type": "launch", "actionability": "reference", "substance": "concrete", "on_topic": "core"}
+    check(off_topic_repo_marker(gh_chatbot) is None, "word-boundary marker wrongly collided on chatbot/agent repo")
+    check(python_on_topic(gh_chatbot)[0] is None, "legit agent repo wrongly floored")
+    # B.4 — empty-description github → _topic_text == slug → still floors (fail-safe).
+    gh_empty = {"source": "github", "title": "owner/thing", "url": "https://github.com/owner/thing",
+                "summary": "", "content_type": "news", "actionability": "none", "substance": "vague", "on_topic": "core"}
+    check(is_structural_fragment(gh_empty) or python_on_topic(gh_empty)[0] == "off",
+          "empty-description github repo did not floor")
+
+    # Part A — a curated-AI-sub thin title (no exact token) must NOT be floored.
+    rd_thin = {"source": "reddit", "title": "I built a TUI to review worktree changes",
+               "url": "https://www.reddit.com/r/LocalLLaMA/comments/x/i_built_a_tui/",
+               "content_type": "field_report", "actionability": "actionable_now",
+               "substance": "concrete", "on_topic": "core"}
+    check(is_topic_curated_source(rd_thin), "curated AI sub not recognized")
+    check(python_on_topic(rd_thin)[1] == "source-curated-vouch", "curated-sub thin title not vouched")
+    # A NON-curated subreddit thin title is STILL floored (defensive).
+    rd_other = dict(rd_thin, url="https://www.reddit.com/r/aww/comments/x/cute/")
+    check(not is_topic_curated_source(rd_other), "non-curated sub wrongly exempted")
+    check(python_on_topic(rd_other)[0] == "off", "non-curated thin title not forced off")
+    # The politics guard is NEVER bypassed, even from a curated sub.
+    rd_pol = {"source": "reddit", "title": "The election was stolen, total communist fascist nonsense",
+              "url": "https://www.reddit.com/r/singularity/comments/x/election/",
+              "content_type": "opinion", "actionability": "none", "substance": "vague", "on_topic": "core"}
+    check(python_on_topic(rd_pol)[0] == "off", "curated-source vouch wrongly bypassed politics guard")
+    # Token-vs-marker precedence: a curated-sub post with BOTH a tech token and an insult
+    # marker → politics force-off WINS (RC2 step 1, even over the token). Matches the
+    # documented X-consistent intent that politics is never rescued.
+    rd_tok_pol = {"source": "reddit", "title": "This AI model is communist garbage and the founders are scumbags",
+                  "url": "https://www.reddit.com/r/singularity/comments/x/rant/",
+                  "content_type": "opinion", "actionability": "none", "substance": "vague", "on_topic": "core"}
+    check(python_on_topic(rd_tok_pol)[0] == "off", "tech-token+insult curated-sub post not floored by politics guard")
+
+    # X byte-identity: a thin X reply is STILL a fragment; _topic_text == _item_text for X.
+    x_thin = {"source": "x", "authorHandle": "x", "tweet_text": "Yes exactly"}
+    check(_topic_text(x_thin) == _item_text(x_thin), "X _topic_text diverged from _item_text")
+    check(is_structural_fragment(x_thin) == is_bare_fragment(_item_text(x_thin)),
+          "source-aware fragment changed X behavior")
+    # HN byte-identity RE-DERIVED for Part B: an HN item with a summary is NOT broadened
+    # (_topic_text keys on source=='github', NOT 'has summary'), so its topic + fragment
+    # verdict is identical with vs without the summary present.
+    hn_sum = {"source": "hn", "title": "Show HN: a small CLI", "summary": "extra blurb here",
+              "content_type": "launch", "actionability": "reference", "substance": "concrete", "on_topic": "core"}
+    hn_nosum = dict(hn_sum); hn_nosum.pop("summary")
+    check(_topic_text(hn_sum) == _item_text(hn_sum) == _item_text(hn_nosum),
+          "HN _topic_text wrongly broadened to include summary")
+    check(python_on_topic(hn_sum) == python_on_topic(hn_nosum), "HN topic verdict changed with summary present")
+    check(is_structural_fragment(hn_sum) == is_structural_fragment(hn_nosum), "HN fragment verdict changed with summary")
 
     # --- non-X items are exempt from the low-reach cap ---
     story = {"source": "hackernews", "title": "Show HN: a new thing", "content_type": "launch",

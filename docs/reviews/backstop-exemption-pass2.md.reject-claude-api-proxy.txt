@@ -1,0 +1,78 @@
+I'll review this v2 spec adversarially. The prior review (Pass 1) was BLOCK with 3 blockers; my job is to verify each genuinely closed in this version and surface any new gaps — not rubber-stamp. Let me work through the six focus areas against the actual evidence-pack code.
+
+The critical thing I notice immediately: the evidence pack's `python_on_topic` and `is_topic_curated_source` are now **the post-fix code** (they already contain the `source-curated-vouch` path and reddit-only logic). So the evidence pack reflects the proposed end-state, and I can check the spec's claims directly against it.
+
+# Source-Aware Backstop Exemption — Senior Review (Pass 2)
+
+## Verdict
+**APPROVE WITH CHANGES**
+
+The three Pass-1 blockers are genuinely closed, not papered over: (1) the dedicated `_topic_text` accessor is now mandated by name with `_item_text` explicitly untouched and caller-enumeration in acceptance (B.2, §4); (2) HN byte-identity is re-derived for Part B specifically with a dedicated selftest, and the accessor now keys on `source=="github"` not "has a summary" — which structurally excludes HN (B.2, §4); (3) B.4's "never reaches a gate" fake-green is replaced by shipping `OFF_TOPIC_REPO_MARKERS` now plus a thin-pool/degraded-pool acceptance probe (B.2a, B.4, §4). That's real closure. What remains are narrower correctness gaps in the *new* B.2a marker machinery and one unproven precedence claim — none live-fire (shadow-only), so this is APPROVE-WITH-CHANGES, not BLOCK.
+
+---
+
+## Critical Blockers
+None are BLOCK-class. The following are **Required Changes** (must close before build) because they are correctness gaps in newly-added code paths, not design flaws.
+
+---
+
+## Required Changes
+
+**1. The OFF_TOPIC_REPO_MARKER substring match will false-floor genuine on-topic repos — `meshery` and the embedded-substring problem (B.2a).**
+B.2a says markers "match as case-insensitive **substrings** of the description." Substring matching against a hand-picked consumer-domain set is fragile in the exact direction that fails *closed on a good item*:
+- `"tool"` is named in B.2a's prose list? No — but `"server"` adjacency: `music-assistant/server` is floored via `"media library"`, fine. The real hazard is short markers as substrings: `"tv"` (from "tv channel") is a substring of countless on-topic words; `"iptv"` is safe but if the set is "data-driven and easily extended," the next maintainer adds `"tv"` or `"ai"`-adjacent generic and silently floors AI repos. **Pin the matching to word-boundary or whole-phrase markers, not raw `in` substring**, and add a selftest asserting `meshery`/`SkillSpector`/`chatwoot`-vs-`chat` do not collide. (`chatwoot` is listed as OFF via `"live-chat"`/`"omni-channel"` — good — but `"live-chat"` as a bare substring vs a legit "chat agent" AI repo is exactly the collision to pin.) This is fail-toward-**exclusion**, so it's safe-direction, but it can suppress genuine recoveries the spec claims (`meshery` ON), making §3's "genuine on-topic recover" assertion false on extension.
+
+**2. B.2a marker check ordering vs the OFF_TOPIC_MARKER (insult) path is specified only for github, leaving a gap if a github description carries an insult marker (B.2a, A.2).**
+B.2a places `OFF_TOPIC_REPO_MARKERS` "BEFORE the generic-token check." But the spec does not state its order relative to the *existing* `OFF_TOPIC_MARKERS` (politics/insult) check, nor relative to the `has_on_topic_token` short-circuit. Walk the evidence-pack `python_on_topic` for a github item: `has_on_topic_token` is computed first and returns `(None,None)` on ANY on-topic token — so a github repo whose description is `"open-source tool to own the libs, AI-powered"` short-circuits to model-label BEFORE either marker check fires. The spec must state explicitly where the github repo-marker force-off sits in the existing flow (the evidence pack shows the current flow has NO github-specific branch yet), and confirm the politics/insult `OFF_TOPIC_MARKERS` force-off still applies to github descriptions. Right now Part B's marker logic is described in prose but not located in the actual control flow shown in the evidence pack — an implementer could place it after the token short-circuit and silently let a generic-token-bearing off-topic repo through.
+
+**3. The thin-pool probe asserts a gate-clearance invariant but does not pin the scores it depends on (§4 thin-pool probe, B.2a).**
+The degraded-pool probe is the right fix for the Pass-1 fake-green. But "assert NO github off-topic repo clears ALSO_GATE at either regime (45/50)" re-introduces a pool-conditional assertion unless the probe **fixes the pool composition** it tests against. B.2a's own evidence says the generic-token repos score 59–60 — *above* both gates — and are only saved by markers. So the probe's pass depends entirely on `OFF_TOPIC_REPO_MARKERS` catching every such repo. Required: the probe must (a) run with markers ON, (b) assert each *known* generic-token repo (freeCodeCamp, optimizerDuck, music-assistant, chatwoot) is floored by a marker (not by ranking), and (c) include at least one synthetic off-topic repo whose description has NO marker and a generic token, proving the *residual* leak is bounded — or acknowledging it as accepted residual. Without (c), the probe proves the markers you wrote catch the repos you knew about — a tautology, not an invariant.
+
+**4. Empty-summary fail-safe is correct but the structural-fragment path for github is under-specified (B.4, A.3).**
+B.4 says empty github summary → `_topic_text` = slug → floored. But `is_structural_fragment` for a github item is governed by `is_topic_curated_source`, which is **False for github** (Part A, B.5). So github goes through `is_bare_fragment(text)` — and the spec must state which text: `_item_text` (slug only) or `_topic_text` (title+summary)? B.2 says `_topic_text` is used by `is_structural_fragment`. So a github repo with a *rich* description is NOT a fragment (good), but an empty-summary github repo with a non-empty slug → `_topic_text`=slug → `is_bare_fragment("trycua/cua")`: does a slug count as a bare fragment? The evidence-pack `is_structural_fragment` returns `is_bare_fragment(text)` for non-curated sources, and the X-tuned `is_bare_fragment` is what floored the slugs in the first place (§1: 24 fragment-floored). So **empty-summary github correctly floors via fragment** — but a *populated*-summary github now passes `title+summary` to `is_bare_fragment`, which may now read as non-fragment for repos that were previously fragment-floored. That's the intended recovery, but the spec never states that `is_structural_fragment` for github reads `_topic_text` (the only thing making `SkillSpector` non-fragment). Make B.2/A.3 explicit: **github fragment verdict reads `_topic_text`; that is the mechanism of fragment recovery, not just the off-topic recovery.**
+
+---
+
+## Lens Notes
+
+- **Product:** Split design (reddit-vouch / github-via-data) is still the right call and v2 hardened it by shipping the github markers now instead of deferring — directly answering Pass-1's slow-news-day objection. Sound.
+- **Architecture:** The dedicated `_topic_text` keyed on `source=="github"` (not "has summary") is the correct seam and structurally protects HN — this is the single most important fix from Pass-1 and it landed cleanly. `_item_text` untouched + caller enumeration in acceptance makes "topic-only" verifiable, not asserted.
+- **Security:** Politics/insult guard: the reddit vouch is gated on `not (toks & OFF_TOPIC_MARKERS)` in the evidence pack — airtight on the reddit path. The residual exposure is Required Change 2 (github description's interaction with the insult marker is unspecified in control-flow terms). Token-short-circuit precedence is now documented (A.2) and matches X behavior — that Pass-1 open question is genuinely answered.
+- **Infra:** No gatherer/API/ingestion change; description already in the dump (B.1, confirmed by evidence pack's 18 github rows each carrying `summary`). Lowest-risk dimension, unchanged.
+- **DevOps/SRE:** Same cutover gate, no independent go-live, no new cron/launchd surface (§4). Correct; prevents a half-cutover.
+- **Implementation:** Highest-leverage remaining artifact is the **control-flow placement** of the B.2a github marker branch inside the evidence-pack `python_on_topic` (Required Change 2) and the substring-match hardening (Required Change 1). Both are localized.
+- **QA:** Acceptance is materially stronger than Pass-1 — thin-pool probe, empty-desc selftest, HN-Part-B byte-identity, token-vs-marker precedence, `_breakdown` provenance (`topic_text_source`, `offtopic_repo_marker`) are all present. The two QA holes left: the marker-extension collision (RC1) and the probe-tautology (RC3c).
+
+---
+
+## Verifying the six focus areas (the assignment's explicit scrutiny list)
+
+1. **Reddit vouch never lets politics/insult through — OFF_TOPIC_MARKER carve-out airtight?** **Yes, on the reddit path.** Evidence pack: `if is_topic_curated_source(item) and not (toks & OFF_TOPIC_MARKERS): return None, "source-curated-vouch"`. The vouch is conjunctively gated on no-marker; a markered curated-sub post falls through to the `toks & OFF_TOPIC_MARKERS → return "off"` line. Airtight. The one nuance (A.2, now documented): an on-topic token short-circuits to `(None,None)` *before* the vouch OR the marker force-off — so a tech-token+insult post is left to the model label. The spec correctly identifies this as **pre-existing X behavior, not a new bypass**, and the model prompt classifies politics as off. Acceptable and now explicit.
+
+2. **Part B richer text leaking into base/actionability/rendering or X/HN?** **No** — *if* the build honors the dedicated-accessor mandate. `_topic_text` is scoped to `python_on_topic` + `is_structural_fragment` only; `_item_text` untouched; keyed on `source=="github"` so X/HN never receive concatenated text. Acceptance enumerates `_item_text` callers and proves HN byte-identity separately. This is the Pass-1 blocker-1/2 closure and it holds. (RC4 only asks the spec to *state* that fragment-recovery rides `_topic_text` — mechanism clarity, not a leak.)
+
+3. **B.4 generic-token "never reach a posting gate" — fake-green?** **Was, now mitigated** by shipping `OFF_TOPIC_REPO_MARKERS` now + thin-pool probe. **But not fully closed** — RC3: the probe risks tautology (markers catch known repos) and RC1: substring markers can over-floor. The residual unmarkered-generic-token leak is real but bounded and shadow-only.
+
+4. **reddit-only-vouch / github-via-description split correct, or a mishandled source?** Split is correct. Two edges: (a) a curated-sub post that IS off-topic → handled by OFF_TOPIC_MARKER force-off (and empty-title fragment floor); (b) **github repo with empty description** → handled by B.4 fail-safe (slug→floor). The one under-specified case is RC4 (which text the github fragment check reads) — correctness-neutral but must be stated.
+
+5. **Byte-identity for X/HN guaranteed by predicate being false, or shared code paths change?** For **X**: guaranteed — `is_topic_curated_source` false AND `source!="github"`, so both `_topic_text` and the curated branches no-op. For **HN**: guaranteed by `_topic_text` keying on `source=="github"` (NOT "has summary") — this is the corrected predicate that closes Pass-1 blocker 2. The remaining risk is purely implementation drift (someone edits `_item_text` instead), which acceptance's caller-enumeration is designed to catch.
+
+6. **Fail-safe direction — can any change upgrade off→core?** **No.** Every change only *withholds* a Python force-floor (returns `(None, ...)` = "let the model label stand") or *adds* a force-off (`OFF_TOPIC_REPO_MARKERS`). The vouch returns `None`, never `"core"`. Confirmed against the evidence-pack control flow: there is no path where any new code returns an upgraded label. Fail-toward-exclusion preserved.
+
+---
+
+## Open Questions
+
+1. **Where exactly does the B.2a github marker branch sit in the evidence-pack `python_on_topic` flow?** The evidence pack shows NO github-specific branch yet. Implementer must place the `OFF_TOPIC_REPO_MARKERS` force-off *after* the `has_on_topic_token` short-circuit (matching reddit) or *before* it? If after, a generic-token off-topic repo with an incidental on-topic token in its description escapes the marker. Spec must pin this. (Drives RC2.)
+
+2. **Is the substring match for `OFF_TOPIC_REPO_MARKERS` word-bounded or raw `in`?** Raw `in` on a "data-driven, easily extended" set is a latent over-floor on the next maintainer's addition. (Drives RC1.)
+
+3. **Does the thin-pool probe assert *marker-caused* floors specifically, or just gate-non-clearance?** If only the latter, it's a tautology over known repos. Add a synthetic no-marker generic-token repo to bound the residual. (Drives RC3.)
+
+4. **`is_bare_fragment` on a populated `title+summary` for github — confirmed non-fragment for all 18 live rows?** §1 says 24 were fragment-floored on the slug; the recovery depends on `is_bare_fragment("trycua/cua Open-source infrastructure for Computer-Use Agents…")` returning non-fragment. Worth a selftest row asserting each recovered repo passes the fragment check via `_topic_text`, not just the off-topic check.
+
+5. **`_breakdown` provenance granularity:** does `offtopic_repo_marker` record *which* marker fired (for audit/extension debugging), or just a boolean? Recording the matched marker makes the inevitable marker-set tuning safe and explainable.
+
+---
+
+**Bottom line:** v2 genuinely closes all three Pass-1 blockers — the dedicated `_topic_text` keyed on `source=="github"`, the re-derived HN byte-identity, and the now-shipped `OFF_TOPIC_REPO_MARKERS` + thin-pool probe are real closures, not restated promises. What's left are four localized correctness gaps in the *new* B.2a marker machinery: substring-match over-floor (RC1), control-flow placement of the github marker branch vs the token short-circuit and the insult-marker check (RC2), thin-pool probe tautology (RC3), and the under-stated github fragment-recovery mechanism (RC4). All are fail-toward-exclusion and shadow-only, so none is BLOCK-class — but RC2 (where the marker branch sits relative to `has_on_topic_token`) is the one I'd refuse to let an implementer guess on, because it's the only place a generic-token off-topic repo can still slip the marker. Close RC1–RC4 and this is APPROVE.

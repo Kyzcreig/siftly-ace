@@ -1,0 +1,63 @@
+I have everything I need. The critical architectural facts are now confirmed: `score_item` and the whole pipeline reuse shared helpers via ONE source of truth, and `_item_text` is the shared accessor used by `python_on_topic`, `is_bare_fragment`/`is_structural_fragment`, AND substance/rendering paths. Now I can write a rigorous adversarial review.
+
+# Source-Aware Backstop Exemption — Senior Review (Pass 1)
+
+## Verdict
+**BLOCK**
+
+The split design (reddit-vouch / github-via-description) is correct in spirit and the OFF_TOPIC_MARKER carve-out is sound. But the spec ships on a **load-bearing ambiguity in Part B** that, read against the actual `_item_text` accessor in the evidence pack, can break the very byte-identity guarantee the spec claims — plus a fail-green acceptance claim that depends on scores that aren't pinned. Three blockers must close before build.
+
+---
+
+## Critical Blockers
+
+**1. Part B's "title+summary" accessor is under-specified, and the obvious implementation silently changes base/actionability/rendering for X and HN (B.2, §3 "X/HN diff = 0", A.3 byte-identity claim).**
+The evidence pack shows ONE shared accessor: `_item_text` reads `tweet_text or title or summary or line or text_snippet`. The spec text says two contradictory things: B.2 says *"Add a topic-check text accessor"* (a NEW, separate function), but the trigger/root-cause (B.1) describes the fix as making *the scorer's `_item_text`* fall through to `summary`. These are not the same change:
+- If the build edits the **shared `_item_text`** to concatenate `title+summary`, then **every consumer changes** — `_substance`, any base/actionability heuristic, the fragment word-count, and potentially rendering — for **all** story-type sources including **HN** (which carries a `summary`). That breaks "X/HN diff = 0." HN is explicitly *not* in scope but *does* carry summaries, so the diff is NOT zero. This is a wrong-product/regression outcome on a live-bearing engine.
+- The spec must mandate a **dedicated topic-check accessor** (e.g. `_topic_text(item)`) used **only** by `python_on_topic` and `is_structural_fragment`, leaving `_item_text` byte-identical for every other call site. The spec does not name the function, does not enumerate `_item_text`'s other callers, and does not prove the richer text is confined. Until it does, the "ONLY for the on-topic token check and fragment check — NOT base/actionability/rendering" claim in B.2 is an assertion, not a guarantee.
+
+**2. The "X/HN byte-identical" claim is justified by the wrong predicate and is not airtight for Part B (A.3, §3, B.2).**
+Part A's byte-identity is real and structural: `is_topic_curated_source` is reddit-only, so for X/HN the predicate is false and the backstops are unchanged. **But Part B's accessor change is NOT gated by `is_topic_curated_source`** — B.2 applies the `title+summary` concatenation to *"story-type items (github, reddit, hn, smol, etc. — anything carrying a `summary`)."* HN is a story-type item with a summary. So Part B's text-broadening **does** reach HN by its own definition, and the predicate being false does **not** protect HN here. The byte-identity guarantee for HN must be re-derived for Part B specifically (either by proving HN's summary-inclusion is inert through the topic check, or by scoping the accessor away from HN), and the spec must state which. As written, blockers 1 and 2 are the same root gap viewed two ways: **the spec proves X/HN safety for Part A and then quietly widens the blast radius in Part B without re-proving it.**
+
+**3. B.4's "they never reach a posting gate" is a fake-green that breaks on a slow news day (B.4, §3, §4 acceptance).**
+The accepted generic-token imperfection (freeCodeCamp, optimizerDuck, music-assistant/server reading on-topic on "open-source/tool/server") is defended with *"verified on the live pool, NONE of these reach a posting gate — real AI content outscores them."* That is a **relative-ranking claim verified against ONE pool on ONE day** presented as a **safety invariant**. It is exactly the failure mode this codebase has already been bitten by (recency-as-artifact; the @yoheinakajima 100). On a thin-pool day (a source dies — the spec's own history shows X gather going to 0, leaving only HN+github), these mildly-off-topic repos at ~59–60 are no longer outranked and **can clear ALSO_GATE (50)**. "Never reach a gate" is conditional on pool richness the engine does not control. This is shadow-only today so it's not a live-fire incident — but it must not be written into acceptance as an invariant. Either (a) downgrade B.4's claim to "does not reach a gate *on a healthy pool*; on a thin pool these may surface — accepted as mildly-off-topic dev repos, never politics," or (b) ship the narrow `OFF_TOPIC_REPO_MARKERS` set (iptv/playlist/debloat/wallpaper) now rather than deferring it, since the thin-pool case is foreseeable, not hypothetical.
+
+---
+
+## Required Changes
+
+1. **Name and scope the topic-check accessor.** Spec must mandate a NEW function (e.g. `_topic_text(item)`), used ONLY by `python_on_topic` and `is_structural_fragment`. Explicitly forbid editing the shared `_item_text`. Add an acceptance line: enumerate every caller of `_item_text` and assert none changed (grep the call sites; `_substance`, base/actionability, renderer must read the unchanged accessor).
+
+2. **Re-derive HN byte-identity for Part B, not just Part A.** Since B.2's accessor keys on "has a summary" (which HN satisfies), either (a) exclude HN from the concatenation explicitly, or (b) add a selftest proving an HN item's topic label/fragment verdict is unchanged with vs without summary inclusion. Add to acceptance: "X/HN topic-check + fragment verdict byte-identical **under Part B**" — a separate assertion from the Part-A predicate-false case.
+
+3. **De-fang B.4's safety claim.** Replace "NONE reach a posting gate" with a pool-conditional statement, and add a thin-pool acceptance probe: re-score a *degraded* pool (github+HN only, X removed) and assert no generic-token off-topic repo clears ALSO_GATE — or ship `OFF_TOPIC_REPO_MARKERS` now. Do not certify cutover on the rich-pool result alone.
+
+4. **Add the empty-github-description case to acceptance.** B.1 asserts the description "is ALREADY present," but the evidence pack only proves it for 18 rows on one day. A repo with an empty/whitespace `summary` falls through `title+summary` → just the slug → fragment/off floor. Confirm that's the *intended* fail-safe (it is — empty desc → floor is correct), and add a selftest: github item with empty summary → still floors. This closes the "github repo with an empty description" edge you'd otherwise discover in production.
+
+5. **Add the off-topic-curated-sub selftest explicitly.** §4 lists "OFF_TOPIC post from curated sub STILL forced off," good. Add the harder adversarial case the carve-out must survive: a curated-sub post whose body has a real OFF_TOPIC_MARKER **and** an incidental on-topic token (e.g. an r/LocalLLaMA political rant that says "AI"). Verify order-of-operations: `has_on_topic_token` returns `None,None` *before* the vouch check even runs — meaning **an on-topic token short-circuits ahead of the OFF_TOPIC_MARKER force-off.** Confirm this is acceptable (it matches existing X behavior — a real tech token already lets the model label stand) OR that the OFF_TOPIC_MARKER check should gate earlier. This is the one place the politics guard could be thinner than claimed, and the spec never examines the token-vs-marker precedence.
+
+---
+
+## Lens Notes
+
+- **Product:** The reddit-vouch/github-data split is the right call — it refuses the lazy "trust the source" blanket and matches each source to the signal its data actually supports. Sound product judgment; the risk is entirely in execution scope-creep (Part B touching more than intended).
+- **Architecture:** One shared `_item_text` with five callers is the load-bearing seam. The whole fix hinges on introducing a *second* accessor cleanly rather than mutating the shared one — exactly the "parameterize, don't mutate the shared global/helper" discipline this engine already enforces (per the deterministic-scorer notes). Spec must make that explicit, not implied.
+- **Security:** No exfiltration/irreversibility surface (shadow-only, no config gate). The only "security-adjacent" risk is the politics/insult guard being weakened — the OFF_TOPIC_MARKER carve-out is correct, but the token-short-circuit precedence (Required Change 5) is unverified.
+- **Infra:** No gatherer change, no API, no new ingestion (B.1) — confirmed by the evidence pack (summary already in the dump). Genuinely additive. Lowest-risk dimension.
+- **DevOps/SRE:** Both parts ride the SAME cutover gate with no independent go-live (§4) — correct; prevents a half-cutover. No new launchd/cron surface. Good.
+- **Implementation:** The single highest-leverage missing artifact is the call-site enumeration of `_item_text`. Without it, "ONLY for the topic check" is unverifiable by review.
+- **QA:** Acceptance is mostly well-shaped but has two fake-green holes: B.4's pool-dependent "never reach a gate," and the absence of an empty-description + thin-pool probe. Selftests lock headline cases; this engine's own history says the live-pool/thin-pool audit is where the real bugs live.
+
+---
+
+## Open Questions
+
+1. **Is the Part B fix a new accessor or an edit to `_item_text`?** The single most important question; the verdict downgrades to APPROVE-WITH-CHANGES the moment the spec says "new dedicated `_topic_text`, `_item_text` untouched, callers enumerated."
+2. **Does HN carry a `summary` on live morning-digest/x-feed dumps, and does including it change any HN topic/fragment verdict?** If yes anywhere, the "X/HN diff=0" claim needs HN explicitly carved out of B.2's accessor.
+3. **Token-vs-marker precedence in `python_on_topic`:** an on-topic token returns `None,None` and short-circuits before the OFF_TOPIC_MARKER force-off. Is that the intended (X-consistent) behavior for curated subs too, or should a curated-sub post with an OFF_TOPIC_MARKER floor even when it also contains a tech token?
+4. **What's the ALSO_GATE headroom for the generic-token repos (~59–60) on a degraded pool?** If the cap/gate math puts them over 50 when X is absent, B.4's deferral of `OFF_TOPIC_REPO_MARKERS` is wrong and it should ship now.
+5. **`_breakdown` provenance (§4):** does it record `topic_text_source` (title-only vs title+summary) so a post-cutover audit can prove which items had their topicality decided by the description vs the slug? Without it, the github recovery is unexplainable after the fact — and this engine's whole design premise is term-by-term explainability.
+
+---
+
+**Bottom line:** the design is right; the spec under-specifies the one change (Part B's accessor) that determines whether the X/HN byte-identity guarantee actually holds, and writes one pool-dependent ranking result into acceptance as an invariant. Close blockers 1–3 (Required Changes 1–3 are the minimum) and this is APPROVE-WITH-CHANGES. None of this is live-fire today — it's shadow-only behind the cutover gate — which is the only reason it's a BLOCK-before-build and not an incident.
