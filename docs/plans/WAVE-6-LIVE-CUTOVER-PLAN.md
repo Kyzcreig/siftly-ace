@@ -58,6 +58,8 @@ Precondition cleared (2026-06-15): the GitHub/Reddit backstop over-fire fix (sou
 
 When the streak holds: bring the gated Step 2a/2b `prompt.md` edits to Ace (back up `.bak`, show diff, apply, verify, keep rollback). A single Hard-Config edit per brief, no loose ends.
 
+**Auto-fire watchdog (wired 2026-06-16):** no_agent cron `siftly-coercion-gate-watch` (job `581751ef427a`, daily 9:15am PT, script `~/.hermes/scripts/siftly-coercion-gate-watch.py`) reads the daily shadow output (`/tmp/shadow_scores_YYYY-MM-DD.json`, written by the 8am `shadow-score-check` cron), mirrors each day's `label_coercion_count` into a reboot-durable ledger (`~/.hermes/state/x-bookmarks/coercion-streak.jsonl`), and the moment the count holds **0 for 5 consecutive days on/after `START_DATE=2026-06-17`** (forward of the `e1d3ee5` backstop fix — pre-fix zero-days are deliberately excluded as a different engine), it pings the `#daily` thread once and removes itself (Rule #5a). Silent every other run. It is a reminder/trigger, not the cutover — the cutover itself is still the gated Hard-Config edit above and requires Ace's explicit go.
+
 ## Rollback
 - Step 1/3: `git revert`.
 - Step 2: restore the `.bak` prompt.md files (kept per edit).
