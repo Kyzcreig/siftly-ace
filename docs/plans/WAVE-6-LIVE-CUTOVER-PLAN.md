@@ -47,18 +47,17 @@ Pin `SIFTLY_SQLITE_VEC_EXTENSION_PATH` in `npm run verify` (or document the prov
 ## Step 4 — Observe
 After ≥3 daily shadow runs: read the pf-audit artifacts, compute the per-brief gate-cross % (AC#9), and surface the promotion decision + 3-run diff to Ace. Only then, with evidence, flip `embed` (a one-line `brief-config.json` change, gated).
 
-### Step 4a — DETERMINISTIC-SCORER cutover gate (label_coercion_count) — TRACKED: kanban `wave6` task `t_b32e3b4d`
+### Step 4a — DETERMINISTIC-SCORER cutover gate (label_coercion_count) — ✅ RESOLVED / MOOT (2026-06-18)
 
-The deterministic scoring engine (`score_digest.py`) has a SECOND, independent cutover gate from the `embed` flip above. Do **NOT** wire deterministic scoring into the live `prompt.md` until:
+**CORRECTION (2026-06-18, verified):** the deterministic scorer is NOT pending — it has driven live posting since **2026-06-11**. Both briefs run `select_digest.py --engine deterministic`, which calls `score_digest.py:select_shadow()` (a misleadingly-named LIVE path, not shadow) as the selection authority. The `e1d3ee5` backstop fix is reachable from that path (`select_shadow → score_item → python_on_topic → _topic_text/off_topic_repo_marker`) and `e1d3ee5` is an ancestor of live HEAD, so the "shadow-only" label on that commit was inaccurate — it has been in production since it landed. Proven three ways: (1) call-graph reachability; (2) `git merge-base --is-ancestor e1d3ee5 HEAD` = true on a clean tree; (3) re-running the deterministic engine on today's real 173-item pool byte-matches the set that actually posted to #daily (incl. 3 Reddit + 1 HN item — so the Reddit/GitHub gatherers of Step 2b are live too, 403 solved via RSS).
 
-- **`label_coercion_count == 0` for 4–6 CONSECUTIVE daily runs.** This proves the deterministic engine stopped overriding/coercing the LLM's own labels on real daily pools — engine and labels agree, so the flip won't silently change the posted set. Any non-zero run resets the streak.
-- Check the per-run value in the daily `score_digest.py` audit artifacts. Re-check cadence: every ~2 days (the kanban task is scheduled).
+**Therefore the `label_coercion_count == 0` streak is NOT a pre-cutover gate** — the cutover already happened. `coercion == 0` remains a useful *health* invariant (the live engine's labels still agree), but it gates nothing. The original gated-wait text is struck below for history.
 
-Precondition cleared (2026-06-15): the GitHub/Reddit backstop over-fire fix (source-aware exemption — reddit curated vouch + github reads description + `OFF_TOPIC_REPO_MARKERS`) is shipped, Opus-reviewed (BLOCK→APPROVE WITH CHANGES), and shadow-verified. Commit `e1d3ee5`. This was cutover-blocker (1); (2) is this coercion window, which is purely a wait — nothing to build.
+~~The deterministic scoring engine (`score_digest.py`) has a SECOND, independent cutover gate from the `embed` flip above. Do NOT wire deterministic scoring into the live `prompt.md` until `label_coercion_count == 0` for 4–6 consecutive daily runs.~~ — moot; deterministic scoring was already wired 2026-06-11.
 
-When the streak holds: bring the gated Step 2a/2b `prompt.md` edits to Ace (back up `.bak`, show diff, apply, verify, keep rollback). A single Hard-Config edit per brief, no loose ends.
+**Still genuinely pending (unchanged):** the `PF_AFFINITY_MODE` shadow→embed *personal-fit* promotion — that IS still shadow and still needs its ≥3-run ≤10% gate-cross evidence (Step 4 above). Don't conflate it with the scorer cutover, which is done.
 
-**Auto-fire watchdog (wired 2026-06-16):** no_agent cron `siftly-coercion-gate-watch` (job `581751ef427a`, daily 9:15am PT, script `~/.hermes/scripts/siftly-coercion-gate-watch.py`) reads the daily shadow output (`/tmp/shadow_scores_YYYY-MM-DD.json`, written by the 8am `shadow-score-check` cron), mirrors each day's `label_coercion_count` into a reboot-durable ledger (`~/.hermes/state/x-bookmarks/coercion-streak.jsonl`), and the moment the count holds **0 for 5 consecutive days on/after `START_DATE=2026-06-17`** (forward of the `e1d3ee5` backstop fix — pre-fix zero-days are deliberately excluded as a different engine), it pings the `#daily` thread once and removes itself (Rule #5a). Silent every other run. It is a reminder/trigger, not the cutover — the cutover itself is still the gated Hard-Config edit above and requires Ace's explicit go.
+**Watchdog status:** `siftly-coercion-gate-watch` (job `581751ef427a`) was PAUSED 2026-06-18 because its "GATE MET → go cut over" message is now misleading (cutover already live). Kanban `wave6` task `t_b32e3b4d` closed as moot. If a coercion-regression alarm is wanted, repurpose the script to fire to #alerts on coercion > 0 instead.
 
 ## Rollback
 - Step 1/3: `git revert`.
