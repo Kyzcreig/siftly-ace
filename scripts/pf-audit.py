@@ -113,9 +113,10 @@ def _embed_env() -> dict[str, str] | None:
 
 
 def _affinity_mode_wants_embed(config: str) -> bool:
-    """True only when the resolved pf affinity mode is shadow/embed (needs the
-    embed env). keyword mode / PF_WEIGHT=0 don't, so we skip the op probe — keeps
-    the common path and the test suite fast (the probe shells out to 1Password)."""
+    """True when the resolved pf affinity mode needs the embed env (shadow/embed/
+    fused all compute the embedding affinity). keyword mode / PF_WEIGHT=0 don't, so
+    we skip the op probe — keeps the common path and the test suite fast (the probe
+    shells out to 1Password)."""
     try:
         mode = os.environ.get("PF_AFFINITY_MODE") or os.environ.get("SIFTLY_PF_AFFINITY_MODE")
         if mode is None:
@@ -125,7 +126,7 @@ def _affinity_mode_wants_embed(config: str) -> bool:
                 if isinstance(data, dict):
                     mode = data.get("PF_AFFINITY_MODE") or data.get("pf_affinity_mode")
         mode = (mode or "shadow").strip().lower()
-        return mode in ("shadow", "embed")
+        return mode in ("shadow", "embed", "fused")
     except Exception:
         return True  # fail toward provisioning; pf-score still fails-open to keyword
 

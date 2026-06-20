@@ -25,7 +25,7 @@ DEFAULT_CONFIG = Path.home() / ".hermes/state/x-bookmarks/brief-config.json"
 DEFAULT_WEIGHT = 30.0
 DEFAULT_BASELINE = 0.18
 DEFAULT_AFFINITY_MODE = "shadow"
-AFFINITY_MODES = {"keyword", "embed", "shadow"}
+AFFINITY_MODES = {"keyword", "embed", "shadow", "fused"}
 EMBED_KNN = 50
 EMBED_TOP_K = 5
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -543,6 +543,55 @@ def apply_shadow_affinity(item: dict[str, Any], embed_item: dict[str, Any], weig
     return out
 
 
+def apply_fused_affinity(items: list[dict[str, Any]], embed_items: dict[int, dict[str, Any]],
+                         weight: float, baseline: float, vec_metric: str | None) -> list[dict[str, Any]]:
+    """FUSED PF (Ace-approved 2026-06-20): combine the keyword and embed signals at
+    the DELTA level with equal weight, after centering the embed delta by the pool
+    mean. This is the exact formula Ace eyeballed+approved in the daily preview's
+    FUSED column — NOT the affinity-level `embed + 0.2*keyword` blend of embed mode.
+
+    Per item:  fused_delta = (keyword_delta + (embed_delta - mean_embed_delta)) / 2
+
+    Centering by the pool mean cancels the embed delta's miscalibrated near-uniform
+    offset (~+10.6) while preserving its ORDERING (centering is monotonic); the
+    keyword delta is already ~centered. The result lives on keyword's scale, so the
+    downstream pf_points/PF_CAP clamp (±12) and select_shadow consume it unchanged.
+    personal_fit_raw is back-derived (fused_delta/weight) so audits stay consistent.
+    Requires the whole pool to compute the mean, hence a list-level apply."""
+    # First materialize each item's embed delta exactly as embed mode would compute it.
+    embedded = [apply_embed_affinity(item, embed_items[i], weight, baseline) for i, item in enumerate(items)]
+    embed_deltas = [float(e.get("personal_fit_delta") or 0.0) for e in embedded]
+    mean_embed = (sum(embed_deltas) / len(embed_deltas)) if embed_deltas else 0.0
+
+    out_items = []
+    for item, emb in zip(items, embedded):
+        kw_delta = float(item.get("personal_fit_delta") or 0.0)
+        emb_delta = float(emb.get("personal_fit_delta") or 0.0)
+        centered_embed = emb_delta - mean_embed
+        fused_delta = (kw_delta + centered_embed) / 2.0
+        fused_raw = (fused_delta / weight) if weight else 0.0
+        out = dict(item)
+        out.update({
+            "keyword_personal_fit_affinity": item.get("personal_fit_affinity"),
+            "keyword_personal_fit_raw": item.get("personal_fit_raw"),
+            "keyword_personal_fit_delta": item.get("personal_fit_delta"),
+            "embed_personal_fit_delta": emb.get("personal_fit_delta"),
+            "embedding_affinity": emb.get("embedding_affinity"),
+            "fused_embed_mean_delta": round(mean_embed, 4),
+            "personal_fit_raw": round(fused_raw, 4),
+            "personal_fit_delta": round(fused_delta, 2),
+            "affinity_source": "fused",
+            "vec_metric": vec_metric,
+        })
+        signals = dict(out.get("signals") or {})
+        signals["embedding_affinity"] = emb.get("embedding_affinity")
+        signals["fused_keyword_delta"] = item.get("personal_fit_delta")
+        signals["fused_centered_embed_delta"] = round(centered_embed, 2)
+        out["signals"] = signals
+        out_items.append(out)
+    return out_items
+
+
 def shadow_affinity_audit(item: dict[str, Any], embed_item: dict[str, Any], weight: float, baseline: float) -> dict[str, Any]:
     embedded = apply_embed_affinity(item, embed_item, weight, baseline)
     return {
@@ -582,6 +631,8 @@ def score_candidates(candidates: list[dict[str, Any]], profile: dict[str, Any], 
 
     if affinity_mode == "embed":
         return [apply_embed_affinity(item, embed_items[i], weight, baseline) for i, item in enumerate(items)], "embed", None, vec_metric, None
+    if affinity_mode == "fused":
+        return apply_fused_affinity(items, embed_items, weight, baseline, vec_metric), "fused", None, vec_metric, None
     audit_items = [shadow_affinity_audit(item, embed_items[i], weight, baseline) for i, item in enumerate(items)]
     audit = {"vec_metric": vec_metric, "items": audit_items}
     return [apply_shadow_affinity(item, embed_items[i], weight, baseline) for i, item in enumerate(items)], "keyword_fallback", None, None, audit

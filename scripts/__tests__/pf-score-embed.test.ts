@@ -187,6 +187,37 @@ describe('pf-score embedding affinity', () => {
       expect(audit.items[0].affinity_source).toBe(keyword.items[0].affinity_source)
       expect(audit.items[0].shadow_personal_fit_delta).toBeGreaterThan(0)
       expect(audit.items[0].embedding_affinity).toBeGreaterThan(0)
+
+      // --- FUSED mode (Ace-approved 2026-06-20): two candidates so the pool-mean
+      // centering is non-trivial. fused_delta = (kw_delta + (embed_delta - mean_embed))/2
+      // computed over the WHOLE pool. Assert affinity_source + the exact formula.
+      const fusedCandidatesPath = path.join(dir, 'fused-candidates.json')
+      await writeFile(fusedCandidatesPath, JSON.stringify({
+        candidates: [
+          { id: 'fused-1', source: 'web', title: 'agent workflow sqlite for local vector search' },
+          { id: 'fused-2', source: 'web', title: 'completely unrelated cooking recipe' },
+        ],
+      }), 'utf8')
+      const runMode = async (mode: string) => JSON.parse((await execFileAsync(
+        'python3', [PF_SCORE, fusedCandidatesPath, '--profile', profilePath],
+        { cwd: ROOT, env: { ...commonEnv, PF_AFFINITY_MODE: mode }, timeout: 30_000 },
+      )).stdout)
+      const fKeyword = await runMode('keyword')
+      const fEmbed = await runMode('embed')
+      const fFused = await runMode('fused')
+      expect(fFused.ok).toBe(true)
+      expect(fFused.affinity_source).toBe('fused')
+      expect(fFused.affinity_mode).toBe('fused')
+      const embedDeltas = fEmbed.items.map((it: any) => Number(it.personal_fit_delta))
+      const meanEmbed = embedDeltas.reduce((a: number, b: number) => a + b, 0) / embedDeltas.length
+      for (let i = 0; i < fFused.items.length; i++) {
+        const kw = Number(fKeyword.items[i].personal_fit_delta)
+        const em = Number(fEmbed.items[i].personal_fit_delta)
+        const expected = Math.round(((kw + (em - meanEmbed)) / 2) * 100) / 100
+        expect(fFused.items[i].affinity_source).toBe('fused')
+        expect(Number(fFused.items[i].personal_fit_delta)).toBeCloseTo(expected, 1)
+        expect(Number(fFused.items[i].keyword_personal_fit_delta)).toBe(kw)
+      }
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
