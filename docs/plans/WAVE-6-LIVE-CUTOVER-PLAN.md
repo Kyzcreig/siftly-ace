@@ -81,6 +81,10 @@ Collection is automatic (pf-audit logs keyword vs embed deltas per item every ru
 
 **Watchdog status:** `siftly-coercion-gate-watch` (job `581751ef427a`) was PAUSED 2026-06-18 because its "GATE MET → go cut over" message is now misleading (cutover already live). Kanban `wave6` task `t_b32e3b4d` closed as moot. If a coercion-regression alarm is wanted, repurpose the script to fire to #alerts on coercion > 0 instead.
 
+**Cross-brief dedup hole FIXED (2026-06-21):** the same @emollick tweet posted in BOTH morning-digest (03:45) and x-feed-brief (03:56). Root cause: dedup was one-directional — morning-digest reads x-feed's `x-brief-seen.json`, but x-feed only read its OWN seen list, blind to what morning-digest posted 11 min earlier the same morning. Fix (gated live prompt edit, `.bak.20260621-171618-pre-crossdedup`): x-feed Step 2 now also loads `morning-digest/ai-news-seen.json` (read-only) and Step 4 dedupes against those `tweet_id`/`id`s too. Timing verified safe: `ai-news-seen.json` is written 03:45:10, x-feed reads it at 03:56 (11-min margin). The @emollick id was confirmed present in `ai-news-seen.json`, so the fix would have dropped it. Takes effect next run (Jun 22 03:56).
+
+**Preview label fix (2026-06-21):** the `siftly-pf-preview` card said `__KEYWORD (live now)__` / `__FUSED (shadow)__` — stale since the fused go-live, making it look like the live brief was keyword-based (Ace flagged this). Verified the live briefs ARE fused (today's artifacts `affinity_mode=fused fired=True`, prompts say fused). Relabeled: `KEYWORD/EMBED (pure … scorer, comparison only)`, `FUSED ★ LIVE — what actually posts to #daily`; header now "FUSED is LIVE".
+
 ## Rollback
 - Step 1/3: `git revert`.
 - Step 2: restore the `.bak` prompt.md files (kept per edit).
