@@ -3,6 +3,14 @@
 Fork of viperrcrypto/Siftly → Kyzcreig/siftly-ace. PRD: docs/plans/PRD-ace-x-knowledge-base.md (v5, approved).
 Swarm plan: docs/plans/SWARM-PLAN-phase1plus.md. Coding worker = Daedalus profile (openai-codex/gpt-5.5 xhigh).
 
+## ⭐ RANKING — CURRENT LIVE STATE (2026-06-21) — read this first
+Both briefs (`morning-digest`, `x-feed-brief`) run the SAME deterministic engine: model emits 4 enum labels → `pf-score.py` adds a personal-fit delta → `score_digest.py` scores → `select_digest.py --engine deterministic` gates/selects → renderer posts. The model NEVER picks what posts.
+- **Personal-fit is LIVE in `PF_AFFINITY_MODE=fused`** (shipped 2026-06-20, Ace-accepted 2026-06-21). `fused_delta = (keyword_delta + (embed_delta − pool_mean_embed))/2` — equal-weight blend of the keyword overlap scorer and the sqlite-vec embed scorer; centering cancels embed's ~+10.6 miscalibration. Code: `pf-score.py` `apply_fused_affinity()` + `affinity_mode="fused"`; `pf-audit.py` provisions the embed env for fused. Clamped to ±12 by `pf_points`/`PF_CAP`.
+- **Kill-switch unchanged:** `PF_WEIGHT=0` in `brief-config.json` → base-score-only no-op. `pf-audit.py` fail-safes to base on any pf hiccup.
+- **Cross-brief dedup (fixed 2026-06-21):** x-feed Step 2 now ALSO reads `morning-digest/ai-news-seen.json` so a tweet morning posts at 03:45 can't reappear in x-feed at 03:56. (Was one-directional before — the @emollick dup.)
+- **A/B scaffolding RETIRED (2026-06-21):** crons `siftly-pf-preview`/`siftly-pf-gate-eval`/`siftly-fused-checkin`/`wave6-embed-shadow-watch`/`siftly-coercion-gate-watch` removed (scripts in `~/.hermes/scripts/retired/`). KEEP `siftly-gatherer-silentblock-watch` + its gatherer-probe feeder (trimmed `wave6-output-shadow-watch`). `prompt.md.bak.*-pre-fused` kept 1 wk then prune.
+- Full as-built pipeline + the 36-cell BASE table + safety rails: Obsidian `AI/Ace X Knowledge Base — System Overview.md` § "Ranking — the complete pipeline".
+
 ## Incremental ingest EARLY-STOP — DONE (2026-06-15), live-verified
 The daily incremental no longer re-scans a fixed window every run. PRD: `~/.hermes/plans/siftly-incremental-early-stop/PRD-incremental-early-stop.md` (Opus 2-pass APPROVED).
 - **Core (`lib/xurl-ingest.ts` `fetchSourcePages`):** optional `knownTweetIds` probe + `earlyStopK` (default 3). Incremental stops paginating a source after **K consecutive already-known tweets** (newest→oldest ⇒ frontier passed). Collects the whole page before stopping (new items above the known run kept). Backfill (`resumeFromCursor:true`) NEVER early-stops (I2). Fail-open: a probe throw → full walk + `IngestResult.earlyStopError` + WARN (I7).
