@@ -539,6 +539,15 @@ def render_body(data, apply_dedup=True):
 
     lines = [header, ""]
 
+    # Overview synthesis (additive, optional): a half-page "what's going on" block
+    # the brief's Overview step writes into data["overview"]. Placed under the header,
+    # above Top Stories. Pure passthrough — the LLM already composed + escaped-safe
+    # prose; we only gate that it's a non-empty string. Never blocks the digest.
+    overview = data.get("overview")
+    if isinstance(overview, str) and overview.strip():
+        lines.append(overview.strip())
+        lines.append("")
+
     if empty_note or (not selected and not also):
         note = empty_note or "🤷 Nothing cleared the bar today — slow news day."
         lines.append(note if str(note).startswith(("🤷", "⚠️")) else esc(note))
@@ -697,6 +706,19 @@ def _selftest():
     ok("tweet handle in meta", "@karpathy" in tbody)
     ok("tweet grade", "✅ A- (92)" in tbody)
     ok("tweet no drop", tdrop == 0)
+
+    # OVERVIEW block (additive synthesis under the header, above Top Stories)
+    odata = dict(tdata)
+    odata["overview"] = "🗞️ **The Landscape**\nGLM-5.2 leads open-weights today."
+    obody, _ = render(odata)
+    ok("overview present", "🗞️ **The Landscape**" in obody and "GLM-5.2 leads" in obody)
+    ok("overview above stories", obody.index("The Landscape") < obody.index("Top Stories"))
+    # empty/missing overview must NOT add a block
+    nodata = dict(tdata); nodata["overview"] = "   "
+    nbody, _ = render(nodata)
+    ok("blank overview omitted", "Landscape" not in nbody)
+    no2 = dict(tdata)  # no overview key at all
+    ok("missing overview omitted", "Landscape" not in render(no2)[0])
 
     # tweet with markdown-bleed handle + chars
     bdata = {"date_label": "X", "selected": [{
