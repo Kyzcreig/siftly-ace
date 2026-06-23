@@ -550,6 +550,45 @@ def is_topic_curated_source(item):
     return bool(m and m.group(1).lower() in CURATED_AI_SUBREDDITS)
 
 
+# ── Low-signal reddit demotion (Also-Noted-weak fix, 2026-06-22) ──────────────
+# A reddit discussion thread with a thin BODY (the card shows almost nothing), or a
+# vague short-title one-liner with no real writeup, is forum chatter — NOT the
+# "analysis/reference" the model over-labels it. Without this, venting/headlines
+# ("Human beings are a disease", "GPT 5.6 Cancelled", "Sarah Connor judging your AI
+# addiction") score ~58-65 and sit right at ALSO_GATE, filling Also-Noted with stubs.
+# Thresholds tuned on the 2026-06-22 morning pool (50 reddit items -> demotes 14
+# chatter threads, keeps 36 real writeups + developed questions). Body is the primary
+# signal (it's what fills the card); a vague title only demotes when the body is also
+# weak. A developed question (real "how do you..." discussion prompt) is rescued.
+REDDIT_LOW_SIGNAL_THIN_BODY = 110     # body shorter than this => chatter (card is empty)
+REDDIT_LOW_SIGNAL_VAGUE_TITLE = 22    # one-liner title...
+REDDIT_LOW_SIGNAL_SOFT_BODY = 170     # ...paired with a sub-this body => no real writeup
+REDDIT_LOW_SIGNAL_RESCUE_TITLE = 40   # a question this long...
+REDDIT_LOW_SIGNAL_RESCUE_BODY = 150   # ...or with this much body is a real prompt -> keep
+
+
+def is_reddit_low_signal(item):
+    """True for a reddit thread that is forum chatter (thin body, or a vague one-liner
+    title without a real writeup) and should NOT score like real analysis. Rescues a
+    developed question (a substantive discussion prompt). REDDIT-ONLY — never fires for
+    github/HN/X. Reads only title+summary (always present in the dump). Never UPGRADES;
+    used by score_item solely to LOWER actionability."""
+    if str(item.get("source") or "").lower() != "reddit":
+        return False
+    title = str(item.get("title") or "").strip()
+    body = str(item.get("summary") or "").strip()
+    thin = (len(body) < REDDIT_LOW_SIGNAL_THIN_BODY
+            or (len(title) < REDDIT_LOW_SIGNAL_VAGUE_TITLE
+                and len(body) < REDDIT_LOW_SIGNAL_SOFT_BODY))
+    if not thin:
+        return False
+    # Rescue a developed question — a real discussion prompt, not a vague one-liner.
+    if title.endswith("?") and (len(title) >= REDDIT_LOW_SIGNAL_RESCUE_TITLE
+                                or len(body) >= REDDIT_LOW_SIGNAL_RESCUE_BODY):
+        return False
+    return True
+
+
 def is_structural_fragment(item):
     """Source-aware fragment test. For a curated reddit sub OR a github repo, a short
     thread title / repo slug is NOT a bare reply fragment — only a literally empty
@@ -635,6 +674,17 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
         source_vouch = True
 
     ct, ac = labels["content_type"], labels["actionability"]
+
+    # ── Backstop 3: low-signal reddit demotion (§Also-Noted-weak fix, 2026-06-22) —
+    # a thin/vague reddit chatter thread is NOT the "analysis/reference" the model
+    # labelled it. Drop its actionability to context_only (base ~36-48) so forum
+    # venting can't sit at ALSO_GATE and fill Also-Noted with stubs. Never upgrades;
+    # only ever lowers. Recorded in the breakdown (reddit_low_signal) for audit.
+    reddit_low_signal = False
+    if is_reddit_low_signal(item) and ac not in ("context_only", "none"):
+        ac = "context_only"
+        reddit_low_signal = True
+
     base = BASE[ct][ac]
 
     is_known = _is_thought_leader(item, tl_handles, tl_aliases) or (_handle(item) in tracked)
@@ -678,6 +728,8 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
         "effective_on_topic": eff_on_topic,
         "on_topic_overridden": on_topic_override_reason,
         "fragment_overridden": frag_override,
+        "reddit_low_signal": reddit_low_signal,
+        "effective_actionability": ac,
         "source_curated_vouch": source_vouch,
         "structural_fragment_exempt": (is_topic_curated_source(item)
                                        and not frag_override
@@ -1290,6 +1342,38 @@ def _selftest():
     if not RECENCY_AS_TIEBREAK:
         check(recency_points(fresh, now=now_ref) == RECENCY_24H,
               "default recency slab broken")
+
+    # --- Low-signal reddit demotion (Also-Noted-weak fix, 2026-06-22) ---
+    # A thin-body reddit chatter thread is demoted to context_only; a real writeup and
+    # a developed question are NOT; non-reddit sources are never touched.
+    rl_base = {"source": "reddit", "content_type": "analysis", "actionability": "reference",
+               "substance": "concrete", "on_topic": "core",
+               "url": "https://www.reddit.com/r/openai/comments/x/y/"}
+    thin = dict(rl_base, title="GPT 5.6 Cancelled", summary="welp, it's over.")
+    bthin = s(thin)
+    check(bthin["reddit_low_signal"] is True, "thin reddit thread not flagged low_signal")
+    check(bthin["effective_actionability"] == "context_only",
+          f"thin reddit not demoted to context_only (got {bthin['effective_actionability']})")
+    # real writeup (long body) is kept at its labelled actionability
+    meaty = dict(rl_base, title="Why self-reflection ReAct loops fail",
+                 summary="x" * 300)
+    bmeaty = s(meaty)
+    check(bmeaty["reddit_low_signal"] is False, "meaty reddit writeup wrongly flagged low_signal")
+    check(bmeaty["effective_actionability"] == "reference", "meaty reddit wrongly demoted")
+    # developed question (rescued) — short body but a real, long discussion prompt
+    devq = dict(rl_base, title="How do you keep your prompts organized across many models?",
+                summary="curious how people handle this at scale.")
+    check(s(devq)["reddit_low_signal"] is False, "developed question wrongly demoted")
+    # vague one-liner question with a tiny body is NOT rescued (still chatter)
+    vagueq = dict(rl_base, title="thoughts?", summary="idk lol")
+    check(s(vagueq)["reddit_low_signal"] is True, "vague one-liner question not flagged")
+    # non-reddit thin item is never touched by this rule
+    xthin = {"source": "x", "authorHandle": "someone", "content_type": "analysis",
+             "actionability": "reference", "substance": "concrete", "on_topic": "core",
+             "tweet_text": "short", "title": "short", "summary": "short"}
+    bx = s(xthin)
+    check(bx["reddit_low_signal"] is False, "non-reddit item flagged reddit_low_signal")
+    check(bx["effective_actionability"] == "reference", "non-reddit actionability altered")
 
     if fails:
         print("SELFTEST FAILED:")
