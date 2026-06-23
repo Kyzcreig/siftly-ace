@@ -23,10 +23,13 @@ import json
 import re
 import sys
 
-REF_RE = re.compile(r"\[(\d{1,3})\]")
 
 
 def resolve(prose: str, agg: dict) -> str:
+    """Replace each [N] citation INLINE with a Discord masked link [[N]](url), so
+    the number is tappable right where it's read. URLs come from the deterministic
+    aggregate (top_stories[].ref → url), NEVER the model. A [N] with no matching
+    ref/url is left as plain text (no broken link). No footer line."""
     prose = prose.rstrip()
     stories = (agg or {}).get("top_stories") or []
     url_by_ref = {}
@@ -35,16 +38,16 @@ def resolve(prose: str, agg: dict) -> str:
         u = s.get("url")
         if isinstance(r, int) and u:
             url_by_ref[r] = u
-    used = []
-    for m in REF_RE.finditer(prose):
+
+    def _link(m):
         n = int(m.group(1))
-        if n in url_by_ref and n not in used:
-            used.append(n)
-    if not used:
-        return prose  # no resolvable citations → leave prose as-is
-    used.sort()
-    lines = [prose, "", "🔗 " + "  ·  ".join(f"[{n}] <{url_by_ref[n]}>" for n in used)]
-    return "\n".join(lines)
+        url = url_by_ref.get(n)
+        # already-linked ([[N]](url)) or unknown ref → leave the raw [N] alone
+        return f"[[{n}]]({url})" if url else m.group(0)
+
+    # Convert a BARE [N] only: not already a masked link ([N](… → trailing '(' )
+    # and not already wrapped as [[N]] (leading '[' / trailing ']'). Idempotent.
+    return re.sub(r"(?<!\[)\[(\d{1,3})\](?![\(\]])", _link, prose)
 
 
 def main(argv=None) -> int:
