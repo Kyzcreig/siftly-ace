@@ -11,6 +11,9 @@
  * Usage: tsx scripts/html_report.ts --in <_render_input.json> --out <page.html> [--title "..."]
  * Output: a complete <!doctype html> document on disk.
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- react-tweet's Tweet/mediaDetails
+   are structurally loose (media variants, blue-verified, conversation_count vary by source);
+   render-input items are heterogeneous JSON. Concrete shapes are guarded at each use. */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { getTweet } from 'react-tweet/api'
 import type { Tweet } from 'react-tweet/api'
@@ -43,8 +46,7 @@ function fmtCount(n: unknown): string {
 // Turn a tweet's entity-rich text into HTML: @mentions + #hashtags + links become
 // anchors; t.co media links are STRIPPED (the media renders inline below instead).
 function renderTweetText(t: Tweet): string {
-  let text = t.text || ''
-  const mediaTcos = new Set<string>((t as any).mediaDetails?.map((m: any) => m?.url).filter(Boolean) || [])
+  const text = t.text || ''
   // also strip the trailing t.co that points at the tweet's own media/quoted
   const urls = (t.entities?.urls || []) as any[]
   let html = esc(text)
