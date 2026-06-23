@@ -441,6 +441,11 @@ def source_suffix(item):
         return f"· X @{esc(handle)}" if handle else "· X"
     if src == "Perplexity":
         return ""
+    if src == "github":
+        st = item.get("stars_today")
+        return f"· GitHub +{st}★ today" if st else "· GitHub"
+    if src == "reddit":
+        return "· Reddit"
     return f"· {esc(src)}" if src else ""
 
 def wrap_url(url):

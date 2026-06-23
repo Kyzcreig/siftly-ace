@@ -453,7 +453,12 @@ def _to_render_item(it):
     out = {"score": int(round(it["_final"])), "url": it.get("url")}
     if it.get("event_key"):
         out["event_key"] = it["event_key"]
-    if src == "x" or it.get("tweet_id") or it.get("authorHandle"):
+    # A tweet is identified by a TWEET source/id — NOT merely by having an authorHandle.
+    # github/reddit items carry an authorHandle (the org/user) but are NOT tweets; routing
+    # them through the X branch dropped their `summary` (the repo desc / thread blurb) and
+    # mislabeled them as tweets (fake @org X-profile links). Classify by real tweet identity.
+    is_tweet = src in ("x", "twitter") or bool(it.get("tweet_id")) or "/status/" in str(it.get("url") or "")
+    if is_tweet:
         out["source"] = "X"
         out["authorHandle"] = it.get("authorHandle")
         out["tweet_text"] = it.get("tweet_text") or it.get("title") or it.get("summary") or ""
@@ -465,7 +470,9 @@ def _to_render_item(it):
         out["title"] = it.get("title") or it.get("line") or ""
         if it.get("summary"):
             out["summary"] = it.get("summary")
-        for k in ("hn_points", "hn_comments"):
+        if it.get("authorHandle"):
+            out["authorHandle"] = it.get("authorHandle")
+        for k in ("hn_points", "hn_comments", "stars_today"):
             if it.get(k) is not None:
                 out[k] = it.get(k)
     return out
