@@ -111,6 +111,8 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
     } for t in themes]
 
     # --- top stories (highest final_score, deduped by event_key/text) ---
+    # Each gets a stable 1-based `ref` number so the Overview prose can cite [N]
+    # and inject_overview resolves [N] → the real URL (links never come from the LLM).
     seen_keys = set()
     stories = []
     for it in sorted(on, key=lambda x: _num(x.get("final_score")), reverse=True):
@@ -118,14 +120,18 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
         if key in seen_keys:
             continue
         seen_keys.add(key)
+        url = it.get("url") or ""
+        if not url:
+            continue  # a story with no URL can't be a citable reference
         stories.append({
+            "ref": len(stories) + 1,
             "title": _text(it)[:200],
             "handle": it.get("authorHandle"),
             "source": it.get("source"),
             "content_type": it.get("content_type"),
             "final_score": round(_num(it.get("final_score")), 1),
             "engagement": int(_engagement(it)),
-            "url": it.get("url"),
+            "url": url,
         })
         if len(stories) >= top_n_stories:
             break
