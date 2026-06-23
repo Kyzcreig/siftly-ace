@@ -69,13 +69,24 @@ interface ProbeReport {
 }
 
 function parseArgs(argv: string[]) {
-  const out: { dryRun: boolean; limit?: number } = { dryRun: false }
+  const out: { dryRun: boolean; limit?: number; lanes: string[] } = { dryRun: false, lanes: [] }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') out.dryRun = true
     else if (argv[i] === '--limit') out.limit = Number(argv[++i])
+    else if (argv[i] === '--lane') out.lanes.push(argv[++i] ?? '')
   }
   return out
 }
+
+// The reddit gatherer must probe through the SAME egress lanes the LIVE briefs use,
+// or it measures a strictly worse system than reality. The morning-digest brief
+// gathers reddit via `--lane '' --lane socks5://192.168.1.217:1080` (direct Spectrum
+// WAN + Starlink SOCKS). Reddit IP-rate-limits the home Spectrum IP (HTTP 429), so a
+// direct-only probe records reddit fetched==0 and the silentblock watchdog FALSE-ALARMS
+// even while the brief pulls 100 reddit items via Starlink (observed 2026-06-23: probe
+// reddit=0 three days running while the brief logged reddit=100). Default the probe to
+// the brief's lanes; `--lane` overrides. Keep these in sync with morning-digest prompt.md.
+const DEFAULT_PROBE_LANES = ['', 'socks5://192.168.1.217:1080']
 
 /** Seed a dedup store with everything both briefs surfaced today, so the probe can
  *  measure how much gatherer inflow OVERLAPS existing coverage. */
@@ -159,7 +170,11 @@ async function main(): Promise<void> {
 
     // Reddit
     try {
-      const reddit = (await gatherRedditPosts(args.limit ? { limit: args.limit } : {})) as Candidate[]
+      const probeLanes = args.lanes.length ? args.lanes : DEFAULT_PROBE_LANES
+      const reddit = (await gatherRedditPosts({
+        ...(args.limit ? { limit: args.limit } : {}),
+        lanes: probeLanes,
+      })) as Candidate[]
       sources.push(classify(store, ptDay, 'reddit', reddit))
     } catch (err) {
       sources.push({ source: 'reddit', fetched: 0, net_new: 0, overlap: 0, error: (err as Error).message, sample: [] })
