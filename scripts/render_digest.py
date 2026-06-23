@@ -447,6 +447,35 @@ def wrap_url(url):
     u = (url or "").strip()
     return f"<{u}>" if u else ""
 
+# ── Anchor / handle linking (Discord masked links: [text](url)) ──────────────
+# notify.py's embed-suppressor leaves [label](url) alone (neg-lookbehind on '('),
+# so masked links render clickable AND spawn no embed card. esc() must NOT touch
+# these (we build them from already-escaped label + raw url), so callers insert
+# the finished masked-link string, never re-escape it.
+_BRAND_X = "https://x.com"
+_URL_OK = re.compile(r"^https?://[^\s<>()]+$")
+
+def _safe_url(url):
+    u = (url or "").strip()
+    return u if _URL_OK.match(u) else ""
+
+def profile_link(handle):
+    """@handle → a masked link to the X profile. Falls back to plain @handle if
+    the handle is unusable. Label is escaped; URL is a clean x.com/<handle>."""
+    h = (handle or "").lstrip("@").split()[0] if (handle or "").strip() else ""
+    if not h:
+        return ""
+    safe_h = re.sub(r"[^A-Za-z0-9_]", "", h)  # X handles are [A-Za-z0-9_]
+    if not safe_h:
+        return f"@{esc(h)}"
+    return f"[@{esc(safe_h)}]({_BRAND_X}/{safe_h})"
+
+def anchor(label, url):
+    """[label](url) masked link, or just the escaped label if url is unusable."""
+    u = _safe_url(url)
+    lab = esc(str(label).strip())
+    return f"[{lab}]({u})" if u else lab
+
 def _tweet_text(item):
     return item.get("tweet_text") or item.get("text") or item.get("line") or item.get("title") or ""
 
@@ -457,12 +486,13 @@ def _story_title(item):
 def render_top_block(item, index):
     """Return (lines, dropped_echo) for ONE Top Stories entry."""
     emoji, letter, s = grade_for(item.get("score"))
-    url = wrap_url(item.get("url"))
+    raw_url = item.get("url")
 
     if is_tweet(item):
-        # x-feed style: meta line, blank, verbatim tweet (natural cutoff), url
+        # x-feed style: meta line (handle links to profile), blank, verbatim tweet,
+        # then a compact "Read on X →" anchor instead of a bare URL line.
         handle = (item.get("authorHandle") or "").lstrip("@")
-        meta = [f"@{esc(handle)}"] if handle else []
+        meta = [profile_link(handle)] if handle else []
         for field, label in (("likes", "likes"), ("retweets", "reposts")):
             c = _fmt_count(item.get(field))
             if c is not None:
@@ -471,13 +501,15 @@ def render_top_block(item, index):
         lines = [f"**{index}.** " + " · ".join(meta), ""]
         body, _ = natural_truncate(str(_tweet_text(item)))
         lines.append(esc(body))
-        if url:
-            lines.append(url)
+        tweet_url = _safe_url(raw_url) or (f"{_BRAND_X}/{re.sub(r'[^A-Za-z0-9_]','',handle)}" if handle else "")
+        if tweet_url:
+            lines.append(anchor("Read on X →", tweet_url))
         return lines, False
 
-    # story: headline line, optional distinct summary line, url
-    title = _story_title(item)
-    head = f"**{index}.** {esc(strip_md_emphasis(str(title).strip()))} {source_suffix(item)} {emoji} {letter} ({s})"
+    # story: the HEADLINE itself becomes the link (no bare URL line)
+    title = strip_md_emphasis(str(_story_title(item)).strip())
+    linked_title = anchor(title, raw_url) if _safe_url(raw_url) else esc(title)
+    head = f"**{index}.** {linked_title} {source_suffix(item)} {emoji} {letter} ({s})"
     head = re.sub(r"[ \t]+", " ", head).strip()
     lines = [head]
     summary = item.get("summary")
@@ -486,24 +518,27 @@ def render_top_block(item, index):
         lines.append(esc(strip_md_emphasis(str(summary).strip())))
     elif summary and str(summary).strip():
         dropped = True  # had a summary but it echoed the headline
-    if url:
-        lines.append(url)
     return lines, dropped
 
 def render_also_line(item):
     """One compact line for an Also Noted entry (tweet or story)."""
     emoji, letter, s = grade_for(item.get("score"))
-    url = wrap_url(item.get("url"))
+    raw_url = item.get("url")
     if is_tweet(item):
         handle = (item.get("authorHandle") or "").lstrip("@")
         snippet, _ = natural_truncate(str(_tweet_text(item)), MAX_ALSO_CHARS)
-        prefix = f"@{esc(handle)}: " if handle else ""
-        display = prefix + esc(snippet)
+        prefix = f"{profile_link(handle)}: " if handle else ""
+        # snippet links to the tweet; handle links to the profile
+        tweet_url = _safe_url(raw_url)
+        body = anchor(snippet, tweet_url) if tweet_url else esc(snippet)
+        display = prefix + body
         suffix = f"{emoji} {letter} ({s})"
+        line = f"• {display} {suffix}"
     else:
-        display = esc(strip_md_emphasis(str(_story_title(item)).strip()))
+        title = strip_md_emphasis(str(_story_title(item)).strip())
+        display = anchor(title, raw_url) if _safe_url(raw_url) else esc(title)
         suffix = f"{source_suffix(item)} {emoji} {letter} ({s})"
-    line = f"• {display} {suffix} — {url}"
+        line = f"• {display} {suffix}"
     return re.sub(r"[ \t]+", " ", line).strip()
 
 # ── Body assembly ────────────────────────────────────────────────────────────
@@ -703,7 +738,9 @@ def _selftest():
     ok("tweet verbatim present", "This is a super exciting release" in tbody)
     ok("tweet 2nd line kept", "Second line here." in tbody)
     ok("tweet meta likes", "22,800 likes" in tbody and "1,060 reposts" in tbody)
-    ok("tweet handle in meta", "@karpathy" in tbody)
+    ok("tweet handle links to profile", "[@karpathy](https://x.com/karpathy)" in tbody)
+    ok("tweet read-on-x anchor", "[Read on X →](https://x.com/karpathy/status/1)" in tbody)
+    ok("tweet no bare angle url", "<https://" not in tbody)
     ok("tweet grade", "✅ A- (92)" in tbody)
     ok("tweet no drop", tdrop == 0)
 
@@ -783,10 +820,12 @@ def _selftest():
                   "hn_points": 90, "hn_comments": 12, "url": "https://h/2"},
              ], "footer": "f"}
     abody, _ = render(adata)
-    ok("also tweet snippet", "@ollama:" in abody and "Ollama v0.18.2 cuts" in abody)
+    ok("also tweet handle links to profile", "[@ollama](https://x.com/ollama)" in abody)
+    ok("also tweet snippet linked", "[Ollama v0.18.2 cuts" in abody and "](https://x.com/ollama/status/2)" in abody)
     ok("also tweet truncated", "…" in abody.split("Also Noted")[1])
-    ok("also story title", "Cursor 3.7 ships Canvas Design Mode" in abody)
+    ok("also story title links", "[Cursor 3.7 ships Canvas Design Mode](https://h/2)" in abody)
     ok("also story suffix", "· HN 90 pts / 12 comments" in abody)
+    ok("also no bare angle url", "<https://" not in abody)
 
     # legacy compat: bare `line`, and title+summary for X
     ldata = {"date_label": "X", "selected": [{

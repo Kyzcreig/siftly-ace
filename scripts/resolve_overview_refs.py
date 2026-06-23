@@ -47,7 +47,17 @@ def resolve(prose: str, agg: dict) -> str:
 
     # Convert a BARE [N] only: not already a masked link ([N](… → trailing '(' )
     # and not already wrapped as [[N]] (leading '[' / trailing ']'). Idempotent.
-    return re.sub(r"(?<!\[)\[(\d{1,3})\](?![\(\]])", _link, prose)
+    out = re.sub(r"(?<!\[)\[(\d{1,3})\](?![\(\]])", _link, prose)
+
+    # Also linkify bare @handle mentions in the overview prose → X profile page,
+    # so "loud voices" handles are tappable too. Skip handles already inside a
+    # markdown link, an email, or a path. Idempotent (handles in [..](..) skipped).
+    def _handle(m):
+        h = m.group(1)
+        return f"[@{h}](https://x.com/{h})"
+    # @handle preceded by start/space/punct (not part of a link/email), 1-15 word chars
+    out = re.sub(r"(?<![\w/\]\(])@([A-Za-z0-9_]{1,15})\b(?!\]\()", _handle, out)
+    return out
 
 
 def main(argv=None) -> int:
