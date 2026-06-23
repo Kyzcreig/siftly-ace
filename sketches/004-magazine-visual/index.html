@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Morning Digest — Magazine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0a09; --ink:#faf7f2; --mut:#a39b8e; --bd:#2a2520; --acc:#ff5c38; --acc2:#ffd34e; --panel:#141110;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Space Grotesk",system-ui,sans-serif;font-size:16px;line-height:1.55}
+  .wrap{max-width:700px;margin:0 auto;padding:32px 22px 90px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px}
+  .top .ttl{font-family:"Instrument Serif",serif;font-size:46px;line-height:.9;letter-spacing:-.01em}
+  .top .ttl em{font-style:italic;color:var(--acc)}
+  .top .iss{text-align:right;color:var(--mut);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+  .lede{font-family:"Instrument Serif",serif;font-size:27px;line-height:1.32;margin:26px 0 6px}
+  .lede a{color:var(--acc);text-decoration:none;border-bottom:1px solid rgba(255,92,56,.5)}
+  .rail{display:flex;gap:0;margin:20px 0 8px;border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+  .rail .cell{flex:1;padding:12px 14px;border-right:1px solid var(--bd)}
+  .rail .cell:last-child{border-right:0}
+  .rail .n{font-family:"Instrument Serif",serif;font-size:30px;color:var(--acc2);line-height:1}
+  .rail .l{color:var(--mut);font-size:12px;margin-top:2px}
+  .sec{display:flex;align-items:baseline;gap:12px;margin:38px 0 14px}
+  .sec .lbl{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
+  .sec .ln{flex:1;height:1px;background:var(--bd)}
+  /* HERO lead item */
+  .hero{border:1px solid var(--bd);border-radius:18px;overflow:hidden;background:var(--panel);margin-bottom:18px}
+  .hero .img{max-height:240px;overflow:hidden;border-bottom:1px solid var(--bd)}
+  .hero .img img{width:100%;height:240px;object-fit:cover;object-position:top;display:block}
+  .hero .pad{padding:16px 18px}
+  .hero .meta{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .hero .av{width:34px;height:34px;border-radius:50%}
+  .hero .nm{font-weight:700}.hero .nm .v{color:var(--acc2)}
+  .hero .hn{color:var(--mut);font-size:13px}
+  .hero .rk{margin-left:auto;font-family:"Instrument Serif",serif;font-size:22px;color:var(--acc2)}
+  .hero .tx{font-size:17px;line-height:1.5}
+  .hero .ft{margin-top:11px;color:var(--mut);font-size:13px;display:flex;gap:14px}
+  .hero .ft .read{margin-left:auto;color:var(--acc)}
+  .item{display:grid;grid-template-columns:42px 1fr;gap:14px;padding:18px 0;border-bottom:1px solid var(--bd)}
+  .item .num{font-family:"Instrument Serif",serif;font-size:34px;color:var(--mut);line-height:.9}
+  .item .src{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--acc);margin-bottom:3px}
+  .item .src a{color:var(--acc);text-decoration:none}
+  .item h3{font-size:19px;line-height:1.25;font-weight:500;margin-bottom:5px}
+  .item h3 a{color:var(--ink);text-decoration:none}.item h3 a:hover{color:var(--acc)}
+  .item .qt{font-family:"Instrument Serif",serif;font-style:italic;font-size:19px;line-height:1.4;color:#ece6da}
+  .item p{color:var(--mut);font-size:14.5px}
+  .item .rk{float:right;color:var(--mut);font-size:13px;margin-left:10px}
+  .foot{margin-top:34px;color:var(--mut);font-size:12px;text-align:center;letter-spacing:.04em}
+</style></head>
+<body><div class="wrap">
+
+  <div class="top">
+    <div class="ttl">The <em>Morning</em><br>Digest</div>
+    <div class="iss">No. 142<br>Mon · Jun 22 · 2026</div>
+  </div>
+
+  <p class="lede">Open-weights and agent runtimes own today — ByteDance open-sourced a full agent runtime that gives every agent its own real computer, <a href="#">GLM-5.2</a> took the open-coding crown, and Grok 5 rumors put it at <a href="#">10 trillion parameters</a>.</p>
+
+  <div class="rail">
+    <div class="cell"><div class="n">107</div><div class="l">Models</div></div>
+    <div class="cell"><div class="n">26</div><div class="l">Agent tooling</div></div>
+    <div class="cell"><div class="n">45</div><div class="l">Dev tools</div></div>
+    <div class="cell"><div class="n">15</div><div class="l">Security</div></div>
+  </div>
+
+  <div class="sec"><span class="lbl">Lead</span><span class="ln"></span></div>
+
+  <div class="hero">
+    <div class="img"><img src="https://pbs.twimg.com/media/HLZGplMbQAADMT0.jpg" alt=""></div>
+    <div class="pad">
+      <div class="meta">
+        <img class="av" src="https://pbs.twimg.com/profile_images/2026617137578782721/CcmpTpYZ_normal.jpg" alt="">
+        <span class="nm">Rituraj <span class="v">✔</span></span><span class="hn">@RituWithAI</span>
+        <span class="rk">B+</span>
+      </div>
+      <div class="tx">🚨 ByteDance just open sourced the most complete AI agent runtime ever built — and it gives every agent its own computer. Not tools, not API access: an entire computer. Real filesystem, bash terminal, package installation, code execution. 68,000 GitHub stars.</div>
+      <div class="ft"><span>♥ 8</span><span>💬 4</span><a class="read" href="https://x.com/RituWithAI/status/2068918767430869368">View on X →</a></div>
+    </div>
+  </div>
+
+  <div class="sec"><span class="lbl">Top Stories</span><span class="ln"></span></div>
+
+  <div class="item">
+    <div class="num">02</div>
+    <div>
+      <div class="src"><a href="https://x.com/elonmusk">X · @elonmusk</a> <span class="rk">B- · 82</span></div>
+      <div class="qt">"AI probably exceeds the sum of all human intelligence in 4 or 5 years."</div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="num">03</div>
+    <div>
+      <div class="src">Perplexity · News <span class="rk">C+ · 77</span></div>
+      <h3><a href="#">Musk's xAI releases Grok-3, touting a new rival to OpenAI</a></h3>
+      <p>xAI unveiled its latest model Monday evening; Premium+ on X, plus a new "SuperGrok" tier for advanced features.</p>
+    </div>
+  </div>
+
+  <div class="sec"><span class="lbl">Also Noted</span><span class="ln"></span></div>
+  <div class="item">
+    <div class="num">04</div>
+    <div>
+      <div class="src">GitHub <span class="rk">C · 75</span></div>
+      <h3><a href="#">mukul975 / Anthropic-Cybersecurity-Skills</a></h3>
+    </div>
+  </div>
+
+  <div class="foot">162 SCANNED · 159 NEW · DETERMINISTIC SCORING · PERSONAL-FIT FUSED</div>
+</div></body></html>

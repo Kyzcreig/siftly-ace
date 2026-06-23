@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Morning Digest — Refined Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#08090c; --grad1:#10131c; --panel:#12141c; --panel2:#171a24; --bd:#242936; --fg:#eef0f6; --mut:#8b92a6; --acc:#7c8cff; --acc2:#52e0c4;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:
+      radial-gradient(900px 500px at 80% -10%,rgba(124,140,255,.10),transparent 60%),
+      radial-gradient(700px 400px at -10% 10%,rgba(82,224,196,.07),transparent 55%),
+      var(--bg);
+    color:var(--fg);font-family:"Sora",system-ui,sans-serif;font-size:15.5px;line-height:1.55}
+  .wrap{max-width:640px;margin:0 auto;padding:30px 18px 80px}
+  .hd{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+  .hd .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 0 16px var(--acc)}
+  .hd h1{font-weight:800;font-size:23px;letter-spacing:-.02em}
+  .hd .date{margin-left:auto;color:var(--mut);font-size:13px}
+  .ov{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--bd);border-radius:18px;padding:18px 20px;margin:16px 0 26px;position:relative;overflow:hidden}
+  .ov::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(var(--acc),var(--acc2))}
+  .ov h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc2);margin-bottom:9px}
+  .ov p{color:#d6dae6}
+  .ov a{color:var(--acc);text-decoration:none}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}
+  .chip{background:#0d1018;border:1px solid var(--bd);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--mut)}
+  .chip b{color:var(--fg)}
+  .sec{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin:30px 4px 12px;display:flex;align-items:center;gap:10px}
+  .sec::after{content:"";flex:1;height:1px;background:var(--bd)}
+  .card{background:var(--panel);border:1px solid var(--bd);border-radius:18px;padding:15px 17px;margin-bottom:13px;transition:border-color .15s,transform .15s}
+  .card:hover{border-color:#39405a;transform:translateY(-1px)}
+  .ch{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .av{width:38px;height:38px;border-radius:50%;flex:0 0 auto}
+  .who{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+  .nm{font-weight:700;font-size:14.5px}.nm .v{color:var(--acc)}
+  .hn{color:var(--mut);font-size:12.5px}
+  .rk{margin-left:auto;font-size:12px;font-weight:700;background:#0d1018;border:1px solid var(--bd);border-radius:999px;padding:3px 10px}
+  .rk.b{color:#ffcf6b}.rk.c{color:var(--mut)}
+  .tx{font-size:15px;color:#e7e9f2}
+  .tx a{color:var(--acc);text-decoration:none}
+  /* MEDIA: height-capped + cover crop, like X — fixes the "too big / cut off" problem */
+  .media{margin-top:11px;border-radius:13px;overflow:hidden;border:1px solid var(--bd);max-height:220px}
+  .media img{width:100%;height:220px;object-fit:cover;object-position:top;display:block}
+  .ft{display:flex;align-items:center;gap:14px;margin-top:11px;color:var(--mut);font-size:12.5px}
+  .ft .read{margin-left:auto;color:var(--acc2)}
+  .lc .lt{font-weight:600;font-size:16px;line-height:1.3;margin-bottom:5px}
+  .lc .lt a{color:var(--fg);text-decoration:none}.lc .lt a:hover{color:var(--acc)}
+  .lc .ls{color:var(--mut);font-size:14px;margin-bottom:8px}
+  .lc .lm{color:var(--mut);font-size:12.5px;display:flex;gap:8px;align-items:center}
+  .lc .lm .src{color:var(--acc2)}
+  .foot{text-align:center;color:var(--mut);font-size:12px;margin-top:30px}
+</style></head>
+<body><div class="wrap">
+
+  <div class="hd"><span class="dot"></span><h1>Morning Digest</h1><span class="date">Mon · Jun 22</span></div>
+
+  <div class="ov">
+    <h2>🗞️ The Landscape</h2>
+    <p>Open-weights and agent runtimes own today. ByteDance open-sourced a full agent runtime that gives every agent its own real computer — fs, bash, package install (<a href="#">68k★</a>); <a href="#">GLM-5.2</a> shipped as the strongest open coding model; an unverified Japanese model claims Mythos-Fable parity. Grok 5 rumors swirl — allegedly 10T params on Colossus 2.</p>
+    <div class="chips"><span class="chip"><b>Models</b> 107</span><span class="chip"><b>Agent tooling</b> 26</span><span class="chip"><b>Dev tools</b> 45</span><span class="chip"><b>Security</b> 15</span></div>
+  </div>
+
+  <div class="sec">🔥 Top Stories</div>
+
+  <div class="card">
+    <div class="ch">
+      <img class="av" src="https://pbs.twimg.com/profile_images/2026617137578782721/CcmpTpYZ_normal.jpg" alt="">
+      <div class="who"><span class="nm">Rituraj <span class="v">✔</span></span><span class="hn"><a href="https://x.com/RituWithAI" style="color:inherit;text-decoration:none">@RituWithAI</a></span></div>
+      <span class="rk b">B+ 84</span>
+    </div>
+    <div class="tx">🚨 ByteDance just open sourced the most complete AI agent runtime ever built. And it gives every agent its own computer. Not tools. Not API access. An entire computer — real filesystem, bash terminal, package installation, code execution. 68,000 GitHub stars.</div>
+    <div class="media"><img src="https://pbs.twimg.com/media/HLZGplMbQAADMT0.jpg" alt=""></div>
+    <div class="ft"><span>♥ 8</span><span>💬 4</span><a class="read" href="https://x.com/RituWithAI/status/2068918767430869368">View on X →</a></div>
+  </div>
+
+  <div class="card">
+    <div class="ch">
+      <img class="av" src="https://pbs.twimg.com/profile_images/2053244804520427520/m8mdWZCG_normal.jpg" alt="">
+      <div class="who"><span class="nm">Elon Musk <span class="v">✔</span></span><span class="hn">@elonmusk</span></div>
+      <span class="rk b">B- 82</span>
+    </div>
+    <div class="tx">AI probably exceeds the sum of all human intelligence in 4 or 5 years</div>
+    <div class="ft"><span>♥ 7.5K</span><span>💬 1.5K</span><a class="read" href="https://x.com/elonmusk/status/2068830099449766067">View on X →</a></div>
+  </div>
+
+  <div class="card lc">
+    <div class="lt"><a href="#">Musk's xAI releases Grok-3, touting a new rival to OpenAI</a></div>
+    <div class="ls">xAI unveiled its latest model Monday evening; Premium+ on X plus a new "SuperGrok" tier for the most advanced features.</div>
+    <div class="lm"><span class="src">Perplexity</span> · <span class="rk c" style="border:0;padding:0">C+ 77</span></div>
+  </div>
+
+  <div class="sec">📊 Also Noted</div>
+  <div class="card lc">
+    <div class="lt"><a href="#">mukul975 / Anthropic-Cybersecurity-Skills</a></div>
+    <div class="lm"><span class="src">GitHub</span> · <span class="rk c" style="border:0;padding:0">C 75</span></div>
+  </div>
+
+  <div class="foot">162 scanned · 159 new · deterministic scoring · personal-fit fused</div>
+</div></body></html>
