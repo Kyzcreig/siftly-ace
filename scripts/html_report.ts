@@ -84,7 +84,7 @@ function mediaHtml(t: Tweet): string {
       const variants = (m.video_info?.variants || []).filter((v: any) => v.content_type === 'video/mp4')
         .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0))
       const src = variants[0]?.url
-      if (src) parts.push(`<video class="media" controls preload="none"${poster}><source src="${esc(src)}" type="video/mp4"></video>`)
+      if (src) parts.push(`<video class="media video" controls preload="none"${poster}><source src="${esc(src)}" type="video/mp4"></video>`)
       else if (m.media_url_https) parts.push(`<img class="media" src="${esc(m.media_url_https)}" loading="lazy" alt="">`)
     }
   }
@@ -124,14 +124,17 @@ function linkCard(item: Item, scoreBadge: string): string {
   const rawHandle = String(item.authorHandle || '').replace(/^@/, '')
   // Only treat it as an X profile handle when the source is X AND it's a real
   // X handle ([A-Za-z0-9_], no Reddit "u/..." / org-slash names like "palmier-io").
+  // Pretty source label (avoid "github · GitHub" redundancy). Reddit u/ handles stay as-is.
   const isXProfile = src.toLowerCase() === 'x' && /^[A-Za-z0-9_]{1,15}$/.test(rawHandle)
   const handle = esc(rawHandle)
   const summary = item.summary && String(item.summary).trim() && String(item.summary) !== String(item.title)
     ? `<p class="ln-sum">${esc(item.summary)}</p>` : ''
+  const srcLabel = ({ github: 'GitHub', reddit: 'Reddit', hn: 'HN', perplexity: 'Perplexity' } as Record<string, string>)[src.toLowerCase()] || src
   const who = isXProfile
     ? `<a href="https://x.com/${handle}" target="_blank" rel="noopener">@${handle}</a>`
-    : (rawHandle ? esc(rawHandle.includes('/') ? rawHandle : '@' + rawHandle) : src)
-  const meta = [who, item.hn_points != null ? `${item.hn_points} pts` : ''].filter(Boolean).join(' · ')
+    : `<span class="src">${esc(srcLabel)}</span>`
+  const starsToday = item.stars_today != null ? `+${item.stars_today}★ today` : ''
+  const meta = [who, starsToday, item.hn_points != null ? `${item.hn_points} pts` : ''].filter(Boolean).join(' · ')
   const head = url ? `<a href="${url}" target="_blank" rel="noopener">${title}</a>` : title
   return `<article class="link-card">
   <h3 class="ln-title">${head}</h3>
@@ -162,34 +165,50 @@ async function renderItem(item: Item): Promise<string> {
   return linkCard(item, b)
 }
 
+const FONT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">`
+
 const STYLE = `
-:root{--bg:#0d1117;--panel:#161b22;--bd:#30363d;--fg:#e6edf3;--mut:#8b949e;--acc:#58a6ff;--accd:#1f6feb}
+:root{--bg:#08090c;--panel:#12141c;--panel2:#171a24;--bd:#242936;--fg:#eef0f6;--mut:#8b92a6;--acc:#7c8cff;--acc2:#52e0c4}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-.wrap{max-width:720px;margin:0 auto;padding:28px 18px 64px}
-h1{font-size:26px;margin:0 0 4px} .sub{color:var(--mut);margin:0 0 24px;font-size:14px}
-h2{font-size:18px;margin:34px 0 14px;padding-bottom:6px;border-bottom:1px solid var(--bd)}
-a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
-.overview{background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:16px 18px;margin:0 0 8px}
-.overview h2{margin-top:0;border:0;padding:0}
-.overview ul{margin:10px 0 0;padding-left:18px} .overview li{margin:3px 0}
-.tweet,.link-card{background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin:0 0 14px}
-.tw-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.avatar{width:44px;height:44px;border-radius:50%;flex:0 0 auto;background:#222}
-.who{display:flex;flex-direction:column;min-width:0;flex:1}
-.name{font-weight:700;color:var(--fg)} .verified{color:var(--acc)}
-.handle{color:var(--mut);font-size:14px}
-.bird{color:var(--mut);font-size:18px;flex:0 0 auto}
-.tw-text{font-size:16px;white-space:normal;word-wrap:break-word}
-.media-wrap{margin:12px 0 4px;border-radius:12px;overflow:hidden}
-.media-wrap.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-.media{width:100%;height:auto;display:block;border-radius:12px;border:1px solid var(--bd)}
-.tw-foot{display:flex;align-items:center;gap:12px;margin-top:12px;color:var(--mut);font-size:13px;flex-wrap:wrap}
-.tw-foot .readon{margin-left:auto;color:var(--acc)}
-.badge{background:#21262d;border:1px solid var(--bd);border-radius:999px;padding:1px 9px;font-size:12px;color:var(--fg)}
-.ln-title{margin:0 0 6px;font-size:17px;line-height:1.35}
-.ln-sum{margin:0 0 8px;color:#c9d1d9;font-size:15px}
-.ln-meta{color:var(--mut);font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+body{margin:0;background:radial-gradient(900px 500px at 80% -10%,rgba(124,140,255,.10),transparent 60%),radial-gradient(700px 400px at -10% 10%,rgba(82,224,196,.07),transparent 55%),var(--bg);color:var(--fg);font-family:"Sora",system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.55}
+.wrap{max-width:640px;margin:0 auto;padding:30px 18px 80px}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+.hd{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.hd .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 0 16px var(--acc)}
+.hd h1{font-weight:800;font-size:23px;letter-spacing:-.02em;margin:0}
+.hd .date{margin-left:auto;color:var(--mut);font-size:13px}
+.overview{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--bd);border-radius:18px;padding:18px 20px;margin:16px 0 26px;position:relative;overflow:hidden}
+.overview::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(var(--acc),var(--acc2))}
+.overview h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc2);margin:0 0 9px;border:0;padding:0}
+.overview p{color:#d6dae6;margin:0 0 6px}
+.overview ul{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 0;padding:0;list-style:none}
+.overview li{background:#0d1018;border:1px solid var(--bd);border-radius:999px;padding:4px 11px;font-size:12.5px;color:var(--mut)}
+.overview li strong{color:var(--fg)}
+.sec{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin:30px 4px 12px;display:flex;align-items:center;gap:10px}
+.sec::after{content:"";flex:1;height:1px;background:var(--bd)}
+.tweet,.link-card{background:var(--panel);border:1px solid var(--bd);border-radius:18px;padding:15px 17px;margin:0 0 13px;transition:border-color .15s,transform .15s}
+.tweet:hover,.link-card:hover{border-color:#39405a;transform:translateY(-1px)}
+.tw-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.avatar{width:38px;height:38px;border-radius:50%;flex:0 0 auto;background:#1b1f2b}
+.who{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.name{font-weight:700;font-size:14.5px;color:var(--fg)}.verified{color:var(--acc)}
+.handle{color:var(--mut);font-size:12.5px}
+.bird{margin-left:auto;color:var(--mut);font-size:16px;flex:0 0 auto}
+.tw-text{font-size:15px;color:#e7e9f2;white-space:normal;word-wrap:break-word}
+.tw-text a{color:var(--acc)}
+.media-wrap{margin:11px 0 2px;border-radius:13px;overflow:hidden;border:1px solid var(--bd);max-height:260px}
+.media-wrap.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:300px}
+.media{width:100%;height:260px;object-fit:cover;object-position:top;display:block}
+.media-wrap.grid .media{height:148px}
+.media.video{height:auto;max-height:260px;object-fit:contain;background:#000}
+.tw-foot{display:flex;align-items:center;gap:14px;margin-top:11px;color:var(--mut);font-size:12.5px;flex-wrap:wrap}
+.tw-foot .readon{margin-left:auto;color:var(--acc2)}
+.badge{background:#0d1018;border:1px solid var(--bd);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--fg);font-weight:700}
+.ln-title{margin:0 0 6px;font-size:16px;line-height:1.3;font-weight:600}
+.ln-title a{color:var(--fg)}.ln-title a:hover{color:var(--acc)}
+.ln-sum{color:var(--mut);font-size:14px;margin:0 0 8px}
+.ln-meta{color:var(--mut);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ln-meta .src{color:var(--acc2)}
 .foot{margin-top:30px;color:var(--mut);font-size:12px;text-align:center}
 `
 
@@ -224,15 +243,20 @@ async function main() {
   const topHtml = (await Promise.all(selected.map(renderItem))).join('\n')
   const alsoHtml = (await Promise.all(also.map(renderItem))).join('\n')
 
+  // split title into name + date if it contains an em-dash (e.g. "Morning Digest — Mon, Jun 22")
+  const dm = title.split(/\s+[—–-]\s+/)
+  const name = dm[0] || title
+  const date = dm.slice(1).join(' — ')
+
   const body = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>${esc(title)}</title><style>${STYLE}</style></head>
+<title>${esc(title)}</title>${FONT}<style>${STYLE}</style></head>
 <body><div class="wrap">
-<h1>${esc(title)}</h1>
+<div class="hd"><span class="dot"></span><h1>${esc(name)}</h1>${date ? `<span class="date">${esc(date)}</span>` : ''}</div>
 ${overview ? `<div class="overview">${ovHtml(overview)}</div>` : ''}
-${topHtml ? `<h2>🔥 Top Stories</h2>${topHtml}` : ''}
-${alsoHtml ? `<h2>📊 Also Noted</h2>${alsoHtml}` : ''}
+${topHtml ? `<div class="sec">🔥 Top Stories</div>${topHtml}` : ''}
+${alsoHtml ? `<div class="sec">📊 Also Noted</div>${alsoHtml}` : ''}
 ${footer ? `<p class="foot">${esc(footer)}</p>` : ''}
 </div></body></html>`
 
