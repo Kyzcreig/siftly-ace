@@ -105,7 +105,7 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   const likes = fmtCount((t as any).favorite_count)
   const replies = fmtCount((t as any).conversation_count)
   const meta = [likes && `♥ ${likes}`, replies && `💬 ${replies}`].filter(Boolean).join(' &nbsp; ')
-  const trTag = tr ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
+  const trTag = tr && tr.srcLang ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
   return `<article class="tweet">
   <header class="tw-head">
     ${avatar ? `<img class="avatar" src="${avatar}" alt="" loading="lazy">` : ''}
@@ -135,7 +135,7 @@ function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: 
   // Story summary: translated if foreign (option B), capped at 300 chars for display.
   const rawSummary = tr?.text ?? (item.summary != null ? String(item.summary) : '')
   const cappedSummary = capText(rawSummary, 300)
-  const trTag = tr ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
+  const trTag = tr && tr.srcLang ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
   const summary = cappedSummary.trim() && cappedSummary.trim() !== String(item.title)
     ? `<p class="ln-sum">${esc(cappedSummary)}</p>${trTag}` : ''
   const srcLabel = ({ github: 'GitHub', reddit: 'Reddit', hn: 'HN', perplexity: 'Perplexity' } as Record<string, string>)[src.toLowerCase()] || src
@@ -180,9 +180,19 @@ async function renderItem(item: Item): Promise<string> {
     try {
       const t = await getTweet(id)
       if (t && t.user) {
+        // react-tweet's syndication API truncates LONG ("note") tweets to ~280 chars
+        // (note_tweet body isn't exposed there). Our authenticated gather DID capture
+        // the full text into item.tweet_text — prefer it when it's genuinely longer so
+        // long tweets render in full. Strip trailing media t.co the renderer drops anyway.
+        const hydrated = t.text || ''
+        const stored = String(item.tweet_text || '')
+        const fuller = stored.replace(/\s+https?:\/\/t\.co\/\w+\s*$/g, '').trim()
+        const base = fuller.length > hydrated.length ? fuller : hydrated
         // Translate foreign tweet body to English (option B: replace + tag). Fail-safe.
-        const tr = await translateToEnglish(t.text || '')
-        return tweetCard(t, b, tr.translated ? { text: tr.text, srcLang: tr.srcLang } : undefined)
+        const tr = await translateToEnglish(base)
+        const override = tr.translated ? { text: tr.text, srcLang: tr.srcLang }
+          : (base !== hydrated ? { text: base, srcLang: '' } : undefined)
+        return tweetCard(t, b, override)
       }
     } catch { /* fall through to link card */ }
   }
