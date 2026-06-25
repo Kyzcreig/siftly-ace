@@ -52,7 +52,7 @@ function intOf(v: string | undefined, fallback: number): number {
 function buildEndpoint(userId: string, paginationToken: string | undefined): string {
   const q = new URLSearchParams({
     max_results: '100',
-    'tweet.fields': 'created_at,public_metrics',
+    'tweet.fields': 'created_at,public_metrics,note_tweet',
     expansions: 'author_id',
     'user.fields': 'username,name',
   })
@@ -91,7 +91,9 @@ function toCandidates(outcome: FetchOutcome): unknown[] {
     return {
       id: t.id,
       source: 'x',
-      text: t.text ?? '',
+      // Long ("note") tweets: v2 returns the FULL body in note_tweet.text (flat shape),
+      // while top-level text is the ~280-char truncation. Prefer the full body.
+      text: ((t.note_tweet as { text?: string } | undefined)?.text) || t.text || '',
       authorHandle: handle ?? null,
       authorName: u?.name ?? null,
       url: handle ? `https://x.com/${handle}/status/${t.id}` : null,

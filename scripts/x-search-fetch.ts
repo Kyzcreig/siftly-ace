@@ -73,7 +73,7 @@ function buildEndpoint(query: string, pageSize: number): string {
   const q = new URLSearchParams({
     query,
     max_results: String(pageSize),
-    'tweet.fields': 'created_at,public_metrics',
+    'tweet.fields': 'created_at,public_metrics,note_tweet',
     expansions: 'author_id',
     'user.fields': 'username,name',
   })
