@@ -19,7 +19,7 @@ import os
 import sys
 import tempfile
 
-MAX_CHARS = 7200  # ~two pages; the overview is a real briefing, not a teaser (Ace 2026-06-24, 4x the old half-page)
+MAX_CHARS = 1900  # ~300-word ceiling (Ace 2026-06-25 — the overview is a tight read, not a wall). A theme with nothing real to say is dropped, never padded to length.
 
 
 def _truncate(text: str, limit: int) -> str:
