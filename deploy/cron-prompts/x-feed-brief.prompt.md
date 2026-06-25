@@ -65,6 +65,8 @@ python3 ~/.hermes/scripts/notify.py --send "⚠️ x-feed-brief source failure: 
 ## Step 2 — Load seen list
 Read `~/.hermes/state/cron/x-feed-brief/x-brief-seen.json`. If missing, treat as `[]`.
 
+**ALSO load the morning-digest seen list to dedupe against THIS morning's digest** (morning-digest runs ~10 min before this brief at 03:45 and posts X items too; without this, the same tweet appears in both — the 2026-06-21 @emollick dup). Read `~/.hermes/state/cron/morning-digest/ai-news-seen.json`; if missing, treat as `[]`. It is a list of objects; X entries carry a `tweet_id` field (and `id`), plus a `url` like `https://x.com/<h>/status/<id>`. Collect every `tweet_id`/`id` (fallback: the trailing `/status/<id>` digits of `url`) into your dedupe set for Step 4. Do NOT modify `ai-news-seen.json` — it is owned by the morning-digest cron; this brief only READS it.
+
 ## Step 3 — Match tweet text to tweet ID
 **Timeline candidates from `x-feed-fetch.ts` are ALREADY matched** (each has `id`, `text`, `authorHandle`, `authorName`, `url`). The steps below apply to the **interest-search** results from `x-search-fetch.ts` (`SEARCH_JSON.results[]`, each with raw `data[]` tweets + `users[]` authors), which still need manual matching:
 The X API returns `data[]` (tweets) and `includes.users[]` (authors) as separate arrays. You MUST:
@@ -74,7 +76,7 @@ The X API returns `data[]` (tweets) and `includes.users[]` (authors) as separate
 4. Before including any tweet in the final output, verify the full text you're showing actually comes from that tweet's `text` field
 
 ## Step 4 — Deduplicate
-1. Remove tweets already in seen list (match by tweet ID)
+1. Remove tweets already in the seen set (match by tweet ID) — the seen set is `x-brief-seen.json` **PLUS the morning-digest `ai-news-seen.json` IDs loaded in Step 2**, so a tweet morning-digest already posted this morning is dropped here.
 2. Topic clustering: group tweets about the same story/event, keep ONLY the best one per cluster
 3. Same author + same topic → keep only the best
 
@@ -84,7 +86,7 @@ Load `/Users/alexgierczyk/.hermes/state/x-bookmarks/brief-config.json`. If `PF_W
 When `PF_WEIGHT>0`, before final ranking write the deduped candidate tweets to a temporary JSON file shaped like `{"candidates":[...]}` with at least: `id`, `url`, `source: "x"`, `title` or `text`, `authorHandle`, and metrics. Then run the audit wrapper (it runs `pf-score.py` under a timeout AND writes durable proof of whether personal-fit fired):
 
 ```bash
-/Users/alexgierczyk/Projects/siftly-ace/scripts/pf-audit.py /path/to/candidates.json --brief x-feed-brief > /tmp/x-feed-pf-score.json
+PF_AFFINITY_MODE=fused /Users/alexgierczyk/Projects/siftly-ace/scripts/pf-audit.py /path/to/candidates.json --brief x-feed-brief > /tmp/x-feed-pf-score.json
 ```
 
 The wrapper always exits 0 and re-emits `pf-score`'s JSON on stdout (or a `base_score_only` sentinel on timeout/failure), so downstream scoring is unchanged. It also writes a durable per-run artifact to `~/.hermes/state/x-bookmarks/pf-audit/x-feed-brief-<ts>.json` (id + scores + top-2 signals only — no raw tweet text) and appends a summary line to `pf-audit/log.jsonl`, pruning both after 7 days.
@@ -136,6 +138,8 @@ Record these 4 labels on each candidate so Step 6.7 can write them into the scor
 
 ## Step 6 — Select via the DETERMINISTIC engine (authority)
 Selection is owned by the shared deterministic engine (`score_digest.py` via `select_digest.py --engine deterministic`), the SAME engine the morning-digest posts from. It scores from the 4 enum labels (Step 5b) — NOT the prose `final_score` — and applies event/author collapse + forced distribution + the Top≥60 / Quick-Hits≥50 gates with 5 + 5 slots.
+
+**Author-diversity cap (Wave 6 G3):** the shared engine also caps how many items one author can hold across the COMBINED Top+Quick-Hits (default 2; per-handle overrides in `~/.hermes/digest/author-caps.txt`, e.g. `emollick 1`). Over-cap items are skipped so a distinct author fills the slot. It's inside the engine — no flag to pass here; `SIFTLY_AUTHOR_CAP=0 is the kill-switch.
 
 Run it over the scored dump written in Step 6.7 (so Step 6.7 must execute first — write the dump, THEN run this):
 ```bash
@@ -203,6 +207,28 @@ Immediately AFTER composing the final message body and BEFORE calling notify.py,
    - **Dedupe video ideas:** if any two rendered Video Ideas share the same `title` or `angle` text, keep only the one on the higher-scoring tweet, drop the other, and record the dropped title in `mismatch.dup_video_idea_titles`.
    - If `mismatch` has any non-empty array, the posted message must reflect the REPAIRED set (all selected rendered, deduped ideas), not the broken one.
 
+## Step 6.9 — Overview synthesis (additive, fail-safe — "Your Timeline")
+Write a **half-page "Your Timeline" synthesis** of what's happening across Ace's WHOLE feed today (not just the posted tweets). First get the deterministic aggregate over the full scored pool:
+```bash
+python3 ~/Projects/siftly-ace/scripts/overview_digest.py --in ~/.hermes/state/cron/x-feed-brief/_last_run_scored.json --brief x-feed-brief > /tmp/x-feed-overview-input.json
+```
+It emits `{themes:[{topic,count,salience,examples}], top_stories:[{ref,title,handle,content_type,final_score,url}], loud_authors:[{handle,count,engagement}], content_mix, pool_size, on_topic_size, off_topic_count}`. From THAT aggregate, compose a synthesis to place under the header (Step 7 template). Format for communication, roughly half a page (≤1800 chars):
+- Header line: `📡 **Your Timeline**`
+- **2–4 sentences** on what Ace's feed is actually about today — the recurring THEMES (top `themes`), who's LOUD (`loud_authors` by count/engagement), and any notable shift or mood. This is HIS curated graph, so name the specific accounts and topics dominating it ("Heavy on harness-building — Pocock, Berman, gdb all shipping agent-loop tooling; Teknium loud on open-weights; a side of @levelsio."). Note the feed's shape from `content_mix`/`off_topic_count` (e.g. "lots of opinion/chatter, a few real launches").
+- **CITE stories with `[N]` markers** — when you name a specific tweet/story, append its `ref` number from `top_stories` in square brackets, e.g. "Berman's loop-meta thread [1]". Use ONLY integer `ref` values that exist in the aggregate; cite each at most once; do NOT write URLs yourself.
+- Optionally **2–4 one-line theme bullets** with counts. Collapse near-duplicate keyword topics (ai/model/code/agent → human themes like "Models", "Agent tooling", "Coding").
+- **Same anti-boilerplate rules** as the tweets — no "your feed is buzzing", no filler; proper nouns + numbers only. If you can't write something genuinely informative, write fewer sentences rather than padding, or omit the overview entirely.
+
+Write the prose to `/tmp/x-feed-overview.txt`, then resolve the `[N]` citations to inline links (a script replaces each cited `[N]` with a tappable Discord masked link `[[N]](url)` IN PLACE from the aggregate — links never come from you; no footer line):
+```bash
+python3 ~/Projects/siftly-ace/scripts/resolve_overview_refs.py --prose /tmp/x-feed-overview.txt --agg /tmp/x-feed-overview-input.json --out /tmp/x-feed-overview-linked.txt
+# attach the overview to the deterministic render input (/tmp/x-feed-select.json from Step 6) for the HTML report:
+python3 ~/Projects/siftly-ace/scripts/inject_overview.py --render-input /tmp/x-feed-select.json --overview-file /tmp/x-feed-overview-linked.txt 2>/dev/null || true
+```
+Then paste the contents of `/tmp/x-feed-overview-linked.txt` into the `📡 Your Timeline` block of the Step 7 inline-fallback template (used only if the HTML report fails).
+
+This is **fully fail-safe and additive**: if `overview_digest.py` errors or you can't write a good synthesis, OMIT the `📡 Your Timeline` block — the brief posts exactly as before. The overview must NEVER alter the Top/Quick-Hits selection or block the post; it is prose above the tweets.
+
 ## Step 7 — Post
 Post to Discord #daily using notify.py (bot posts directly via Bot API; zero token cost):
 
@@ -219,15 +245,50 @@ fi
 ```
 If the marker exists you have already posted today — STOP and go to Step 7.5. One PT day = one #daily X-brief message (`rm` the marker to force a manual repost).
 
+**Inside the `else` branch (after `touch`), post the HTML report link, with the inline body as fail-safe fallback:**
+
+**First, build the unified footer deterministically** (Ace's call 2026-06-24 — both briefs share ONE footer format via `footer_build.py` so they can never drift). x-feed is X-only, so its "sources" are the two channels Timeline + Search (from the Step-6.7 `timeline_count` / `search_count` / `new_count`). Overwrite `.footer` in the selection file with the formatter's output:
 ```bash
-python3 ~/.hermes/scripts/notify.py --send "<body>" --channel discord --target 1480539453117305023
+python3 -c "
+import json, subprocess, os
+sel = '/tmp/x-feed-select.json'
+scored = os.path.expanduser('~/.hermes/state/cron/x-feed-brief/_last_run_scored.json')
+sc = json.load(open(scored)) if os.path.exists(scored) else {}
+tl, se = int(sc.get('timeline_count') or 0), int(sc.get('search_count') or 0)
+counts = {
+  'scanned': tl + se, 'new': int(sc.get('new_count') or 0), 'filtered': None,
+  'sources': [['Timeline', tl], ['Search', se]],
+  'pf_ok': True,
+}
+foot = subprocess.run(['python3', os.path.expanduser('~/Projects/siftly-ace/scripts/footer_build.py')],
+                      input=json.dumps(counts), capture_output=True, text=True).stdout
+d = json.load(open(sel))
+if foot.strip(): d['footer'] = foot
+json.dump(d, open(sel, 'w'), ensure_ascii=False, indent=2)
+print('footer:', foot.replace(chr(10), ' | '))
+" || echo "footer build failed — keeping existing footer" >&2
 ```
+This is fail-safe: any error leaves the existing footer untouched. Then post the report link (with the footer appended) and the inline body as fallback:
+```bash
+REPORT_URL=$(bash ~/Projects/siftly-ace/scripts/build-report.sh /tmp/x-feed-select.json "X Feed Brief — $(date '+%A, %B %-d')" /tmp/x-feed-report.html 2>/tmp/x-feed-report.err)
+if [ -n "$REPORT_URL" ]; then
+  python3 ~/.hermes/scripts/notify.py --send "🐦 **X Feed Brief** — $(date '+%A, %B %-d') → $REPORT_URL"$'\n'"$(jq -r '.footer // empty' /tmp/x-feed-select.json 2>/dev/null)" --channel discord --target 1480539453117305023
+else
+  echo "x-feed report build failed (see /tmp/x-feed-report.err) — falling back to inline body" >&2
+  python3 ~/.hermes/scripts/notify.py --send "<body>" --channel discord --target 1480539453117305023 --suppress-embeds
+fi
+```
+`build-report.sh` renders `/tmp/x-feed-select.json` (the Step-6 deterministic selection, overview-injected in Step 6.9) into the Refined-Cards report and publishes a FRESH link daily, printing ONLY the URL. On ANY failure it exits non-zero/empty, tripping the inline-`<body>` fallback so #daily always gets the brief. `<body>` = the full inline template below (build it regardless, as the fallback payload).
+
+(The `--suppress-embeds` flag wraps any bare URL inside verbatim tweet text in `<...>` so Discord renders NO preview embed cards. notify.py also decodes HTML entities — `&amp;`→`&`, `&#39;`→`'` — by default, so X-sourced tweet text renders correctly. You still wrap your own template URLs in `<...>` per rule 6 below.)
 
 Your output MUST match this EXACT format. Copy the structure character-for-character, substituting values in `{braces}`. Nothing else. No extra text before, between, or after.
 
 Fill-in template (substitute each `{field}`):
 
 🐦 **X Feed Brief** — {DayOfWeek}, {Month} {Day}
+
+{📡 Your Timeline overview block from Step 6.9 — half-page synthesis + theme bullets; OMIT THIS WHOLE BLOCK and the blank line after it if no good overview was produced}
 
 **1.** @{handle} · {N} likes · {N} replies · {emoji} {grade} ({score})
 
