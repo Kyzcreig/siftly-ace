@@ -175,7 +175,7 @@ x_search() {
     --data-urlencode "query=${query}" \
     --data-urlencode 'max_results=20' \
     --data-urlencode "start_time=${START_TIME}" \
-    --data-urlencode 'tweet.fields=created_at,public_metrics' \
+    --data-urlencode 'tweet.fields=created_at,public_metrics,note_tweet' \
     --data-urlencode 'expansions=author_id' \
     --data-urlencode 'user.fields=username,name')
   cat "$body"; rm -f "$body"
@@ -522,7 +522,7 @@ fi
 
 **Why this exists (FYI):** the guard reads `base_score` (your pre-boost rubric score) + `personal_fit_delta` + `signals.topic_hits` from the debug dump and re-derives every boost and the final selection itself. Whatever `selected`/`also`/`final_score` you put in the debug dump is IGNORED for posting — only `all_scored` matters. So: score every candidate honestly, dump the full pool with verbatim `tweet_text` + `event_key`, and let the guard pick. The render-input field shapes the guard emits (for reference) are below.
 
-**A) TWEETS (`source: "X"`) — render VERBATIM, like the x-feed brief.** Do NOT summarize or paraphrase a tweet. Put the tweet's real text in `tweet_text` exactly as posted (keep line breaks, emojis, @mentions, t.co links). The HTML report hydrates the tweet card and shows the author + engagement meta line, then the **FULL untruncated text** (tweets are never length-capped — Ace's call 2026-06-24). NEVER write an "@handle flags …" prefix or a hand-written gloss for a tweet — paste the actual tweet.
+**A) TWEETS (`source: "X"`) — render VERBATIM, like the x-feed brief.** Do NOT summarize or paraphrase a tweet. Put the tweet's real text in `tweet_text` exactly as posted (keep line breaks, emojis, @mentions, t.co links). **For LONG ("note") tweets, the search API (now requested with `tweet.fields=…,note_tweet`) returns the full body in `note_tweet.text` (FLAT v2 shape) while the top-level `text` is the ~280-char truncation — so capture `note_tweet.text ?? text` to get the WHOLE tweet, not the cut-off version.** The HTML report shows the **FULL untruncated text** (tweets are never length-capped — Ace's call 2026-06-24). NEVER write an "@handle flags …" prefix or a hand-written gloss for a tweet — paste the actual tweet.
 
 **B) STORIES (`source: "HN" | "smol.ai" | "Latent Space" | "Perplexity" | "reddit" | "github"`) — headline + a ≤300-char summary.** `title` is a clean self-contained headline; `summary` is 1–3 sentences (≤300 chars, per the summary formula above) that ADD information beyond the headline (NEVER a reprint/re-truncation of it — the renderer drops a summary that just echoes the headline). This summary is what the report card body shows, so write the whole thing; never cut it to one clause or end with "…". If you genuinely can't say anything beyond the headline, omit `summary`.
 
