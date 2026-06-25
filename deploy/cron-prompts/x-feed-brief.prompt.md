@@ -168,7 +168,7 @@ The returned `selected[]` are the **Top tweets** (render verbatim, in strict ord
   "quick_hits_ids": ["<tweetId>", ...],
   "all_scored": [
     {"tweet_id":"...","authorHandle":"...","text_snippet":"<≤120 chars, NOT full text>",
-     "tweet_text":"<FULL verbatim tweet text — for LONG/note tweets use lib/twitter-api.ts tweetFullText() so the whole body is captured, not the ~280-char syndication cap; this is what the HTML report renders>",
+     "tweet_text":"<FULL verbatim tweet text. For LONG/note tweets the v2 API (with tweet.fields=note_tweet, now requested) returns the full body in `note_tweet.text` (FLAT shape) while the top-level `text` is the ~280-char truncation — so capture `note_tweet.text ?? text` (NOT lib's tweetFullText(), which expects the GraphQL note_tweet_results shape, not the v2 flat one). This is what the HTML report renders>",
      "url":"...","likes":0,"replies":0,"topic":"<cluster label>",
      "content_type":"<launch|benchmark|tutorial|field_report|analysis|news|opinion|promo|reply_fragment>",
      "actionability":"<actionable_now|reference|context_only|none>",
