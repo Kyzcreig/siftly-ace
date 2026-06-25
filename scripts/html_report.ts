@@ -259,7 +259,7 @@ async function main() {
 ${overview ? `<div class="overview">${ovHtml(overview)}</div>` : ''}
 ${topHtml ? `<div class="sec">🔥 Top Stories</div>${topHtml}` : ''}
 ${alsoHtml ? `<div class="sec">📊 Also Noted</div>${alsoHtml}` : ''}
-${footer ? `<p class="foot">${esc(footer)}</p>` : ''}
+${footer ? `<p class="foot">${footer.split('\n').map((l) => esc(l)).join('<br>')}</p>` : ''}
 </div></body></html>`
 
   writeFileSync(outFile, body, 'utf8')
