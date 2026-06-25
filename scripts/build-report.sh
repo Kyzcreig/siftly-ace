@@ -20,9 +20,18 @@ err(){ echo "[build-report] $*" >&2; }
 TSX="$REPO/node_modules/.bin/tsx"
 [ -x "$TSX" ] || { err "tsx not found"; exit 1; }
 
-# 1) render HTML (getTweet hydrates tweet cards; secrets not required for public tweets)
+# 1) render HTML (getTweet hydrates tweet cards; secrets not required for public tweets).
+#    Route through with-secrets.sh so OPENAI_API_KEY is present for foreign-text
+#    translation (lib/translate.ts). Translation is fail-safe: if secrets can't load,
+#    it silently no-ops and the report still builds with original-language text.
+WITH_SECRETS="$REPO/scripts/with-secrets.sh"
 cd "$REPO" || { err "cd repo failed"; exit 1; }
-if ! timeout 180 "$TSX" scripts/html_report.ts --in "$IN" --out "$OUT" --title "$TITLE" >&2; then
+if [ -x "$WITH_SECRETS" ]; then
+  RENDER_CMD=(bash "$WITH_SECRETS" "$TSX" scripts/html_report.ts --in "$IN" --out "$OUT" --title "$TITLE")
+else
+  RENDER_CMD=("$TSX" scripts/html_report.ts --in "$IN" --out "$OUT" --title "$TITLE")
+fi
+if ! timeout 180 "${RENDER_CMD[@]}" >&2; then
   err "html_report.ts failed"; exit 1
 fi
 [ -s "$OUT" ] || { err "empty html output"; exit 1; }

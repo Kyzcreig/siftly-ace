@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { getTweet } from 'react-tweet/api'
 import type { Tweet } from 'react-tweet/api'
+import { translateToEnglish } from '../lib/translate'
 
 type Item = Record<string, any>
 
@@ -45,8 +46,9 @@ function fmtCount(n: unknown): string {
 
 // Turn a tweet's entity-rich text into HTML: @mentions + #hashtags + links become
 // anchors; t.co media links are STRIPPED (the media renders inline below instead).
-function renderTweetText(t: Tweet): string {
-  const text = t.text || ''
+// `overrideText` (a translation) replaces the body text while keeping entity linking.
+function renderTweetText(t: Tweet, overrideText?: string): string {
+  const text = overrideText ?? t.text ?? ''
   // also strip the trailing t.co that points at the tweet's own media/quoted
   const urls = (t.entities?.urls || []) as any[]
   let html = esc(text)
@@ -93,7 +95,7 @@ function mediaHtml(t: Tweet): string {
   return parts.length ? `<div class="media-wrap${md.length > 1 ? ' grid' : ''}">${parts.join('')}</div>` : ''
 }
 
-function tweetCard(t: Tweet, scoreBadge: string): string {
+function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: string }): string {
   const u = t.user
   const handle = esc(u?.screen_name || '')
   const name = esc(u?.name || handle)
@@ -103,6 +105,7 @@ function tweetCard(t: Tweet, scoreBadge: string): string {
   const likes = fmtCount((t as any).favorite_count)
   const replies = fmtCount((t as any).conversation_count)
   const meta = [likes && `♥ ${likes}`, replies && `💬 ${replies}`].filter(Boolean).join(' &nbsp; ')
+  const trTag = tr ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
   return `<article class="tweet">
   <header class="tw-head">
     ${avatar ? `<img class="avatar" src="${avatar}" alt="" loading="lazy">` : ''}
@@ -112,14 +115,14 @@ function tweetCard(t: Tweet, scoreBadge: string): string {
     </div>
     <a class="bird" href="${url}" target="_blank" rel="noopener" title="Open on X">𝕏</a>
   </header>
-  <div class="tw-text">${renderTweetText(t)}</div>
+  <div class="tw-text">${renderTweetText(t, tr?.text)}</div>${trTag}
   ${mediaHtml(t)}
   <footer class="tw-foot"><span class="eng">${meta}</span>${scoreBadge}<a class="readon" href="${url}" target="_blank" rel="noopener">View on X →</a></footer>
 </article>`
 }
 
 // Fallback / non-tweet story link-card.
-function linkCard(item: Item, scoreBadge: string): string {
+function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: string }): string {
   const title = esc(item.title || item.tweet_text || item.text || 'Untitled')
   const url = esc(item.url || '')
   const src = esc(item.source || '')
@@ -129,8 +132,12 @@ function linkCard(item: Item, scoreBadge: string): string {
   // Pretty source label (avoid "github · GitHub" redundancy). Reddit u/ handles stay as-is.
   const isXProfile = src.toLowerCase() === 'x' && /^[A-Za-z0-9_]{1,15}$/.test(rawHandle)
   const handle = esc(rawHandle)
-  const summary = item.summary && String(item.summary).trim() && String(item.summary) !== String(item.title)
-    ? `<p class="ln-sum">${esc(item.summary)}</p>` : ''
+  // Story summary: translated if foreign (option B), capped at 300 chars for display.
+  const rawSummary = tr?.text ?? (item.summary != null ? String(item.summary) : '')
+  const cappedSummary = capText(rawSummary, 300)
+  const trTag = tr ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
+  const summary = cappedSummary.trim() && cappedSummary.trim() !== String(item.title)
+    ? `<p class="ln-sum">${esc(cappedSummary)}</p>${trTag}` : ''
   const srcLabel = ({ github: 'GitHub', reddit: 'Reddit', hn: 'HN', perplexity: 'Perplexity' } as Record<string, string>)[src.toLowerCase()] || src
   const who = isXProfile
     ? `<a href="https://x.com/${handle}" target="_blank" rel="noopener">@${handle}</a>`
@@ -143,6 +150,17 @@ function linkCard(item: Item, scoreBadge: string): string {
   ${summary}
   <div class="ln-meta">${meta} ${scoreBadge}</div>
 </article>`
+}
+
+// Cap a string to ~limit chars at a word boundary (no mid-word cut); add an
+// ellipsis only when we actually trimmed. Tweets are NEVER capped (Ace's call);
+// only non-tweet story summaries pass through here.
+function capText(s: string, limit: number): string {
+  const t = (s || '').trim()
+  if (t.length <= limit) return t
+  const cut = t.slice(0, limit)
+  const sp = cut.lastIndexOf(' ')
+  return (sp > limit * 0.6 ? cut.slice(0, sp) : cut).trimEnd() + '…'
 }
 
 function badge(item: Item): string {
@@ -161,10 +179,16 @@ async function renderItem(item: Item): Promise<string> {
   if (id) {
     try {
       const t = await getTweet(id)
-      if (t && t.user) return tweetCard(t, b)
+      if (t && t.user) {
+        // Translate foreign tweet body to English (option B: replace + tag). Fail-safe.
+        const tr = await translateToEnglish(t.text || '')
+        return tweetCard(t, b, tr.translated ? { text: tr.text, srcLang: tr.srcLang } : undefined)
+      }
     } catch { /* fall through to link card */ }
   }
-  return linkCard(item, b)
+  // non-tweet story: translate the summary if it's foreign
+  const tr = await translateToEnglish(item.summary != null ? String(item.summary) : '')
+  return linkCard(item, b, tr.translated ? { text: tr.text, srcLang: tr.srcLang } : undefined)
 }
 
 const FONT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">`
@@ -211,6 +235,7 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .ln-sum{color:var(--mut);font-size:14px;margin:0 0 8px}
 .ln-meta{color:var(--mut);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ln-meta .src{color:var(--acc2)}
+.tr-tag{display:inline-block;margin-top:6px;font-size:11px;color:var(--mut);font-style:italic;opacity:.8}
 .foot{margin-top:30px;color:var(--mut);font-size:12px;text-align:center}
 `
 

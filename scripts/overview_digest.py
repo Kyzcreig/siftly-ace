@@ -39,6 +39,38 @@ def _text(it: dict) -> str:
             or it.get("text") or "").strip()
 
 
+# Leading @mentions on a reply tweet ("@a @b actual point") carry no story signal —
+# strip them so the label reads as the actual point, not the reply targets.
+_LEADING_MENTIONS = re.compile(r"^(?:\s*@\w{1,15}\b[,:]?\s*)+")
+_WS = re.compile(r"\s+")
+_SENT_SPLIT = re.compile(r"(?<=[.!?。！？])\s|\n")
+
+
+def _is_tweet(it: dict) -> bool:
+    src = str(it.get("source") or "").lower()
+    return src in ("x", "twitter") or bool(it.get("tweet_id")) or "/status/" in (it.get("url") or "")
+
+
+def _label(it: dict, limit: int = 90) -> str:
+    """A clean, human-readable label for an item — used for theme examples AND
+    top-story names so the Overview prose/chips never read as raw tweet fragments.
+
+    - Non-tweets (github/reddit/HN/Perplexity): the title IS a clean headline/slug.
+    - Tweets: '@handle: <first clause>' with leading @mentions stripped (a reply's
+      target handles aren't the story). Falls back to '@handle' or the raw text.
+    """
+    if not _is_tweet(it):
+        base = (it.get("title") or it.get("summary") or it.get("text") or "").strip()
+        return _WS.sub(" ", base)[:limit].strip()
+    txt = (it.get("tweet_text") or it.get("title") or it.get("text") or "").strip()
+    txt = _WS.sub(" ", _LEADING_MENTIONS.sub("", txt)).strip()
+    gist = (_SENT_SPLIT.split(txt, maxsplit=1)[0] if txt else "").strip().rstrip(":-—, ")
+    handle = str(it.get("authorHandle") or "").strip().lstrip("@")
+    if not gist:
+        return f"@{handle}" if handle else ""
+    return (f"@{handle}: {gist}" if handle else gist)[:limit].strip()
+
+
 def _topics(it: dict) -> list:
     """topic labels for an item, robust to BOTH brief shapes:
       - morning-digest: signals is a DICT with topic_hits=[{topic, why}, ...]
@@ -99,8 +131,8 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
         for t in set(_topics(it)):
             theme_count[t] += 1
             theme_salience[t] += sal
-            if len(theme_examples[t]) < 3 and _text(it):
-                theme_examples[t].append(_text(it)[:120])
+            if len(theme_examples[t]) < 3 and _label(it):
+                theme_examples[t].append(_label(it))
     # rank themes by salience (sum of scores), tie-break count
     themes = sorted(theme_count.keys(),
                     key=lambda t: (theme_salience[t], theme_count[t]), reverse=True)[:top_n_themes]
@@ -125,6 +157,7 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
             continue  # a story with no URL can't be a citable reference
         stories.append({
             "ref": len(stories) + 1,
+            "label": _label(it),
             "title": _text(it)[:200],
             "handle": it.get("authorHandle"),
             "source": it.get("source"),
