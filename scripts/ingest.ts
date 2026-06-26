@@ -224,6 +224,16 @@ function printResult(result: IngestResult, options: CliOptions, log: (message: s
     )
   }
 
+  // Structured early-stop telemetry line — a single grep-stable signal the daily
+  // heartbeat's read-amplification guard parses to tell apart a cheap early-stop
+  // run from a (full-walk) day and WHY it full-walked. Incremental runs only.
+  if (options.incremental) {
+    const reason = (result as IngestResult).fullWalkReason
+    const probeFellBack = Object.keys((result as IngestResult).earlyStopError ?? {}).length > 0
+    const engaged = !reason && !probeFellBack
+    log(`early-stop-telemetry: engaged=${engaged} fullWalkReason=${reason ?? (probeFellBack ? 'probe-error' : 'none')}`)
+  }
+
   if (result.creditsDepleted) {
     log(`CREDITS DEPLETED on ${result.creditsDepleted.source} (402); fetched rows saved + cursor persisted — re-run to resume.`)
   }

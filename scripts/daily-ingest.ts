@@ -88,6 +88,11 @@ export interface DailyIngestStageRunResult {
   sourceRows?: Partial<Record<DailyIngestSourceName, number>>
   created?: number
   updated?: number
+  // Early-stop telemetry parsed from the ingest stage stdout (ingest stage only).
+  // `fullWalkReason` is set ('safety-net'|'kill-switch') when the run did a full
+  // walk on purpose; `earlyStopped` is true when the cheap early-stop path engaged.
+  fullWalkReason?: string
+  earlyStopped?: boolean
 }
 
 export interface DailyIngestSuccessSummary {
@@ -95,6 +100,10 @@ export interface DailyIngestSuccessSummary {
   likes: number
   created: number
   updated: number
+  // Carried through so the read-amplification guard can reason about WHY reads
+  // were high (a legit safety-net day is fine; a full walk with no reason is the bug).
+  fullWalkReason?: string
+  earlyStopped?: boolean
 }
 
 export type DailyIngestStageRunner = (
@@ -293,6 +302,29 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
       }
     }
 
+    // Read-amplification guard (hardening, 2026-06-26): a successful run is NOT
+    // necessarily a CHEAP run. If the ingest read a full-walk-sized number of
+    // pages with no legitimate reason (the early-stop cadence-reset bug's exact
+    // signature), turn that silent waste into a LOUD alert instead of a calm ✅.
+    const amp = detectReadAmplification({
+      reads: successSummary.bookmarks + successSummary.likes,
+      created: successSummary.created,
+      batchCap: config.ingestMaxPages * config.pageSize * SOURCE_COUNT,
+      earlyStopped: successSummary.earlyStopped,
+      fullWalkReason: successSummary.fullWalkReason,
+    })
+    if (amp?.anomaly) {
+      console.error(`daily-ingest read-amplification anomaly: ${amp.reason}`)
+      try {
+        await sendAlert(
+          formatAlertMessage({ kind: 'stage-failure', stage: 'ingest', reason: `(read-amplification anomaly) ${amp.reason}` }),
+          { kind: 'stage-failure', stage: 'ingest', reason: amp.reason },
+        )
+      } catch (alertErr) {
+        console.error(`daily-ingest read-amplification alert failed: ${errorMessage(alertErr)}`)
+      }
+    }
+
     return {
       ok: true,
       exitCode: 0,
@@ -450,12 +482,59 @@ function mergeSourceRows(summary: DailyIngestSuccessSummary, stageResult: DailyI
   }
   summary.created += normalizeNonNegativeInt(stageResult.created)
   summary.updated += normalizeNonNegativeInt(stageResult.updated)
+  if (stageResult.fullWalkReason !== undefined) summary.fullWalkReason = stageResult.fullWalkReason
+  if (stageResult.earlyStopped !== undefined) summary.earlyStopped = stageResult.earlyStopped
+}
+
+/**
+ * Read-amplification guard (hardening, 2026-06-26). The early-stop cadence bug
+ * full-walked EVERY night (~950 reads for ~18 new) while the heartbeat happily
+ * said "✅ OK". This detector turns that silent waste into a LOUD signal.
+ *
+ * Anomaly = the run read a full-walk-sized number of pages but did NOT engage
+ * early-stop AND has no legitimate reason to have full-walked. A real safety-net
+ * day (weekly) or a deliberate kill-switch carries `fullWalkReason` and is fine;
+ * a probe failure (`probe-error`) is its own already-alerted path. The bug's
+ * signature is specifically "full-walk-sized reads with reason=none" — i.e. the
+ * cheap path SHOULD have engaged but didn't, and nothing explains why.
+ *
+ * `batchCap` = ingestMaxPages × pageSize × sources (the full-walk ceiling). We
+ * trigger at ≥60% of it: an early-stop day reads a small fraction of that.
+ */
+export function detectReadAmplification(args: {
+  reads: number
+  created: number
+  batchCap: number
+  earlyStopped?: boolean
+  fullWalkReason?: string
+}): { anomaly: boolean; reason: string } | null {
+  const { reads, created, batchCap, earlyStopped, fullWalkReason } = args
+  // A legitimately-explained full walk (weekly safety-net or kill-switch) is fine.
+  if (fullWalkReason === 'safety-net' || fullWalkReason === 'kill-switch') return null
+  // Probe-error already has its own WARN/alert path (I7) — don't double-flag.
+  if (fullWalkReason === 'probe-error') return null
+  // Early-stop engaged as intended → quiet.
+  if (earlyStopped === true) return null
+  if (!Number.isFinite(batchCap) || batchCap <= 0) return null
+  const threshold = Math.floor(batchCap * 0.6)
+  if (reads >= threshold) {
+    return {
+      anomaly: true,
+      reason:
+        `read-amplification: ${reads} API reads for ${created} new (≥60% of the ${batchCap} full-walk ceiling) ` +
+        `with early-stop NOT engaged and no full-walk reason — the incremental cheap path should have engaged but didn't. ` +
+        `Likely the safety-net cadence never reset (lastFullWalkAt stale) or the known-IDs probe is silently empty.`,
+    }
+  }
+  return null
 }
 
 function parseIngestSourceRows(output: string): DailyIngestStageRunResult {
   const sourceRows: Partial<Record<DailyIngestSourceName, number>> = {}
   let created: number | undefined
   let updated: number | undefined
+  let fullWalkReason: string | undefined
+  let earlyStopped: boolean | undefined
   for (const line of output.split(/\r?\n/)) {
     const sourceMatch = /^(bookmark|like):\s+.*\brows=(\d+)\b/.exec(line)
     if (sourceMatch) {
@@ -467,8 +546,14 @@ function parseIngestSourceRows(output: string): DailyIngestStageRunResult {
     if (createdMatch) created = Number(createdMatch[1])
     const updatedMatch = /\bupdated=(\d+)\b/.exec(line)
     if (updatedMatch) updated = Number(updatedMatch[1])
+    // Structured early-stop telemetry: "early-stop-telemetry: engaged=<bool> fullWalkReason=<reason>"
+    const telem = /early-stop-telemetry:\s+engaged=(true|false)\s+fullWalkReason=(\S+)/.exec(line)
+    if (telem) {
+      earlyStopped = telem[1] === 'true'
+      fullWalkReason = telem[2] === 'none' ? undefined : telem[2]
+    }
   }
-  return { sourceRows, created, updated }
+  return { sourceRows, created, updated, fullWalkReason, earlyStopped }
 }
 
 function formatHeartbeatMessage(summary: DailyIngestSuccessSummary): string {
