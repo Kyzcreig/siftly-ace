@@ -95,6 +95,53 @@ function mediaHtml(t: Tweet): string {
   return parts.length ? `<div class="media-wrap${md.length > 1 ? ' grid' : ''}">${parts.join('')}</div>` : ''
 }
 
+// Best outbound link on a tweet (skipping self/quoted t.co media), with a clean
+// label. Returns null when there's nothing meaningful to surface. X native
+// "Articles" (x.com/i/article/...) get a friendly label since they carry no
+// display_url worth showing.
+function primaryLink(t: Tweet): { href: string; label: string } | null {
+  const urls = ((t.entities?.urls || []) as any[]).filter(Boolean)
+  for (const u of urls) {
+    const exp = String(u.expanded_url || u.url || '')
+    if (!exp || /\/\/t\.co\//.test(exp)) continue
+    if (/x\.com\/i\/article\//i.test(exp) || /twitter\.com\/i\/article\//i.test(exp)) {
+      return { href: exp.replace(/^http:/, 'https:'), label: 'Read the article on X →' }
+    }
+    const disp = String(u.display_url || exp).replace(/^https?:\/\/(www\.)?/, '')
+    return { href: exp.replace(/^http:/, 'https:'), label: `${disp} →` }
+  }
+  return null
+}
+
+// A quoted (quote-tweeted) post rendered as a nested sub-card: author + its text
+// (links resolved) + its media + its outbound link. This is what was being
+// dropped entirely — a quote-tweet's article/link never reached the report.
+// Fail-safe: any missing piece is simply omitted; never throws.
+function quotedCard(q: any): string {
+  if (!q || typeof q !== 'object') return ''
+  const u = q.user || {}
+  const handle = esc(u.screen_name || '')
+  const name = esc(u.name || handle || 'Quoted post')
+  const qUrl = handle && q.id_str ? `https://x.com/${handle}/status/${esc(q.id_str)}` : ''
+  // Quoted body text with @/#/link entities resolved; media t.co stripped.
+  let textHtml = ''
+  try { textHtml = renderTweetText(q as Tweet) } catch { textHtml = esc(String(q.text || '')) }
+  const link = primaryLink(q as Tweet)
+  // If the body is just the primary link repeated (common for link/article-only
+  // quotes — the screenshot case), drop it; the clean q-link CTA below carries it.
+  const stripped = textHtml.replace(/<a [^>]*>.*?<\/a>/g, '').replace(/<br>/g, '').trim()
+  const bodyIsJustLink = !stripped && /<a /.test(textHtml)
+  const bodyHtml = (textHtml.replace(/<br>/g, '').trim() && !bodyIsJustLink) ? `<div class="q-text">${textHtml}</div>` : ''
+  let mediaPart = ''
+  try { mediaPart = mediaHtml(q as Tweet) } catch { mediaPart = '' }
+  const linkRow = link ? `<a class="q-link" href="${esc(link.href)}" target="_blank" rel="noopener">${esc(link.label)}</a>` : ''
+  if (!bodyHtml && !mediaPart && !linkRow && !handle) return ''
+  const head = handle
+    ? `<a class="q-head" href="${qUrl || `https://x.com/${handle}`}" target="_blank" rel="noopener"><span class="q-name">${name}</span> <span class="q-handle">@${handle}</span></a>`
+    : ''
+  return `<div class="quoted">${head}${bodyHtml}${mediaPart}${linkRow}</div>`
+}
+
 function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: string }): string {
   const u = t.user
   const handle = esc(u?.screen_name || '')
@@ -106,6 +153,11 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   const replies = fmtCount((t as any).conversation_count)
   const meta = [likes && `♥ ${likes}`, replies && `💬 ${replies}`].filter(Boolean).join(' &nbsp; ')
   const trTag = tr && tr.srcLang ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
+  const quoted = quotedCard((t as any).quoted_tweet)
+  // Parent's own outbound link (not its media/quoted t.co) — surfaced only when
+  // there's no quoted card already carrying a link, to avoid duplicate rows.
+  const pLink = quoted ? null : primaryLink(t)
+  const parentLinkRow = pLink ? `<a class="q-link" href="${esc(pLink.href)}" target="_blank" rel="noopener">${esc(pLink.label)}</a>` : ''
   return `<article class="tweet">
   <header class="tw-head">
     ${avatar ? `<img class="avatar" src="${avatar}" alt="" loading="lazy">` : ''}
@@ -116,7 +168,7 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
     <a class="bird" href="${url}" target="_blank" rel="noopener" title="Open on X">𝕏</a>
   </header>
   <div class="tw-text">${renderTweetText(t, tr?.text)}</div>${trTag}
-  ${mediaHtml(t)}
+  ${mediaHtml(t)}${parentLinkRow}${quoted}
   <footer class="tw-foot"><span class="eng">${meta}</span>${scoreBadge}<a class="readon" href="${url}" target="_blank" rel="noopener">View on X →</a></footer>
 </article>`
 }
@@ -259,6 +311,16 @@ a{color:var(--gold);text-decoration:none}
 .tw-foot .readon:hover{letter-spacing:.18em}
 /* score badge / grade pill (mockup .grade) */
 .badge{background:var(--bg2);border:1px solid var(--line);border-radius:20px;padding:2px 11px;font-size:11px;color:var(--dim);font-weight:500;letter-spacing:.04em}
+/* quoted (quote-tweeted) sub-card — nested, hairline-boxed, same Noir palette */
+.quoted{margin:14px 0 2px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.012)}
+.quoted .media-wrap{margin-top:11px}
+.q-head{display:flex;align-items:baseline;gap:7px;margin-bottom:7px}
+.q-name{font-family:"Inter Tight",sans-serif;font-weight:600;font-size:13.5px;color:var(--fg)}
+.q-handle{font-size:12px;color:var(--dim)}
+.q-text{font-size:15px;color:#c8c3ba;line-height:1.55;word-wrap:break-word}
+.q-text a{color:var(--gold);border-bottom:1px solid var(--goldsoft)}
+.q-link{display:inline-block;margin-top:11px;color:var(--gold);font-size:11.5px;text-transform:uppercase;letter-spacing:.1em}
+.q-link:hover{letter-spacing:.15em}
 /* link card — Noir story */
 .ln-title{font-family:"Fraunces",Georgia,serif;font-weight:400;font-size:25px;line-height:1.18;margin:0 0 10px;letter-spacing:-.01em}
 .ln-title a{color:var(--fg)}.ln-title a:hover{color:var(--gold)}
@@ -333,4 +395,14 @@ ${footer ? `<p class="foot">${footer.split('\n').map((l) => esc(l)).join('<br>')
   process.stderr.write(`html_report: wrote ${outFile} (${selected.length} top + ${also.length} also)\n`)
 }
 
-main().catch((e) => { process.stderr.write(`html_report FATAL: ${e?.message || e}\n`); process.exit(1) })
+// Entry point: only auto-run when invoked as a script, not when imported by a test.
+const _isMain = (() => {
+  try { return import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('html_report.ts') || process.argv[1]?.endsWith('html_report.js') }
+  catch { return true }
+})()
+if (_isMain) {
+  main().catch((e) => { process.stderr.write(`html_report FATAL: ${e?.message || e}\n`); process.exit(1) })
+}
+
+// Exported for unit tests (pure, side-effect-free render helpers).
+export { quotedCard, primaryLink, renderTweetText, tweetCard }
