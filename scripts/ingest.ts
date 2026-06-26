@@ -169,9 +169,15 @@ export async function runIngestCli(argv: string[], deps: IngestCliDependencies =
     ...(earlyStop?.earlyStopK ? { earlyStopK: earlyStop.earlyStopK } : {}),
   })
 
-  // D-7: after a safety-net full walk, stamp lastFullWalkAt — but ONLY for sources whose
-  // walk reached the frontier (nextCursor === null), NOT those capped by maxPages (Opus B1).
-  // A ceiling-capped walk didn't recover the deep history, so its cadence must NOT reset.
+  // D-7: after a safety-net full walk, reset the cadence by stamping lastFullWalkAt.
+  // BUGFIX 2026-06-26: stamp EVERY source whose budgeted sweep completed cleanly —
+  // NOT only sources that reached the absolute frontier (nextCursor === null). The
+  // daily job runs --max-pages 5 against a corpus far larger than 5 pages, so a
+  // safety-net walk can never exhaust; the old exhaustion-only gate meant
+  // lastFullWalkAt never updated and the safety-net re-fired EVERY run forever
+  // (~950 reads/night for a handful of new items). The periodic deeper sweep DID
+  // run; its CADENCE must reset. A walk cut short by credit-depletion/interruption
+  // is NOT a completed sweep, so those still don't stamp (cadence stays due).
   if (
     options.incremental &&
     !options.dryRun &&
@@ -179,11 +185,12 @@ export async function runIngestCli(argv: string[], deps: IngestCliDependencies =
     !result.creditsDepleted &&
     !result.interrupted
   ) {
-    const exhausted = options.sources.filter((s) => result.perSource[s]?.nextCursor === null)
-    if (exhausted.length > 0) {
+    // Stamp sources that actually ran this sweep (have a perSource entry).
+    const swept = options.sources.filter((s) => result.perSource[s] !== undefined)
+    if (swept.length > 0) {
       await stampFullWalk(
         (db as unknown as { ingestState?: IngestStateUpsertDelegate }).ingestState,
-        exhausted,
+        swept,
       )
     }
   }

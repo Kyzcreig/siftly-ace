@@ -133,10 +133,17 @@ export async function loadIngestStates(
 }
 
 /**
- * Stamp lastFullWalkAt=now ONLY for sources whose walk terminated by EXHAUSTION
- * (nextCursor === null) — NOT for sources that hit the maxPages ceiling. A ceiling-capped
- * "full walk" did not reach the frontier, so stamping it would reset the cadence on an
- * incomplete recovery and silently defeat the safety net (Opus diff-review B1).
+ * Stamp lastFullWalkAt=now for the given sources to RESET the safety-net cadence.
+ *
+ * The caller decides which sources qualify. As of the 2026-06-26 bugfix the daily
+ * caller stamps every source whose budgeted safety-net sweep COMPLETED CLEANLY
+ * (ran to its --max-pages budget or exhausted), NOT only sources that reached the
+ * absolute frontier. Rationale: the daily job's page budget is structurally below
+ * the corpus size, so a safety-net walk can never exhaust; gating the cadence reset
+ * on exhaustion left lastFullWalkAt frozen and re-fired the full walk every run
+ * forever. The periodic deeper sweep is the safety-net's job; once it runs, the
+ * cadence resets. (A credit-depleted / interrupted walk is NOT a completed sweep —
+ * the caller excludes those, so the cadence stays due.)
  */
 export async function stampFullWalk(
   ingestState: IngestStateUpsertDelegate | undefined,

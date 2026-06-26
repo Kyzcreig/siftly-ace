@@ -86,7 +86,7 @@ describe('scripts/ingest.ts — early-stop wiring (Phase 2)', () => {
     }
   })
 
-  it('test_safety_net_day_disables_early_stop_and_sets_reason: stale lastFullWalkAt → full walk + stamp (exhausted)', async () => {
+  it('test_safety_net_day_disables_early_stop_and_sets_reason: stale lastFullWalkAt → full walk + stamp', async () => {
     const stale = new Date(Date.now() - 30 * 24 * 3600 * 1000) // 30 days ago → due
     const h = dbWithDelegates({ lastFullWalkAt: stale })
     // both sources reach the frontier (nextCursor null) → both get stamped
@@ -96,18 +96,37 @@ describe('scripts/ingest.ts — early-stop wiring (Phase 2)', () => {
     const args = (ingest.mock.calls[0] as unknown[])[0] as Record<string, unknown>
     expect(args.knownTweetIds).toBeUndefined() // safety-net → no seam → full walk
     expect(logs.some((l) => l.includes('reason=safety-net'))).toBe(true)
-    expect(h.upsert).toHaveBeenCalledTimes(2) // both exhausted sources stamped
+    expect(h.upsert).toHaveBeenCalledTimes(2) // both sources stamped
   })
 
-  it('test_safety_net_ceiling_capped_walk_does_NOT_stamp (Opus B1): a maxPages-capped source keeps its old cadence', async () => {
+  it('test_safety_net_ceiling_capped_walk_STILL_stamps_cadence: a maxPages-capped sweep resets the daily cadence (bugfix 2026-06-26)', async () => {
+    // The daily job runs --max-pages 5 against a corpus far larger than 5 pages,
+    // so a safety-net walk can NEVER reach the absolute frontier (nextCursor stays
+    // non-null). The OLD behavior (stamp only on exhaustion) meant lastFullWalkAt
+    // never updated → the safety-net fired EVERY run forever → ~950 reads/night for
+    // a handful of new items. The periodic deeper sweep DID happen; its CADENCE must
+    // reset so it doesn't re-fire tomorrow. Stamp on a cleanly-completed budgeted
+    // sweep regardless of absolute-frontier exhaustion.
     const stale = new Date(Date.now() - 30 * 24 * 3600 * 1000)
     const h = dbWithDelegates({ lastFullWalkAt: stale })
-    // bookmark hit the ceiling (nextCursor non-null = more history unwalked); like exhausted
+    // bookmark hit the page ceiling (nextCursor non-null); like exhausted — BOTH stamp.
     const ingest = vi.fn(async () => resultWith({ bookmark: 'more-pages-cursor', like: null }))
     await runIngestCli(['--incremental', '--max-pages', '5'], { db: h.db, ingest, log: () => {} })
-    // ONLY the exhausted 'like' source is stamped; 'bookmark' must NOT reset (still owes a full walk)
-    expect(h.upsert).toHaveBeenCalledTimes(1)
+    expect(h.upsert).toHaveBeenCalledTimes(2) // BOTH sources reset the cadence
+    expect(h.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { source: 'bookmark' } }))
     expect(h.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { source: 'like' } }))
+  })
+
+  it('safety-net interrupted/credit-depleted walk does NOT stamp (an incomplete sweep must not reset cadence)', async () => {
+    const stale = new Date(Date.now() - 30 * 24 * 3600 * 1000)
+    const h = dbWithDelegates({ lastFullWalkAt: stale })
+    // a walk cut short by credit depletion is NOT a completed sweep → no stamp
+    const ingest = vi.fn(async () => ({
+      ...resultWith({ bookmark: 'cur', like: 'cur' }),
+      creditsDepleted: { source: 'bookmark' as const, status: 402 as const, message: 'out of credits', savedCursor: 'cur', pagesFetched: 3, rowsFetched: 280 },
+    }))
+    await runIngestCli(['--incremental', '--max-pages', '5'], { db: h.db, ingest, log: () => {} })
+    expect(h.upsert).not.toHaveBeenCalled()
   })
 
   it('safety-net DRY run does NOT stamp lastFullWalkAt (only real completed walks reset the cadence)', async () => {
