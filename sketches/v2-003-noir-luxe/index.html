@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Siftly — Noir Luxe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,900&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0c0c0e; --bg2:#141417; --fg:#ece8e1; --dim:#8a857c; --line:#26262b;
+    --gold:#c9a25e; --goldsoft:rgba(201,162,94,.14);
+  }
+  body{background:var(--bg);color:var(--fg);font-family:"Inter Tight",sans-serif;font-size:16px;line-height:1.6;
+    background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(201,162,94,.07),transparent 60%);}
+  .pg{max-width:720px;margin:0 auto;padding:54px 30px 100px}
+  /* header */
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:46px}
+  .brand{display:flex;align-items:center;gap:11px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 14px var(--gold)}
+  .brand .nm{font-family:"Fraunces";font-weight:600;font-size:16px;letter-spacing:.02em}
+  .top .dt{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  /* hero title */
+  .hero{margin-bottom:38px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.4em;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+  .hero h1{font-family:"Fraunces";font-weight:300;font-size:54px;line-height:1.02;letter-spacing:-.02em}
+  .hero h1 em{font-style:italic;font-weight:400;color:var(--gold)}
+  /* overview */
+  .ov{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:24px 0;margin-bottom:46px}
+  .ov .lbl{font-family:"Fraunces";font-style:italic;font-size:15px;color:var(--gold);margin-bottom:12px}
+  .ov p{font-size:17px;color:#d6d1c8;margin-bottom:11px;line-height:1.65}
+  .ov a{color:var(--gold);text-decoration:none;border-bottom:1px solid var(--goldsoft)}
+  .ov .themes{margin-top:16px;display:flex;flex-direction:column;gap:9px}
+  .ov .themes div{font-size:14.5px;color:var(--dim);padding-left:18px;position:relative}
+  .ov .themes div::before{content:"—";position:absolute;left:0;color:var(--gold)}
+  .ov .themes b{color:var(--fg);font-weight:600}
+  /* section */
+  .sec{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--dim);margin:0 0 22px;display:flex;align-items:center;gap:14px}
+  .sec::after{content:"";flex:1;height:1px;background:var(--line)}
+  /* article */
+  .art{margin-bottom:34px;padding-bottom:34px;border-bottom:1px solid var(--line)}
+  .art:last-of-type{border-bottom:none}
+  .art .rank{font-family:"Fraunces";font-weight:300;font-size:13px;color:var(--gold);letter-spacing:.2em;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+  .art .rank .grade{font-family:"Inter Tight";font-size:11px;letter-spacing:.05em;color:var(--dim);background:var(--bg2);border:1px solid var(--line);padding:2px 9px;border-radius:20px}
+  .art h2{font-family:"Fraunces";font-weight:400;font-size:27px;line-height:1.18;margin-bottom:10px;letter-spacing:-.01em}
+  .art h2 a{color:var(--fg);text-decoration:none}
+  .art h2 a:hover{color:var(--gold)}
+  .art .who{font-size:13px;color:var(--dim);margin-bottom:11px;letter-spacing:.02em}
+  .art .who .src{color:var(--gold);text-transform:uppercase;font-size:10px;letter-spacing:.15em;margin-left:8px}
+  .art p{font-size:16px;color:#bdb8af;line-height:1.62}
+  .art .more{display:inline-block;margin-top:12px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);text-decoration:none}
+  .art .more:hover{letter-spacing:.18em}
+  .foot{margin-top:56px;text-align:center;font-size:12px;color:var(--dim);letter-spacing:.04em;line-height:2.1;border-top:1px solid var(--line);padding-top:22px}
+  .foot .g{color:var(--gold)}
+</style></head>
+<body>
+<div class="pg">
+  <div class="top">
+    <div class="brand"><span class="dot"></span><span class="nm">Siftly</span></div>
+    <div class="dt">Thursday · June 25 · 2026</div>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow">The Morning Digest</div>
+    <h1>What moved in <em>AI</em> while you slept.</h1>
+  </div>
+
+  <div class="ov">
+    <div class="lbl">The Landscape</div>
+    <p>Today's pool skewed toward autonomous coding agents and model innovation driving cheaper, faster development. <a href="#">garrytan/gstack</a> and <a href="#">aws/agent-toolkit-for-aws</a> headline expanding open-source agent tooling, while <a href="#">DeepSeek Flash</a> claims a 100× cost cut for agents.</p>
+    <p>Model advances surface in AICPU's decentralized-compute white paper and GLM-5.2 rivaling Claude Opus on coding tasks. On X, the looming end of free usage stirred a sustainability debate.</p>
+    <div class="themes">
+      <div><b>Autonomous Coding Agents</b> — gstack &amp; OpenMontage push agents into real dev workflows.</div>
+      <div><b>Model &amp; Compute</b> — AICPU's decentralized stack; GLM-5.2 challenges Claude.</div>
+      <div><b>Cost &amp; Access</b> — "the free ride ends" marks a budget turning point.</div>
+    </div>
+  </div>
+
+  <div class="sec">Top Stories</div>
+
+  <article class="art">
+    <div class="rank">01 — Selected<span class="grade">A− · 90</span></div>
+    <h2><a href="#">Tomorrow, the free ride ends.</a></h2>
+    <div class="who">Ichaka Ike <span class="src">X · @ichaka_001</span></div>
+    <p>MiniMax M3.0's free trial closes — "the question is, did you make the most of it?" A pointed marker as the era of unmetered frontier access quietly winds down.</p>
+    <a class="more" href="#">Read on X →</a>
+  </article>
+
+  <article class="art">
+    <div class="rank">02 — Selected<span class="grade">B+ · 87</span></div>
+    <h2><a href="#">DeepSeek Flash just revolutionized the agent market: 100× cheaper agents</a></h2>
+    <div class="who">r/AI_Agents <span class="src">Reddit</span></div>
+    <p>A price-and-throughput breakdown arguing the new Flash tier collapses per-agent cost by two orders of magnitude — the thread's benchmarks carry the claim.</p>
+    <a class="more" href="#">Read thread →</a>
+  </article>
+
+  <article class="art">
+    <div class="rank">03 — Selected<span class="grade">B · 85</span></div>
+    <h2><a href="#">aws/agent-toolkit-for-aws</a></h2>
+    <div class="who">+15★ today <span class="src">GitHub</span></div>
+    <p>An official toolkit wiring agents into AWS primitives — deployment, inference and tool-calling scaffolds for production agent pipelines.</p>
+    <a class="more" href="#">View repository →</a>
+  </article>
+
+  <div class="sec">Also Noted</div>
+  <article class="art">
+    <div class="rank">· — Noted<span class="grade">C+ · 78</span></div>
+    <h2><a href="#">Autonomous Coding Agents in June 2026: A Comprehensive Landscape and Taxonomy</a></h2>
+    <div class="who">Perplexity</div>
+    <p>A survey mapping the current agent ecosystem into a usable taxonomy — orientation reading rather than a single launch.</p>
+    <a class="more" href="#">Read →</a>
+  </article>
+
+  <div class="foot">
+    <span class="g">📡</span> 260 scanned · 260 new · 0 filtered<br>
+    <span class="g">📥</span> Reddit 98 · HN 30 · GitHub 13 · Perplexity 10 · Latent Space 3 · smol.ai 1<br>
+    <span class="g">⚙</span> deterministic scoring · personal-fit ✓
+  </div>
+</div>
+</body></html>

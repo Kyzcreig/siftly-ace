@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Siftly — Editorial Broadsheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --paper:#f4efe4; --ink:#1a1714; --muted:#6b6256; --rule:#cec5b2;
+    --accent:#9c2b1b; --accent2:#1d4e44;
+  }
+  body{background:var(--paper);color:var(--ink);font-family:"Newsreader",Georgia,serif;font-size:17px;line-height:1.58;
+    background-image:radial-gradient(circle at 20% 10%,rgba(156,43,27,.03),transparent 40%);}
+  .sheet{max-width:860px;margin:0 auto;padding:40px 32px 90px}
+  /* Masthead */
+  .mast{text-align:center;border-bottom:3px double var(--ink);padding-bottom:14px;margin-bottom:6px}
+  .mast .kicker{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.45em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+  .mast h1{font-family:"Fraunces",serif;font-weight:900;font-size:62px;letter-spacing:-.02em;line-height:.9}
+  .mast .date{font-style:italic;color:var(--muted);font-size:15px;margin-top:10px;display:flex;gap:14px;justify-content:center;align-items:center}
+  .mast .date::before,.mast .date::after{content:"";height:1px;width:40px;background:var(--rule)}
+  /* Lede / overview */
+  .lede{column-count:2;column-gap:34px;column-rule:1px solid var(--rule);margin:26px 0 6px;font-size:16px}
+  .lede h2{column-span:all;font-family:"Fraunces",serif;font-weight:600;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent2);margin-bottom:10px;border-bottom:1px solid var(--rule);padding-bottom:6px}
+  .lede p{margin-bottom:10px}
+  .lede .drop::first-letter{font-family:"Fraunces",serif;font-weight:900;font-size:58px;float:left;line-height:.7;padding:6px 8px 0 0;color:var(--accent)}
+  .lede b{font-weight:600}
+  .lede a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(156,43,27,.3)}
+  .bullets{list-style:none;margin-top:8px}
+  .bullets li{padding-left:16px;position:relative;font-size:15px;margin-bottom:5px}
+  .bullets li::before{content:"§";position:absolute;left:0;color:var(--accent);font-weight:600}
+  /* Section head */
+  .secthead{display:flex;align-items:baseline;gap:14px;margin:38px 0 18px}
+  .secthead h3{font-family:"Fraunces",serif;font-weight:900;font-size:26px;letter-spacing:-.01em}
+  .secthead .line{flex:1;height:2px;background:var(--ink)}
+  .secthead .num{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--muted)}
+  /* Story */
+  .story{border-bottom:1px solid var(--rule);padding:18px 0;display:grid;grid-template-columns:64px 1fr;gap:18px}
+  .story:last-child{border-bottom:none}
+  .rail{font-family:"Fraunces",serif;font-weight:900;font-size:34px;color:var(--accent);line-height:1;text-align:right;opacity:.85}
+  .rail .grade{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);font-weight:500;display:block;margin-top:4px}
+  .story h4{font-family:"Fraunces",serif;font-weight:600;font-size:21px;line-height:1.2;margin-bottom:4px}
+  .story h4 a{color:var(--ink);text-decoration:none}
+  .byline{font-style:italic;color:var(--muted);font-size:14px;margin-bottom:7px}
+  .byline .src{font-family:"JetBrains Mono",monospace;font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent2);border:1px solid var(--accent2);padding:1px 5px;border-radius:2px;margin-left:6px}
+  .story p{font-size:15.5px;color:#3a342c}
+  .eng{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);margin-top:7px}
+  .foot{margin-top:50px;border-top:3px double var(--ink);padding-top:14px;text-align:center;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);line-height:2}
+</style></head>
+<body>
+<div class="sheet">
+  <div class="mast">
+    <div class="kicker">Curated · Deterministic · No Slop</div>
+    <h1>The Morning Digest</h1>
+    <div class="date">Thursday, June 25, 2026 — AI &amp; Frontier Tech</div>
+  </div>
+
+  <div class="lede">
+    <h2>🗞 The Landscape</h2>
+    <p class="drop">Today's pool skewed toward autonomous coding agents and model innovation driving cheaper, faster development. <b>garrytan/gstack</b> <a href="#">[1]</a> and <b>aws/agent-toolkit-for-aws</b> <a href="#">[8]</a> headline expanding open-source agent tooling, while <b>DeepSeek Flash</b> claims a 100× cost cut for agents <a href="#">[4]</a>.</p>
+    <p>Model advances surface in AICPU's decentralized-compute white paper <a href="#">[3]</a> and GLM-5.2 rivaling Claude Opus on coding. On X, the looming end of free usage stirred a sustainability debate <a href="#">[2]</a>.</p>
+    <ul class="bullets">
+      <li><b>Autonomous Coding Agents</b> — gstack &amp; OpenMontage push agents into real dev workflows.</li>
+      <li><b>Model &amp; Compute</b> — AICPU's decentralized stack; GLM-5.2 challenges Claude.</li>
+      <li><b>Cost &amp; Access</b> — "the free ride ends" marks a budget turning point.</li>
+    </ul>
+  </div>
+
+  <div class="secthead"><h3>Top Stories</h3><span class="line"></span><span class="num">05 SELECTED</span></div>
+
+  <article class="story">
+    <div class="rail">1<span class="grade">A− · 90</span></div>
+    <div>
+      <h4><a href="#">Tomorrow, the free ride ends.</a></h4>
+      <div class="byline">ICHAKA IKE <span class="src">X · @ichaka_001</span></div>
+      <p>The MiniMax M3.0 free trial closes — "did you make the most of it?" A pointed nudge as the era of unmetered frontier access quietly winds down.</p>
+      <div class="eng">♥ 20 &nbsp; 💬 22 &nbsp; — &nbsp; <a href="#" style="color:var(--accent2)">Read on X →</a></div>
+    </div>
+  </article>
+
+  <article class="story">
+    <div class="rail">2<span class="grade">B+ · 87</span></div>
+    <div>
+      <h4><a href="#">DeepSeek Flash just revolutionized the agent market: 100× cheaper agents</a></h4>
+      <div class="byline">r/AI_Agents <span class="src">Reddit</span></div>
+      <p>A throughput-and-price breakdown arguing the new Flash tier collapses per-agent cost by two orders of magnitude — the thread's benchmarks are the draw.</p>
+      <div class="eng">— &nbsp; <a href="#" style="color:var(--accent2)">Read thread →</a></div>
+    </div>
+  </article>
+
+  <article class="story">
+    <div class="rail">3<span class="grade">B · 85</span></div>
+    <div>
+      <h4><a href="#">aws/agent-toolkit-for-aws</a></h4>
+      <div class="byline">+15★ today <span class="src">GitHub</span></div>
+      <p>An official toolkit wiring agents into AWS primitives — deployment, inference, and tool-calling scaffolds for production agent pipelines.</p>
+      <div class="eng">— &nbsp; <a href="#" style="color:var(--accent2)">View repo →</a></div>
+    </div>
+  </article>
+
+  <div class="secthead"><h3>Also Noted</h3><span class="line"></span><span class="num">02</span></div>
+  <article class="story">
+    <div class="rail">·<span class="grade">C+ · 78</span></div>
+    <div>
+      <h4><a href="#">Autonomous Coding Agents in June 2026: A Comprehensive Landscape and Taxonomy</a></h4>
+      <div class="byline">Perplexity</div>
+      <p>A survey mapping the current agent ecosystem into a usable taxonomy — orientation reading rather than a single launch.</p>
+    </div>
+  </article>
+
+  <div class="foot">
+    📡 260 SCANNED · 260 NEW · 0 FILTERED<br>
+    📥 REDDIT 98 · HN 30 · GITHUB 13 · PERPLEXITY 10 · LATENT SPACE 3 · SMOL.AI 1<br>
+    ⚙ DETERMINISTIC SCORING · PERSONAL-FIT ✓
+  </div>
+</div>
+</body></html>
