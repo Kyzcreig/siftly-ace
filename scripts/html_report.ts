@@ -100,7 +100,7 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   const handle = esc(u?.screen_name || '')
   const name = esc(u?.name || handle)
   const avatar = esc(u?.profile_image_url_https || '')
-  const verified = u?.verified || (u as any)?.is_blue_verified ? '<span class="verified" title="verified">✔</span>' : ''
+  const verified = u?.verified || (u as any)?.is_blue_verified ? '<span class="verified" title="verified"></span>' : ''
   const url = `https://x.com/${handle}/status/${t.id_str}`
   const likes = fmtCount((t as any).favorite_count)
   const replies = fmtCount((t as any).conversation_count)
@@ -166,11 +166,13 @@ function capText(s: string, limit: number): string {
 function badge(item: Item): string {
   const s = Number(item.score)
   if (!isFinite(s)) return ''
-  const [emoji, letter] =
-    s >= 93 ? ['🔥', 'A'] : s >= 90 ? ['✅', 'A-'] : s >= 87 ? ['👍', 'B+'] :
-    s >= 83 ? ['👍', 'B'] : s >= 80 ? ['📋', 'B-'] : s >= 77 ? ['📋', 'C+'] :
-    s >= 73 ? ['📋', 'C'] : ['🔹', 'C-']
-  return `<span class="badge">${emoji} ${letter} (${Math.round(s)})</span>`
+  // Noir grade pill (mockup .grade): plain "A− · 90", NO colored emoji (keeps the
+  // palette gold-only — a green ✅/👍 would break the single-accent rule).
+  const letter =
+    s >= 93 ? 'A' : s >= 90 ? 'A−' : s >= 87 ? 'B+' :
+    s >= 83 ? 'B' : s >= 80 ? 'B−' : s >= 77 ? 'C+' :
+    s >= 73 ? 'C' : 'C−'
+  return `<span class="badge">${letter} · ${Math.round(s)}</span>`
 }
 
 async function renderItem(item: Item): Promise<string> {
@@ -201,52 +203,71 @@ async function renderItem(item: Item): Promise<string> {
   return linkCard(item, b, tr.translated ? { text: tr.text, srcLang: tr.srcLang } : undefined)
 }
 
-const FONT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">`
+const FONT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,300;1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">`
 
 const STYLE = `
-:root{--bg:#08090c;--panel:#12141c;--panel2:#171a24;--bd:#242936;--fg:#eef0f6;--mut:#8b92a6;--acc:#7c8cff;--acc2:#52e0c4}
-*{box-sizing:border-box}
-body{margin:0;background:radial-gradient(900px 500px at 80% -10%,rgba(124,140,255,.10),transparent 60%),radial-gradient(700px 400px at -10% 10%,rgba(82,224,196,.07),transparent 55%),var(--bg);color:var(--fg);font-family:"Sora",system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.55}
-.wrap{max-width:640px;margin:0 auto;padding:30px 18px 80px}
-a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
-.hd{display:flex;align-items:center;gap:12px;margin-bottom:4px}
-.hd .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 0 16px var(--acc)}
-.hd h1{font-weight:800;font-size:23px;letter-spacing:-.02em;margin:0}
-.hd .date{margin-left:auto;color:var(--mut);font-size:13px}
-.overview{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--bd);border-radius:18px;padding:18px 20px;margin:16px 0 26px;position:relative;overflow:hidden}
-.overview::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(var(--acc),var(--acc2))}
-.overview h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc2);margin:0 0 9px;border:0;padding:0}
-.overview p{color:#d6dae6;margin:0 0 6px}
-.overview ul{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 0;padding:0;list-style:none}
-.overview li{background:#0d1018;border:1px solid var(--bd);border-radius:999px;padding:4px 11px;font-size:12.5px;color:var(--mut)}
-.overview li strong{color:var(--fg)}
-.sec{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin:30px 4px 12px;display:flex;align-items:center;gap:10px}
-.sec::after{content:"";flex:1;height:1px;background:var(--bd)}
-.tweet,.link-card{background:var(--panel);border:1px solid var(--bd);border-radius:18px;padding:15px 17px;margin:0 0 13px;transition:border-color .15s,transform .15s}
-.tweet:hover,.link-card:hover{border-color:#39405a;transform:translateY(-1px)}
-.tw-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
-.avatar{width:38px;height:38px;border-radius:50%;flex:0 0 auto;background:#1b1f2b}
-.who{display:flex;flex-direction:column;min-width:0;line-height:1.25}
-.name{font-weight:700;font-size:14.5px;color:var(--fg)}.verified{color:var(--acc)}
-.handle{color:var(--mut);font-size:12.5px}
-.bird{margin-left:auto;color:var(--mut);font-size:16px;flex:0 0 auto}
-.tw-text{font-size:15px;color:#e7e9f2;white-space:normal;word-wrap:break-word}
-.tw-text a{color:var(--acc)}
-.media-wrap{margin:11px 0 2px;border-radius:13px;overflow:hidden;border:1px solid var(--bd);max-height:260px}
-.media-wrap.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:300px}
-.media{width:100%;height:260px;object-fit:cover;object-position:top;display:block}
-.media-wrap.grid .media{height:148px}
-.media.video{height:auto;max-height:260px;object-fit:contain;background:#000}
-.tw-foot{display:flex;align-items:center;gap:14px;margin-top:11px;color:var(--mut);font-size:12.5px;flex-wrap:wrap}
-.tw-foot .readon{margin-left:auto;color:var(--acc2)}
-.badge{background:#0d1018;border:1px solid var(--bd);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--fg);font-weight:700}
-.ln-title{margin:0 0 6px;font-size:16px;line-height:1.3;font-weight:600}
-.ln-title a{color:var(--fg)}.ln-title a:hover{color:var(--acc)}
-.ln-sum{color:var(--mut);font-size:14px;margin:0 0 8px}
-.ln-meta{color:var(--mut);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.ln-meta .src{color:var(--acc2)}
-.tr-tag{display:inline-block;margin-top:6px;font-size:11px;color:var(--mut);font-style:italic;opacity:.8}
-.foot{margin-top:30px;color:var(--mut);font-size:12px;text-align:center}
+:root{--bg:#0c0c0e;--bg2:#141417;--fg:#ece8e1;--dim:#8a857c;--line:#26262b;--gold:#c9a25e;--goldsoft:rgba(201,162,94,.14)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:"Inter Tight",system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(201,162,94,.07),transparent 60%)}
+.wrap{max-width:720px;margin:0 auto;padding:54px 30px 100px}
+a{color:var(--gold);text-decoration:none}
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:46px}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 14px var(--gold)}
+.brand .nm{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:16px;letter-spacing:.02em}
+.top .dt{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.hero{margin-bottom:38px}
+.hero .eyebrow{font-size:11px;letter-spacing:.4em;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+.hero h1{font-family:"Fraunces",Georgia,serif;font-weight:300;font-size:54px;line-height:1.02;letter-spacing:-.02em}
+.hero h1 em{font-style:italic;font-weight:400;color:var(--gold)}
+/* overview */
+.overview{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:24px 0;margin-bottom:46px}
+.overview h2{font-family:"Fraunces",Georgia,serif;font-style:italic;font-weight:400;font-size:15px;color:var(--gold);margin:0 0 12px;border:0;padding:0;letter-spacing:0;text-transform:none}
+.overview p{font-size:17px;color:#d6d1c8;margin:0 0 11px;line-height:1.65}
+.overview a{color:var(--gold);border-bottom:1px solid var(--goldsoft)}
+.overview ul{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:9px}
+.overview li{font-size:14.5px;color:var(--dim);padding-left:18px;position:relative;line-height:1.5}
+.overview li::before{content:"—";position:absolute;left:0;color:var(--gold)}
+.overview li strong{color:var(--fg);font-weight:600}
+/* section labels */
+.sec{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--dim);margin:0 0 22px;display:flex;align-items:center;gap:14px}
+.sec::after{content:"";flex:1;height:1px;background:var(--line)}
+/* article shell (tweet + link card share this) */
+.tweet,.link-card{margin-bottom:34px;padding-bottom:34px;border-bottom:1px solid var(--line)}
+.tweet:last-child,.link-card:last-child{border-bottom:none}
+/* tweet card — Noir token map (D-5/fold-in 3) */
+.tw-head{display:flex;align-items:center;gap:11px;margin-bottom:13px}
+.avatar{width:42px;height:42px;border-radius:50%;flex:0 0 auto;background:var(--bg2)}
+.who{display:flex;flex-direction:column;min-width:0;line-height:1.3}
+.name{font-family:"Inter Tight",sans-serif;font-weight:600;font-size:15px;color:var(--fg)}
+.verified{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--gold);position:relative;vertical-align:middle;margin-left:1px;flex:0 0 auto}
+.verified::after{content:"";position:absolute;left:4.5px;top:2.5px;width:3px;height:6px;border:solid var(--bg);border-width:0 1.5px 1.5px 0;transform:rotate(45deg)}
+.handle{color:var(--dim);font-size:13px}
+.bird{margin-left:auto;color:var(--gold);font-size:17px;flex:0 0 auto}
+.tw-text{font-size:16.5px;color:#d6d1c8;line-height:1.6;white-space:normal;word-wrap:break-word}
+.tw-text a{color:var(--gold);border-bottom:1px solid var(--goldsoft)}
+.media-wrap{margin:14px 0 2px;border-radius:10px;overflow:hidden;border:1px solid var(--line);max-height:300px}
+.media-wrap.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:320px}
+.media{width:100%;height:300px;object-fit:cover;object-position:top;display:block}
+.media-wrap.grid .media{height:165px}
+.media.video{height:auto;max-height:300px;object-fit:contain;background:#000}
+.tw-foot{display:flex;align-items:center;gap:16px;margin-top:14px;padding-top:13px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;flex-wrap:wrap}
+.tw-foot .eng{color:var(--dim)}
+.media-link{display:block}
+.tw-foot .readon{margin-left:auto;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-size:11px}
+.tw-foot .readon:hover{letter-spacing:.18em}
+/* score badge / grade pill (mockup .grade) */
+.badge{background:var(--bg2);border:1px solid var(--line);border-radius:20px;padding:2px 11px;font-size:11px;color:var(--dim);font-weight:500;letter-spacing:.04em}
+/* link card — Noir story */
+.ln-title{font-family:"Fraunces",Georgia,serif;font-weight:400;font-size:25px;line-height:1.18;margin:0 0 10px;letter-spacing:-.01em}
+.ln-title a{color:var(--fg)}.ln-title a:hover{color:var(--gold)}
+.ln-sum{font-size:16px;color:#bdb8af;line-height:1.62;margin:0 0 10px}
+.ln-meta{color:var(--dim);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;letter-spacing:.02em}
+.ln-meta .src{color:var(--gold);text-transform:uppercase;font-size:10px;letter-spacing:.15em}
+.tr-tag{display:inline-block;margin-top:6px;font-size:11px;color:var(--dim);font-style:italic;opacity:.8}
+/* footer */
+.foot{margin-top:56px;text-align:center;font-size:12px;color:var(--dim);letter-spacing:.04em;line-height:2.1;border-top:1px solid var(--line);padding-top:22px}
 `
 
 async function main() {
@@ -270,8 +291,10 @@ async function main() {
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
       if (/^•\s/.test(ln)) { if (!inList) { out.push('<ul>'); inList = true } out.push(`<li>${ln.replace(/^•\s/, '')}</li>`); continue }
       if (inList) { out.push('</ul>'); inList = false }
-      if (/^🗞️|^📡/.test(ln)) out.push(`<h2>${ln}</h2>`)
-      else if (ln.trim()) out.push(`<p>${ln}</p>`)
+      // Header line: detect by the 🗞️/📡 marker, but STRIP the colored emoji from the
+      // rendered label so the overview stays gold-mono (Noir: clean italic "The Landscape").
+      if (/^🗞️|^📡/.test(ln)) { out.push(`<h2>${ln.replace(/^(🗞️|📡)\uFE0F?\s*/, '').trim()}</h2>`); continue }
+      if (ln.trim()) out.push(`<p>${ln}</p>`)
     }
     if (inList) out.push('</ul>')
     return out.join('\n')
@@ -280,20 +303,29 @@ async function main() {
   const topHtml = (await Promise.all(selected.map(renderItem))).join('\n')
   const alsoHtml = (await Promise.all(also.map(renderItem))).join('\n')
 
-  // split title into name + date if it contains an em-dash (e.g. "Morning Digest — Mon, Jun 22")
+  // split title into date suffix (e.g. "Morning Digest — Mon, Jun 22" → date). The
+  // brand wordmark is the fixed "Siftly"; the brief name lives in the eyebrow.
   const dm = title.split(/\s+[—–-]\s+/)
-  const name = dm[0] || title
   const date = dm.slice(1).join(' — ')
+
+  // Noir hero: brief-detect from the title → eyebrow + big italic hero line (fold-in 2).
+  const tl = title.toLowerCase()
+  const isX = tl.includes('x feed') || tl.includes('x-feed') || tl.includes('timeline')
+  const eyebrow = isX ? 'Your X Feed' : 'The Morning Digest'
+  const heroLine = isX
+    ? 'What your feed was <em>really</em> saying.'
+    : 'What moved in <em>AI</em> while you slept.'
 
   const body = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>${esc(title)}</title>${FONT}<style>${STYLE}</style></head>
 <body><div class="wrap">
-<div class="hd"><span class="dot"></span><h1>${esc(name)}</h1>${date ? `<span class="date">${esc(date)}</span>` : ''}</div>
+<div class="top"><div class="brand"><span class="dot"></span><span class="nm">Siftly</span></div>${date ? `<span class="dt">${esc(date)}</span>` : ''}</div>
+<div class="hero"><div class="eyebrow">${esc(eyebrow)}</div><h1>${heroLine}</h1></div>
 ${overview ? `<div class="overview">${ovHtml(overview)}</div>` : ''}
-${topHtml ? `<div class="sec">🔥 Top Stories</div>${topHtml}` : ''}
-${alsoHtml ? `<div class="sec">📊 Also Noted</div>${alsoHtml}` : ''}
+${topHtml ? `<div class="sec">Top Stories</div>${topHtml}` : ''}
+${alsoHtml ? `<div class="sec">Also Noted</div>${alsoHtml}` : ''}
 ${footer ? `<p class="foot">${footer.split('\n').map((l) => esc(l)).join('<br>')}</p>` : ''}
 </div></body></html>`
 
