@@ -22,8 +22,16 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-# topics we never surface as a "theme" headline (noise / not a story)
-SKIP_TOPICS = {"", "other", "misc", "uncategorized"}
+# topics we never surface as a "theme" headline (noise / not a story).
+# `x.com`/`twitter`/`tracked-project`-style tags match nearly every tweet (the URL
+# host or a watch-list marker), so they pollute the theme histogram with a
+# meaningless catch-all bucket — never headline them. Same for over-broad source
+# tags. Keep this list tight: only genuinely contentless labels.
+SKIP_TOPICS = {
+    "", "other", "misc", "uncategorized",
+    "x.com", "x", "twitter", "twitter.com", "tweet", "status",
+    "tracked-project", "general", "ai", "news",
+}
 
 
 def _pool(data: dict) -> list:
@@ -42,13 +50,46 @@ def _text(it: dict) -> str:
 # Leading @mentions on a reply tweet ("@a @b actual point") carry no story signal —
 # strip them so the label reads as the actual point, not the reply targets.
 _LEADING_MENTIONS = re.compile(r"^(?:\s*@\w{1,15}\b[,:]?\s*)+")
+# Newsy lead-ins that carry zero content if taken alone ("BREAKING:", "JUST IN:",
+# "NEW:", "🚨") — strip a leading one so the label is the actual headline, not the
+# klaxon. Only stripped when it's a short prefix followed by real text.
+_LEAD_NOISE = re.compile(r"^(?:🚨|⚡️?|breaking|just in|new|update|exclusive|alert|news)\s*[:\-—]?\s*", re.IGNORECASE)
 _WS = re.compile(r"\s+")
 _SENT_SPLIT = re.compile(r"(?<=[.!?。！？])\s|\n")
+
+
+def _gist(txt: str, limit: int) -> str:
+    """First meaningful clause of a tweet for a label. Takes the first sentence,
+    but if it's tiny (a 'BREAKING:'-style klaxon or a 1-2 word fragment), absorbs
+    the next sentence too so the label carries real content, not just the lead-in."""
+    txt = _LEAD_NOISE.sub("", txt).strip()
+    parts = [p.strip() for p in _SENT_SPLIT.split(txt) if p.strip()]
+    if not parts:
+        return ""
+    gist = parts[0]
+    # absorb the next clause when the first is too short to mean anything.
+    i = 1
+    while len(gist) < 40 and i < len(parts):
+        gist = f"{gist} {parts[i]}"
+        i += 1
+    return gist.strip().rstrip(":-—, ")
 
 
 def _is_tweet(it: dict) -> bool:
     src = str(it.get("source") or "").lower()
     return src in ("x", "twitter") or bool(it.get("tweet_id")) or "/status/" in (it.get("url") or "")
+
+
+def _clip(s: str, limit: int) -> str:
+    """Clip to <=limit chars at a WORD boundary (never mid-word), '…' if trimmed."""
+    s = s.strip()
+    if len(s) <= limit:
+        return s
+    cut = s[:limit].rstrip()
+    sp = cut.rfind(" ")
+    if sp > limit * 0.5:  # only back off to a space if it isn't pathologically early
+        cut = cut[:sp].rstrip()
+    return cut.rstrip(":-—,;") + "…"
 
 
 def _label(it: dict, limit: int = 90) -> str:
@@ -58,17 +99,20 @@ def _label(it: dict, limit: int = 90) -> str:
     - Non-tweets (github/reddit/HN/Perplexity): the title IS a clean headline/slug.
     - Tweets: '@handle: <first clause>' with leading @mentions stripped (a reply's
       target handles aren't the story). Falls back to '@handle' or the raw text.
+
+    Clipping is WORD-boundary (never "which model is t") with a trailing '…'.
     """
     if not _is_tweet(it):
         base = (it.get("title") or it.get("summary") or it.get("text") or "").strip()
-        return _WS.sub(" ", base)[:limit].strip()
+        return _clip(_WS.sub(" ", base), limit)
     txt = (it.get("tweet_text") or it.get("title") or it.get("text") or "").strip()
     txt = _WS.sub(" ", _LEADING_MENTIONS.sub("", txt)).strip()
-    gist = (_SENT_SPLIT.split(txt, maxsplit=1)[0] if txt else "").strip().rstrip(":-—, ")
+    gist = _gist(txt, limit)
     handle = str(it.get("authorHandle") or "").strip().lstrip("@")
     if not gist:
         return f"@{handle}" if handle else ""
-    return (f"@{handle}: {gist}" if handle else gist)[:limit].strip()
+    body = f"@{handle}: {gist}" if handle else gist
+    return _clip(body, limit)
 
 
 def _topics(it: dict) -> list:
@@ -123,24 +167,41 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
     off_count = n - len(on)
 
     # --- theme histogram (topic -> count + summed final_score as salience) ---
+    # Examples must be the STRONGEST items per topic, not the first-seen ones, or a
+    # single over-tagged junk tweet (one crypto post tagged models+coding+security)
+    # becomes the face of every theme. Iterate high-score → low so examples[:3] are
+    # the best, and dedupe an item across themes so the same tweet doesn't headline
+    # three different lanes.
     theme_count: Counter = Counter()
     theme_salience: dict = defaultdict(float)
     theme_examples: dict = defaultdict(list)
-    for it in on:
+    theme_example_ids: dict = defaultdict(set)
+    on_by_score = sorted(on, key=lambda x: _num(x.get("final_score")), reverse=True)
+    used_example_ids: set = set()
+    for it in on_by_score:
         sal = _num(it.get("final_score"))
+        label = _label(it)
+        iid = _id(it)
         for t in set(_topics(it)):
             theme_count[t] += 1
             theme_salience[t] += sal
-            if len(theme_examples[t]) < 3 and _label(it):
-                theme_examples[t].append(_label(it))
+            # one example per item globally (don't repeat the same tweet across themes),
+            # and skip empty/degenerate labels.
+            if (len(theme_examples[t]) < 3 and label and iid not in used_example_ids
+                    and iid not in theme_example_ids[t]):
+                theme_examples[t].append(label)
+                theme_example_ids[t].add(iid)
+                used_example_ids.add(iid)
     # rank themes by salience (sum of scores), tie-break count
     themes = sorted(theme_count.keys(),
                     key=lambda t: (theme_salience[t], theme_count[t]), reverse=True)[:top_n_themes]
+    # A theme with no usable example is just a bare tag — drop it (it'd only invite
+    # the LLM to pad). Keep themes that have at least one concrete example.
     theme_rows = [{
         "topic": t, "count": theme_count[t],
         "salience": round(theme_salience[t], 1),
         "examples": theme_examples[t],
-    } for t in themes]
+    } for t in themes if theme_examples[t]]
 
     # --- top stories (highest final_score, deduped by event_key/text) ---
     # Each gets a stable 1-based `ref` number so the Overview prose can cite [N]
