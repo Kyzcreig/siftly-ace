@@ -133,6 +133,14 @@ In addition to the per-metric ratings above (kept for the audit dump), emit thes
   - `concrete`=specifics/numbers/code; `mixed`=some; `vague`=empty.
 - `on_topic`: one of `core|adjacent|off`
   - `core`=AI/agents/building; `adjacent`=tangential incl. memes; `off`=politics/health/unrelated. **A personal attack, political insult, name-calling, dunking, culture-war take, or health/medical claim (e.g. ivermectin, vaccines) is ALWAYS `off` — even from a builder you otherwise respect.**
+<!-- JUNK-LABEL-RUBRIC (shared, identical in morning-digest/prompt.md) -->
+**JUNK that MENTIONS AI is still `off`/`promo` — mentioning AI ≠ on-topic. The test is "is the SUBSTANCE about building/using/evaluating AI," not "does the word AI appear."** Specifically:
+- A **crypto-ticker / `$CASHTAG` / airdrop / "market recap" / "to the moon" / BTC-ETH-SOL price** post → `on_topic=off` (it's finance/shilling), even if it name-drops "AI models" (e.g. `$COIN U.S. Tech Giants Embracing Chinese AI Models` = off). A lone `$NVDA`/`$GOOGL` inside a genuine AI-infra/GPU/datacenter thread is NOT crypto — keep it `core`.
+- A **scam/engagement-bait** post — `[FREE … API/GRANT] 🔥`, "DM me for credits", "link in bio", "claim your", "limited spots" + hype emoji — → `content_type=promo`, `on_topic=off`. (A REAL lab announcement like "Anthropic free API credits for students, apply here" is legit news — keep it.)
+- A **Kickstarter/Indiegogo/crowdfunding product shill** ("raised $Nk in hours", "back this") with no real AI-build substance → `content_type=promo`.
+- A **foreign-language clickbait/listicle** (non-Latin-dominant, hype markers `【超重要】`/`========`/`[N/M]`, no real model/lab content) → `on_topic=off`. A foreign-language post that IS about a real model/lab (mentions GPT/Claude/LLM/Qwen/an actual release) is on-topic — keep it `core`.
+(A deterministic Backstop also catches the unambiguous cases, but label them right so the brief and the overview both stay clean — don't rely on the backstop.)
+<!-- /JUNK-LABEL-RUBRIC -->
 
 Record these 4 labels on each candidate so Step 6.7 can write them into the scored dump. They are required for the shadow comparison and harmless to the live post.
 
