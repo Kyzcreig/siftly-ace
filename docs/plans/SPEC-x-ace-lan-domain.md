@@ -1,9 +1,23 @@
 # SPEC — `x.ace` LAN nice-name for the Siftly app
 
-**Status:** DRAFT · **Author:** Apollo · **Date:** 2026-06-28 · **Owner sign-off:** low-risk, additive
+**Status:** ✅ LIVE (built + verified 2026-06-28) · **Author:** Apollo · **Date:** 2026-06-28
 **Host:** Mac Studio M3 Ultra = `192.168.1.18` (this box; Siftly runs here on `:3000`).
 **Companion runbook:** `local-dns` skill → `references/lan-nice-name-on-macos-host.md` (the proven
 macOS `.ace` frontdoor pattern — skills.ace/cron.ace/tokens.ace/… all use it).
+
+### Build result (all ACs green)
+- Leaf cert issued (SAN `x.ace,x`, Ace Local Root CA, valid → Oct 2028); CA key scrubbed. ✓ AC-6
+- AGH rewrites `x.ace`/`x` → `192.168.1.18` (single-entry add, 91→93, 0 removed). ✓ AC-1
+- Caddy reverse_proxy block `https://x.ace:443 → 127.0.0.1:3000` + `:80` matcher; validate→kickstart. ✓
+- `curl https://x.ace/` → **HTTP 200 verify=0 remote=192.168.1.18**. ✓ AC-2
+- `http://x.ace` → **308 → https://x.ace/**. ✓ AC-3
+- Siftly app + `/ai-search` route load through the proxy (`<title>Siftly</title>`, live dashboard
+  with 3,667 tweets); browser-verified. ✓ AC-4
+- All 5 existing `.ace` sites still 200 verify=0 (no regression). ✓ AC-5
+- `x.ace` auto-appears in `index.ace` (reads the live AGH rewrite list). ✓ AC-7
+- Live Caddyfile: `~/.hermes/var/skills-portal/Caddyfile`; cert: `~/.hermes/var/x-portal/certs/`.
+
+
 
 ## 1. Summary & Goal
 Put the Siftly app (currently `http://mac-studio-m3u:3000/`, "Not Secure") behind a clean, trusted-HTTPS
