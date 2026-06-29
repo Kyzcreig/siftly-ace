@@ -512,6 +512,160 @@ def _is_github(item):
     return str(item.get("source") or "").lower() in ("github", "github-trending")
 
 
+# ── Backstop 4: junk-label demotion (SPEC-scorer-junk-label-backstop.md) ──────
+# The model mislabels crypto-shill / scam-grant / kickstarter / foreign-clickbait
+# posts as on_topic=core (they MENTION AI, so Backstop 2's zero-tech-token guard
+# doesn't catch them) → they score 83-91 and pollute the top of the pool. B4 is a
+# 4th deterministic, DOWNGRADE-ONLY backstop: high-precision, corroboration-gated
+# signals route junk into on_topic=off, then score_item clamps it below ALSO_GATE
+# as the LAST op (so PF can't re-lift it). All thresholds are NAMED constants here.
+JUNK_CASHTAG_RE = re.compile(r"\$[A-Z]{2,6}\b")
+# crypto-context corroborators — a cashtag fires ONLY with one of these present, OR
+# ≥2 present with no cashtag. A lone $NVDA/$GOOGL in an AI-infra thread never fires.
+JUNK_CRYPTO_TOKENS = (
+    "crypto", "airdrop", "presale", "nft", "altcoin", "memecoin", "pump",
+    "to the moon", "market recap", "hodl", "defi", "staking", "tokenomics",
+    "bullish", "bearish", "satoshi", "web3", "blockchain",
+)
+JUNK_CRYPTO_PRICE_TOKENS = ("btc", "eth", "sol", "bitcoin", "ethereum", "solana")
+JUNK_CANDLE_EMOJI = ("🟠", "🟢", "🔴", "📈", "📉", "💹")
+# scam-grant SHAPE (not the benign words): a real "Anthropic free API credits"
+# announcement must NOT fire — requires the engagement-bait combination.
+JUNK_SCAM_DM = re.compile(r"\bdm (me|us|for)\b", re.I)
+JUNK_SCAM_LINKINBIO = re.compile(r"link in bio|claim your|limited spots|first \d+ people", re.I)
+JUNK_SCAM_BRACKET_HYPE = re.compile(r"\[\s*free[^\]]*\b(api|grant|credit|access)\b[^\]]*\]", re.I)
+JUNK_HYPE_EMOJI = ("🔥", "🚀", "💰", "🤑", "⚡", "‼️", "❗")
+JUNK_KICKSTARTER_TOKENS = ("kickstarter", "indiegogo", "back this", "back us", "crowdfund")
+JUNK_KICKSTARTER_RAISED_RE = re.compile(r"raised \$?\d[\d,]*\s*k?\b.*\b(hours?|days?|minutes?)\b", re.I)
+# foreign-clickbait clickbait-shape markers (in ANY script).
+JUNK_CLICKBAIT_RE = re.compile(r"={4,}|#{3,}|\[\d+[/\-]\d+\]|【|》|超重要|超|必見|重要")
+# romanized AI model/lab names that keep a foreign post on-topic (KEEP it).
+JUNK_AI_ROMAN_TOKENS = (
+    "gpt", "claude", "llm", "llms", "gemini", "qwen", "llama", "mistral", "grok",
+    "deepseek", "openai", "anthropic", "ai", "ml", "mythos", "fable", "gemma",
+    "opus", "sonnet", "transformer", "agent", "agentic",
+)
+JUNK_ASCII_MIN = 0.55  # legacy fallback only; primary check is Unicode script class
+
+
+def _b4_signals_enabled():
+    """Per-signal toggles (INV-6). Env SIFTLY_JUNK_BACKSTOP_SIGNALS='crypto,scam'
+    (allowlist) or '-foreign' (denylist). Empty/unset = all four enabled."""
+    raw = os.environ.get("SIFTLY_JUNK_BACKSTOP_SIGNALS", "").strip().lower()
+    all_sigs = {"crypto", "scam", "kickstarter", "foreign"}
+    if not raw:
+        return all_sigs
+    parts = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+    deny = {p[1:] for p in parts if p.startswith("-")}
+    allow = {p for p in parts if not p.startswith("-")}
+    if deny:
+        return all_sigs - deny
+    return allow & all_sigs if allow else all_sigs
+
+
+def _b4_enabled():
+    """Global B4 kill-switch (INV-6). SIFTLY_JUNK_BACKSTOP=0 disables entirely."""
+    return os.environ.get("SIFTLY_JUNK_BACKSTOP", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _b4_text(item):
+    """Field contract (SPEC §5.0): the FULL body B4 reads — tweet_text (untruncated)
+    for tweets, title+summary for non-tweets. NEVER the ≤120-char pf-audit snippet.
+    Shape-independent across both brief dumps (does not read `signals`)."""
+    t = str(item.get("tweet_text") or "").strip()
+    if t:
+        return t
+    return (str(item.get("title") or "") + " " + str(item.get("summary") or "")).strip()
+
+
+def _non_latin_dominant(text):
+    """True when the dominant SCRIPT of the LETTERS is non-Latin (CJK/Arabic/Cyrillic/
+    Devanagari/…). Measured by Unicode script class, NOT byte-ASCII ratio — so a
+    Turkish/Vietnamese/Indonesian Latin-diacritic post is correctly Latin. Emoji and
+    punctuation/digits are excluded from the tally (SPEC §5.1.4 / P2)."""
+    latin = nonlatin = 0
+    for ch in text:
+        if not ch.isalpha():
+            continue
+        o = ord(ch)
+        # Latin incl. Latin-1/Extended/diacritics (Vietnamese, Turkish, etc.)
+        if o < 0x250 or (0x1E00 <= o <= 0x1EFF):
+            latin += 1
+        else:
+            nonlatin += 1
+    total = latin + nonlatin
+    if total == 0:
+        return False
+    return nonlatin > latin  # strictly non-Latin-dominant
+
+
+def _has_ai_token(text):
+    low = text.lower()
+    toks = set(re.findall(r"[a-z0-9]+", low))
+    if toks & set(JUNK_AI_ROMAN_TOKENS):
+        return True
+    # also accept the existing ON_TOPIC token/stem machinery for romanized content
+    return bool(toks & ON_TOPIC_TOKENS) or any(
+        tk.startswith(st) for tk in toks for st in ON_TOPIC_STEMS
+    )
+
+
+def _count_crypto_corroborators(low, text):
+    n = 0
+    for t in JUNK_CRYPTO_TOKENS:
+        if t in low:
+            n += 1
+    # price-context coins only count alongside a price/$ cue (avoid "Sol" the name)
+    if any(c in low for c in JUNK_CRYPTO_PRICE_TOKENS) and ("$" in text or "price" in low or "%" in text):
+        n += 1
+    if any(e in text for e in JUNK_CANDLE_EMOJI):
+        n += 1
+    return n
+
+
+def is_junk_label(item):
+    """Backstop 4 detector (SPEC §5.1). Returns a reason string (→ demote) or None.
+    High-precision + corroboration-gated: a lone cashtag, a benign 'free API credits'
+    announcement, or a foreign-language AI roundup must NOT fire. Curated-source
+    exemption is applied by the CALLER (score_item), not here."""
+    enabled = _b4_signals_enabled()
+    text = _b4_text(item)
+    if not text:
+        return None
+    low = text.lower()
+
+    # 1) crypto-ticker — cashtag AND a crypto corroborator, OR ≥2 corroborators alone.
+    if "crypto" in enabled:
+        has_cashtag = bool(JUNK_CASHTAG_RE.search(text))
+        corr = _count_crypto_corroborators(low, text)
+        if (has_cashtag and corr >= 1) or (corr >= 2):
+            return "crypto-ticker"
+
+    # 2) scam-grant — engagement-bait SHAPE, not the benign words.
+    if "scam" in enabled:
+        hype = any(e in text for e in JUNK_HYPE_EMOJI) or bool(re.search(r"\b[A-Z]{4,}\b.*\b[A-Z]{4,}\b", text))
+        bracket = bool(JUNK_SCAM_BRACKET_HYPE.search(text))
+        dm_bait = bool(JUNK_SCAM_DM.search(text)) and (bool(JUNK_SCAM_LINKINBIO.search(text)) or "t.co/" in low or "link in bio" in low)
+        if bracket or (dm_bait and hype):
+            return "scam-grant"
+
+    # 3) kickstarter-promo — crowdfunding shill WITHOUT real AI-build substance.
+    if "kickstarter" in enabled:
+        ks = any(t in low for t in JUNK_KICKSTARTER_TOKENS) or bool(JUNK_KICKSTARTER_RAISED_RE.search(text))
+        if ks and not _has_ai_token(text):
+            return "kickstarter-promo"
+        # a kickstarter post that's ALSO pure crypto/hype still demotes
+        if ks and any(t in low for t in JUNK_CRYPTO_TOKENS):
+            return "kickstarter-promo"
+
+    # 4) foreign-clickbait — non-Latin-dominant AND no AI token AND clickbait shape.
+    if "foreign" in enabled:
+        if _non_latin_dominant(text) and not _has_ai_token(text) and bool(JUNK_CLICKBAIT_RE.search(text)):
+            return "foreign-clickbait"
+
+    return None
+
+
 def _topic_text(item):
     """Dedicated topic-check accessor (SPEC §B.2) — used ONLY by python_on_topic
     and is_structural_fragment, NEVER the shared _item_text (which is left untouched
@@ -673,6 +827,17 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
         # curated source vouched for topicality → label left to stand. Audit-only.
         source_vouch = True
 
+    # ── Backstop 4: junk-label demotion (SPEC-scorer-junk-label-backstop.md) —
+    # crypto/scam/kickstarter/foreign-clickbait the model mislabeled core. Routes
+    # to on_topic=off; the FINAL clamp below (after every additive term incl. PF)
+    # bounds it below ALSO_GATE so it can't be re-lifted. Curated sources exempt
+    # (INV-3, same helper Backstops 1/3 use). Downgrade-only.
+    junk_reason = None
+    if _b4_enabled() and not is_topic_curated_source(item):
+        junk_reason = is_junk_label(item)
+        if junk_reason:
+            eff_on_topic = "off"
+
     ct, ac = labels["content_type"], labels["actionability"]
 
     # ── Backstop 3: low-signal reddit demotion (§Also-Noted-weak fix, 2026-06-22) —
@@ -718,6 +883,13 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
     if cap is not None and final > cap:
         final, capped = float(cap), True
 
+    # ── Backstop 4 clamp — the LAST write to `final` (SPEC INV-1/P2-B1). After every
+    # additive term (incl. PF) and the low_reach_cap, so a demoted junk item can NEVER
+    # be re-lifted over the gate. DEMOTE_CEILING = ALSO_GATE - 1 (ALSO_GATE is a >=
+    # floor → strictly below). Downgrade-only: only ever lowers.
+    if junk_reason:
+        final = min(final, float(ALSO_GATE - 1))
+
     breakdown = {
         "base": base, "substance_adj": sub, "engagement": eng,
         "author": auth, "author_tier": auth_tier, "pf": pf,
@@ -740,6 +912,10 @@ def score_item(item, tl_handles, tl_aliases, tracked, now=None, low_reach_cap_va
         "topic_text_source": "title+summary" if _is_github(item) else "item_text",
         "offtopic_repo_marker": off_topic_repo_marker(item),
     }
+    # B4 audit key — present ONLY on a demoted item (INV-4/INV-5 byte-stability: a
+    # clean item's breakdown is byte-identical to pre-B4).
+    if junk_reason:
+        breakdown["junk_backstop"] = junk_reason
     out = dict(item)
     out["_final"] = final
     out["_breakdown"] = breakdown
@@ -1374,6 +1550,58 @@ def _selftest():
     bx = s(xthin)
     check(bx["reddit_low_signal"] is False, "non-reddit item flagged reddit_low_signal")
     check(bx["effective_actionability"] == "reference", "non-reddit actionability altered")
+
+    # --- Backstop 4: junk-label demotion (SPEC-scorer-junk-label-backstop.md) ---
+    def jf(item):  # full score_item result (need _final + breakdown)
+        return score_item(item, tl_h, tl_a, trk)
+    def core_x(text, **extra):
+        return {"source": "x", "authorHandle": extra.pop("h", "rando"),
+                "content_type": extra.pop("ct", "launch"), "actionability": "actionable_now",
+                "substance": "concrete", "on_topic": "core", "tweet_text": text, **extra}
+    # incident items DEMOTE below ALSO_GATE with a junk_backstop reason
+    crypto = core_x("$COIN to the moon 🚀 airdrop live, DM me for the presale 🔥", likes=9000)
+    bc = jf(crypto)
+    check(bc["_breakdown"].get("junk_backstop") == "crypto-ticker", "crypto-ticker not flagged")
+    check(bc["_final"] < ALSO_GATE, f"crypto {bc['_final']} not < ALSO_GATE {ALSO_GATE}")
+    scam = core_x("[FREE CLAUDE/GPT API GRANT] 🔥 DM me, limited spots, claim your credits", likes=5000)
+    bs2 = jf(scam)
+    check(bs2["_breakdown"].get("junk_backstop") == "scam-grant", "scam-grant not flagged")
+    check(bs2["_final"] < ALSO_GATE, f"scam {bs2['_final']} not < ALSO_GATE")
+    ks = core_x("Mecha Comet launched on Kickstarter, raised $350k in a few hours — crypto gadget", likes=8000)
+    check(jf(ks)["_breakdown"].get("junk_backstop") == "kickstarter-promo", "kickstarter not flagged")
+    fc = core_x("【超重要】各社の最新まとめ ======================== ※パクリ禁止", likes=200)
+    check(jf(fc)["_breakdown"].get("junk_backstop") == "foreign-clickbait", "foreign-clickbait not flagged")
+    # NEAR-MISS legit items are KEPT (precision = 1.0; the load-bearing guarantee)
+    check(jf(core_x("Anthropic announces free API credits for students — research access program"))["_breakdown"].get("junk_backstop") is None,
+          "legit free-credit announcement wrongly demoted")
+    check(jf(core_x("$NVDA earnings beat; datacenter GPU demand for AI training up 40% QoQ"))["_breakdown"].get("junk_backstop") is None,
+          "lone $NVDA in AI-infra thread wrongly demoted")
+    check(jf(core_x("NVIDIA 开源 Agent Skill 安全扫描器 SkillSpector — open-source LLM agent security scanner"))["_breakdown"].get("junk_backstop") is None,
+          "foreign post WITH AI token wrongly demoted")
+    check(jf(core_x("Yapay zeka modelleri Türkçe testlerde GPT-4 ve Claude ile karşılaştırıldı"))["_breakdown"].get("junk_backstop") is None,
+          "Turkish Latin-diacritic AI post wrongly demoted (must not trip foreign-clickbait)")
+    check(jf(core_x("just shipped my AI coding agent 🔥🚀 it actually works"))["_breakdown"].get("junk_backstop") is None,
+          "emoji-heavy English builder post wrongly demoted")
+    # INV-1: clamp is downgrade-only — a high-PF crypto post still lands below gate
+    hipf = core_x("$SOL pump 🚀 airdrop, crypto presale DM me", likes=99000, retweets=50000)
+    check(jf(hipf)["_final"] < ALSO_GATE, "high-engagement crypto re-lifted above gate (clamp not last-op)")
+    # INV-4: clean item gets NO junk_backstop key (byte-stability)
+    check("junk_backstop" not in jf(core_x("OpenAI shipped a new structured-outputs API for agents"))["_breakdown"],
+          "clean item got a junk_backstop breakdown key")
+    # INV-3: curated AI subreddit is exempt even with a cashtag
+    cur = {"source": "reddit", "url": "https://www.reddit.com/r/localllama/comments/x/abc",
+           "title": "$LOCAL token thoughts", "summary": "crypto airdrop pump to the moon presale",
+           "content_type": "opinion", "actionability": "context_only", "substance": "mixed", "on_topic": "core"}
+    check(jf(cur)["_breakdown"].get("junk_backstop") is None, "curated-sub item wrongly demoted (INV-3 exemption)")
+    # INV-6: kill-switch
+    import os as _os
+    _prev = _os.environ.get("SIFTLY_JUNK_BACKSTOP")
+    _os.environ["SIFTLY_JUNK_BACKSTOP"] = "0"
+    try:
+        check(jf(crypto)["_breakdown"].get("junk_backstop") is None, "kill-switch did not disable B4")
+    finally:
+        if _prev is None: _os.environ.pop("SIFTLY_JUNK_BACKSTOP", None)
+        else: _os.environ["SIFTLY_JUNK_BACKSTOP"] = _prev
 
     if fails:
         print("SELFTEST FAILED:")
