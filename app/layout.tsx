@@ -28,7 +28,7 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-screen bg-zinc-950 text-zinc-100 antialiased">
         <Nav />
-        <main className="flex-1 min-w-0 overflow-auto">
+        <main className="flex-1 min-w-0 overflow-auto pt-14 md:pt-0">
           {children}
         </main>
         <CommandPalette />

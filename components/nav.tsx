@@ -15,6 +15,8 @@ import {
   ChevronRight,
   Command,
   Bookmark,
+  Menu,
+  X,
 } from 'lucide-react'
 
 interface NavItem {
@@ -102,6 +104,15 @@ export default function Nav() {
     return localStorage.getItem('nav-collections-open') !== 'false'
   })
   const [pipeline, setPipeline] = useState<PipelineStatus | null>(null)
+  // Mobile drawer: the sidebar is an off-canvas drawer below `md`, static rail at `md+`.
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Lock body scroll while the mobile drawer is open.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (mobileOpen) document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
 
   function toggleCollections() {
     setCollectionsOpen((v) => {
@@ -154,7 +165,33 @@ export default function Nav() {
   const visibleCats = showAllCats ? categories : categories.slice(0, 8)
 
   return (
-    <aside className="flex flex-col bg-zinc-900 border-r border-zinc-800/50 shrink-0 sticky top-0 h-screen overflow-y-auto" style={{ width: '228px' }}>
+    <>
+      {/* Mobile hamburger — only below md. Fixed top-left, above content. */}
+      <button
+        type="button"
+        aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
+        aria-expanded={mobileOpen}
+        onClick={() => setMobileOpen((v) => !v)}
+        className="md:hidden fixed top-3 left-3 z-50 flex items-center justify-center w-10 h-10 rounded-lg bg-zinc-900/90 border border-zinc-800 text-zinc-300 backdrop-blur hover:bg-zinc-800 transition-colors"
+      >
+        {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+      </button>
+
+      {/* Backdrop — only when the mobile drawer is open. */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`flex flex-col bg-zinc-900 border-r border-zinc-800/50 overflow-y-auto
+          fixed inset-y-0 left-0 z-40 w-[260px] max-w-[82vw] transform transition-transform duration-200 ease-out
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:translate-x-0 md:static md:sticky md:top-0 md:h-screen md:w-[228px] md:max-w-none md:shrink-0 md:z-auto`}
+      >
 
       {/* Brand */}
       <div className="flex items-center justify-center gap-3 px-4 py-3.5 border-b border-zinc-800/50">
@@ -209,6 +246,7 @@ export default function Nav() {
             <Link
               key={href}
               href={href}
+              onClick={() => setMobileOpen(false)}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
                 active
                   ? 'bg-blue-500/12 text-blue-400'
@@ -299,5 +337,6 @@ export default function Nav() {
 
       <SponsorFooter />
     </aside>
+    </>
   )
 }
