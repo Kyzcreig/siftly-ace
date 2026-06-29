@@ -20,6 +20,28 @@ err(){ echo "[build-report] $*" >&2; }
 TSX="$REPO/node_modules/.bin/tsx"
 [ -x "$TSX" ] || { err "tsx not found"; exit 1; }
 
+# 0) OVERVIEW SAFETY-NET (2026-06-29): the overview is injected into _render_input.json
+#    by Step 6.9, but if the LLM ran Step 6.7 (select_digest, which REWRITES
+#    _render_input.json) AFTER 6.9, the injected overview is clobbered and the
+#    Landscape section silently vanishes (the symptom Ace caught). Make the report
+#    build the LAST writer: if the render-input has no overview but the brief's
+#    linked-overview file exists, re-inject it here so ordering can't lose it.
+#    Fully fail-safe + idempotent: if already present or the file is missing, no-op.
+OV_FILE="${4:-}"
+if [ -z "$OV_FILE" ]; then
+  # derive the brief's linked-overview tmp file from the render-input dir name
+  case "$IN" in
+    *morning-digest*) OV_FILE="/tmp/morning-digest-overview-linked.txt" ;;
+    *x-feed*)         OV_FILE="/tmp/x-feed-overview-linked.txt" ;;
+  esac
+fi
+if [ -n "$OV_FILE" ] && [ -s "$OV_FILE" ]; then
+  if ! python3 -c "import json,sys; sys.exit(0 if json.load(open('$IN')).get('overview') else 1)" 2>/dev/null; then
+    err "overview missing from render-input; re-injecting from $OV_FILE (Step-6.9/6.7 ordering safety-net)"
+    python3 "$REPO/scripts/inject_overview.py" --render-input "$IN" --overview-file "$OV_FILE" 2>&1 >&2 || err "overview re-inject non-fatal failure"
+  fi
+fi
+
 # 1) render HTML (getTweet hydrates tweet cards; secrets not required for public tweets).
 #    Route through with-secrets.sh so OPENAI_API_KEY is present for foreign-text
 #    translation (lib/translate.ts). Translation is fail-safe: if secrets can't load,
