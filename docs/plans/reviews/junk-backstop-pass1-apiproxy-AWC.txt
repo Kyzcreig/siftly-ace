@@ -1,0 +1,42 @@
+# Independent Senior Review (Opus)
+
+## Verdict: APPROVE WITH CHANGES
+
+The spec is unusually disciplined — downgrade-only invariant, kill-switch, curated-exemption, ratified oracle. The pattern matches three shipped backstops, so the architecture risk is low. But several blockers sit in the gap between "the spec reads well" and "the oracle is actually trustworthy," and that gap is exactly where this class of change has bitten before (the read-amplification "✅ OK for 11 days" pattern in AGENTS.md). The signal predicates as written also carry concrete false-positive vectors the near-miss fixtures don't yet cover.
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**B-1 — INV-2/AC-2 precision=1.0 is asserted against an oracle the same author hand-labels; no independent verification of the ground truth.** The fixture (D-6, Phase 1) is "hand-verified by Apollo," and the gate is "demoted set equals the verified junk allowlist exactly." This is a tautology: the test passes when the code reproduces the author's labels, not when the labels are correct. The whole spec rests on the oracle, and the oracle has no second pair of eyes. Given §8.R-2 (one day, 234 items) this is a self-certifying gate — the exact "fake green" failure mode the soul's verification gate exists to prevent. **Required:** the 11 flagged + the 3–5 near-miss items get an independent label pass (Argus or a second reviewer) before ratification, and any disagreement is resolved on record, not silently folded.
+
+**B-2 — `scam-grant` signal §5.1.2 will demote legitimate AI content. Real, frequent counterexamples.** "FREE … (API|GRANT|CREDIT)" + "claim your" + "limited spots" are the literal words of *legitimate* launches: OpenAI/Anthropic/Google credit programs, hackathon grant announcements, "free tier API now available," waitlist drops ("limited spots"), "DM me for early access" from real founders. These are core AI news. The spec's example (`[FREE CLAUDE/GPT API GRANT] 🔥`) is the scam *shape*, but the predicate as specified (`FREE … API`) matches "Anthropic announces free API credits for students." **Required:** §5.1.2 must require the *scam* corroborator (impersonation handle, t.co-link-in-bio + no real org, "DM me" + hype-emoji run) — not the benign substring — and the near-miss fixture MUST include a real free-credit/grant announcement that stays. As written this is the highest false-demotion risk, not R-1.
+
+**B-3 — The byte-stability gate (INV-5/AC-3) contradicts the insertion point and the stacking math.** §5.2 inserts Backstop 4 *after* Backstop 2, forcing `eff_on_topic="off"` and sometimes `ct="promo"`. But INV-5 demands the 223 non-junk items are *byte-identical*. Any item where `is_junk_label` returns a reason changes the score; any item where it returns `None` must be untouched. That's fine — but the gate only holds if `is_junk_label` is provably side-effect-free and the `_breakdown` write doesn't perturb serialization/ordering of clean items. The spec adds a `junk_backstop` key only on demoted items, which means the clean-item breakdown dict is unchanged — good — but **AC-3 needs to assert byte-identity of the full debug dump for clean items including breakdown key ordering**, not just the final score. A score that's byte-identical with a reordered breakdown still breaks downstream diffs. **Required:** state explicitly that clean items get *no* new breakdown key and assert it.
+
+**B-4 — `$TICKER` regex `\$[A-Z]{2,6}\b` collides with AI-infra cashtags and the `$NVDA` case is hand-waved.** §9.Q2 and §6.Phase-2 name `$NVDA` as "decide+test" but §5.1.1 fires on a *single* `$TICKER` with no corroboration. $NVDA, $GOOGL, $MSFT, $AMD, $TSM, $AVGO are the most-discussed AI-infra tickers on X and routinely appear in genuinely on-topic earnings/datacenter/GPU-supply threads. A single cashtag firing `crypto-ticker` will demote real AI-infra discussion. The "OR ≥2 corroborating tokens" branch is fine; the bare-single-`$TICKER` branch is the bug. **Required:** a lone cashtag must NOT fire alone — require the cashtag AND a crypto-context corroborator, OR maintain an explicit crypto-ticker allow/deny set. This must be a tested near-miss, not an open question.
+
+## Required Changes
+
+1. **Independent oracle label pass (B-1)** — second-reviewer sign-off on the 11 + near-misses before the fixture is ratified; record disagreements. Without this, AC-2's "precision=1.0" is unfalsifiable.
+2. **Re-scope `scam-grant` (B-2)** — predicate keys on scam *shape* (impersonation/no-org + DM+link-in-bio + hype), not on "FREE…API". Add a real free-credit announcement to the near-miss set.
+3. **Fix `crypto-ticker` single-cashtag (B-4)** — lone equity/AI-infra cashtag must not fire; add $NVDA-in-AI-context and $COIN-shill as paired positive/negative tests.
+4. **Tighten byte-stability assertion (B-3)** — AC-3 asserts clean items get zero breakdown mutation and identical serialization, not just identical final score.
+5. **Add an idempotency/double-fire test** — re-running `score_item` on an already-B4-demoted item (`on_topic` already `off`) is a no-op (R-3 claims this; AC doesn't test it).
+6. **State the ALSO_GATE constant and prove the arithmetic** — §5.2 claims "base 5 + 0 + 0 − 40 → clamped 0 < ALSO_GATE", but ALSO_GATE's value isn't in the spec. AC-1 must show the actual post-demotion scores vs the actual gate number, not "single digits."
+7. **`foreign-clickbait` ASCII threshold (<55%) needs a tested boundary** — a tweet that's 60% ASCII (emoji + romaji + one CJK clause) of genuine AI news must be in the near-miss set; the threshold is a magic number with no boundary test.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Sound — fourth instance of a proven downgrade-only pattern, correct insertion point, pure function; no new failure surface.
+- **Security/identity-isolation:** N/A in the trust sense; no creds/network/posting change — correctly scoped (§7).
+- **DevOps/SRE:** Rollback is excellent (runtime kill-switch + git revert); **but** observability is thin — there's no LOUD guard for the inverse failure (B4 silently demoting a rising count of real items over future days), and AGENTS.md's own lesson is that "green for 11 days" is the trap. Add a demotion-rate watchdog (alert if daily junk-demote count or rate exceeds a baseline).
+- **Implementation/maintainability:** Named per-signal predicates are good; the regex/token lists will rot — they need a single sourced constant block, not inline literals scattered across four predicates.
+- **QA:** The selftest is a *real* gate only if the oracle is trustworthy (B-1); near-miss fixtures are the right instinct but currently under-populated for the actual FP vectors (B-2, B-4, R-7).
+- **Config-drift:** Prompt snapshot to `deploy/cron-prompts/` is the established mirror and AC-6 greps both — correct; ensure the grep sentinel is specific enough not to false-match.
+
+## Residual Risks / Open Questions
+
+- **Over-fit to one day (acknowledged R-2)** — APPROVE accepts v1-on-one-ratified-day, but the demotion-rate watchdog (above) is the condition that makes this safe to ship without a multi-day eval. Without it, you're trusting a kill-switch nobody will think to flip until a real story is already buried.
+- **Recall is honestly deprioritized (D-2/Q3)** — fine, but the spec should commit to logging *missed* junk (items in the 83+ band that scored high and posted) so the recall gap is visible over time, not just "reported at closeout once."
+- **Phase 5 is a single live run as acceptance** — one clean morning doesn't prove the foreign-clickbait/scam-grant predicates won't fire on tomorrow's legit content. The live run proves *no regression today*; it does not retire R-1/R-2. Keep them open post-ship.
+- **Open Q1 (one lever vs both)** is fine to leave to the author; it's a tuning detail, not a blocker — the breakdown audit makes either choice debuggable.
+- **Unstated:** what happens to an item the model labeled `off` that Backstop 4 *also* flags but for a *different* reason — does the breakdown record both, or does B2's reason win? Minor, but specify so the audit trail is unambiguous.

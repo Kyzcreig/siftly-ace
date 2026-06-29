@@ -1,0 +1,40 @@
+# Independent Senior Review (Opus)
+
+## Verdict: BLOCK
+
+The design is thoughtful and the safety framing (downgrade-only, precision-first) is right. But the **central acceptance gate is tautological** (train==test), the **downgrade-only invariant is not guaranteed by construction**, and **byte-stability is mis-specified against the scorer's known pool-relative stages**. Each of these manufactures a green that doesn't mean what the closeout will claim it means. Fix the gates, then this is a fast APPROVE.
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+**B-1 — The ship-gate is measured on the tuning set (QA / eval-oracle).** D-6 ratifies "today's 234-item pool" as the oracle; §5.1 signals are authored by inspecting "the 11 flagged items + scan the 83+ band"; then INV-2/AC-2 assert precision=1.0 *on that same pool*. After you tune regexes against a hand-label set, precision=1.0 on it is guaranteed by construction — it is not evidence of generalization. The genuine production risk you yourself name (R-2, over-fit) has **no pre-merge out-of-sample gate**; Phase 5 is n=1, observational, and *post-merge*. As written, the effective ship criterion is "my regexes match my labels," which is exactly the fake-green class. **Required: a holdout — at minimum one prior day's pool labeled independently — as a pre-merge precision gate. Without it, AC-2 proves nothing.**
+
+**B-2 — INV-1 (downgrade-only) is not enforced by construction on the `content_type→promo` path (Architecture/Impl).** §5.2/D-3 force `ct="promo"` (BASE=5). If *any* content_type in the BASE table has BASE < 5 (a noise/spam/low tier), forcing promo is an **upgrade**, directly violating INV-1. The INV-1 closeout proof is "a property test over the live pool" — that only tests items present today; it cannot catch a future item whose true content_type sits below promo. The on_topic→off path has the symmetric hazard (is `off` provably the max penalty in OFF_TOPIC_PEN?). **Required: enforce demote-only with an explicit clamp (`eff_score = min(eff_score, …)` or `BASE[promo] only if < BASE[current]`), and assert by construction that off/promo are the respective minima — don't rely on a single-pool property test.**
+
+**B-3 — INV-5/AC-3 byte-stability is both mis-specified and unproven (QA / Config / Architecture).** Two defects: (a) "223 legitimate" conflates *unflagged* with *legitimate* — if B4 correctly demotes a junk item that sits below the 83 band and wasn't in the flagged 11, AC-3 **fails on correct behavior**. (b) The pipeline has documented **pool-relative** stages — fused PF uses `pool_mean_embed`, author-cap counts per-author across the pool, the overview computes salience/content_mix over `all_scored` (AGENTS.md ⭐ + overview sections). Demoting 11 items can shift a legit item's PF/cap/overview placement; "byte-identical for the 223" is asserted as if scoring were purely per-item. **Required: the oracle must label all 234 (not just the 83+ band); redefine INV-5 as "every non-junk item unchanged"; and prove byte-stability survives the pool-relative stages (or scope the claim to per-item BASE and explicitly exempt PF/author-cap/overview).**
+
+**B-4 — Eval/prod text-field skew (QA / Implementation).** Phase 1 snapshots the fixture from `_last_run_debug.json`. Per AGENTS.md the debug dump historically stored a **≤120-char `text_snippet`** for the pf-audit artifact alongside full `tweet_text`. If `is_junk_label()` (§5.1: scam-grant `link in bio`, foreign-clickbait, crypto corroboration tokens) evaluates the full body in production but the fixture carries the truncated snippet — or vice versa — the eval and prod regexes see **different bytes**, and a green selftest does not prove live behavior. **Required: confirm and pin the exact text field B4 reads, assert the fixture carries that identical field, and add a selftest that fails on truncation.**
+
+## Required Changes
+
+- **Effective-label plumbing (correctness):** §5.2 shows a local `eff_on_topic`/`ct`. Prove these flow into *every* downstream consumer (author-zeroing, engagement-zeroing, PF delta, overview salience/content_mix) — not just the BASE/OFF_TOPIC_PEN lookup. Reuse Backstop 2's exact mechanism; a parallel local var that downstream stages ignore would leave a 91 partially intact.
+- **Account for live PF in the arithmetic:** §5.2's "base 5 + 0 + 0 − 40 → 0" omits the fused personal-fit delta (±12, AGENTS.md). A crypto post with high keyword affinity gets +12. Closeout must show **post-PF** scores below ALSO_GATE, and **state ALSO_GATE's value** — if the clamp floor is 0 and the gate is `>= 0` inclusive, a "clamped 0" item still passes.
+- **scam-grant false-positive magnet:** legit labs run real free-credit/API-grant programs (OpenAI/Anthropic/HF "free GPU credits", research access). `FREE … (API|GRANT|CREDIT|GIVEAWAY)` will nuke them. Add ≥2 such items to the near-miss fixtures and tighten the predicate.
+- **foreign-clickbait magic number:** the 55% ASCII threshold has no derivation and "romanized model names" is undefined. Add a script-coverage sensitivity test (Latin-diacritic Vietnamese/Turkish/Indonesian must NOT trip non-Latin; CJK/Arabic/Urdu AI-roundups WITH model names must be kept) and define the romanized-model-name list concretely.
+- **Per-signal disable + demotion-rate alarm:** the global `SIFTLY_JUNK_BACKSTOP=0` is all-or-nothing — a misfiring foreign-clickbait signal forces you to drop crypto/scam protection too. Add per-signal toggles. And per Ace's standing "add a LOUD guard so the class can't silently recur": fire a #alerts notification when B4's per-run firing count exceeds a threshold (silent over-demotion is the exact failure mode B4 itself can cause).
+- **Config-drift gate:** AC-6 greps a sentinel — that proves presence, not consistency. **Diff** the morning vs x-feed rubric and **diff** each live prompt against its `deploy/cron-prompts/` mirror.
+
+## Lens Notes (one line each)
+
+- **Architecture:** Sound reuse of the Backstop 1–3 pattern, but the demotion routes through pool-relative stages the spec treats as per-item (B-3).
+- **Security/identity-isolation:** Low surface — no creds/network/posting change; injection-safe (treats item text as data). No concerns.
+- **DevOps/SRE:** Rollback (env + git revert) is fast and real; missing a demotion-rate alarm and per-signal kill; Phase 5 is observation, not a gate.
+- **Implementation/maintainability:** Named predicates + breakdown audit (INV-4) are good; INV-1 needs a construction clamp, not a single-pool property test (B-2).
+- **QA:** The headline gate is train==test (B-1); near-miss set is too small, same-day, and omits the realistic FP space (legit grants, AI fintech `$NVDA`, real AI hardware crowdfunds).
+- **Config-drift:** Dual prompt + mirror triple-write guarded only by grep; needs a diff and an all-234 oracle so byte-stability isn't measured against a partial label set.
+
+## Residual Risks / Open Questions
+
+- **Contestable oracle judgments:** "Mecha Comet" Kickstarter and "$COIN U.S." are labeled junk by fiat — a real AI-hardware crowdfund or an AI-company equity post is a defensible *keep*. The oracle's own labels are the unproven foundation under B-1; one wrong label silently flips precision.
+- **Shape-based regexes are adversarially evadable:** crypto/scam authors mutate ($ → S, spaced cashtags, emoji-obfuscation). v1 catches today's exact shapes; expect decay. Acceptable for v1 if the demotion-rate alarm + multi-day follow-up (R-2) are committed, not deferred indefinitely.
+- **Open Q-1 (one lever vs both):** resolve before build — the `promo` path is the one that can violate INV-1 (B-2); if `off` alone already sinks the crypto class, dropping the `promo` force removes the upgrade hazard entirely.
+- **n=1 live validation:** Phase 5 confirms one morning pool; x-feed-brief (the other live consumer) gets no live validation in this plan despite carrying the same rubric edit.
