@@ -110,6 +110,57 @@ def test_failsafe_on_empty_pool():
     assert agg["pool_size"] == 0
 
 
+def test_junk_label_excluded_from_overview():
+    # A crypto-ticker shill the MODEL mislabeled `core` must NOT surface in the
+    # overview — the aggregate re-scores through score_digest (Backstop 4) and
+    # excludes it, so the overview can never disagree with what the brief gates.
+    pool = {"all_scored": [
+        tweet("velonxbt",
+              "🚀 $VELON is the first AI agent token on Solana. 100x potential. "
+              "Buy now before launch! Presale live. CA: 0xABCD1234",
+              91, ["models"], on_topic="core"),
+        tweet("real",
+              "Anthropic shipped Claude Tag, an always-on Slack agent for eng teams.",
+              80, ["models"], on_topic="core"),
+    ]}
+    agg = od.aggregate(pool, "morning-digest")
+    assert agg.get("rescored") is True, "deterministic re-score must have run"
+    labels = " ".join(s["label"] for s in agg["top_stories"])
+    assert "VELON" not in labels and "velonxbt" not in labels, \
+        f"crypto-ticker junk must be excluded from top_stories, got: {labels!r}"
+    assert any("Claude Tag" in s["label"] for s in agg["top_stories"]), \
+        "the real AI story must still surface"
+    # and it must not headline a theme either
+    theme_ex = " ".join(e for t in agg["themes"] for e in t["examples"])
+    assert "VELON" not in theme_ex, "junk must not headline a theme"
+
+
+def test_label_strips_leading_tco_url():
+    # a tweet that opens with a bare t.co link must not make the label LEAD with an
+    # opaque url ("https://t.co/x has officially entered the era of…").
+    it = tweet("VKESH_AD",
+               "https://t.co/rmKgOVaKck has officially entered the era of 10B+ "
+               "daily tokens served by open models.",
+               70, ["models"])
+    lbl = od._label(it)
+    assert "t.co" not in lbl, f"label must not lead with a t.co url, got: {lbl!r}"
+    assert "has officially entered" in lbl
+
+
+def test_rescore_failsafe_falls_back_to_dump_values():
+    # _rescore_pool must always stamp _ov_final/_ov_excluded even when items are
+    # minimal — and aggregate still produces a valid shape.
+    pool = [
+        {"authorHandle": "x", "tweet_text": "Llama 4 weights dropped under Apache-2.",
+         "source": "x", "url": "https://x.com/x/status/9", "final_score": 70,
+         "on_topic": "core", "signals": {"topic_hits": [{"topic": "models"}]}},
+    ]
+    ran = od._rescore_pool(pool)
+    assert isinstance(ran, bool)
+    assert "_ov_final" in pool[0] and "_ov_excluded" in pool[0]
+    assert pool[0]["_ov_excluded"] is False
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))

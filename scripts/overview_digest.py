@@ -38,6 +38,43 @@ def _pool(data: dict) -> list:
     return data.get("all_scored") or data.get("pool") or []
 
 
+# Re-score the pool through the SAME deterministic authority that gates the brief
+# (score_digest.score_item — incl. Backstop 4 junk demotion + the off-topic guard),
+# so the overview can NEVER surface what the brief itself wouldn't. Stamps each item:
+#   _ov_final     : the real deterministic final score (ranking/salience authority)
+#   _ov_excluded  : True if junk-flagged OR effective-off-topic (drop from headlines)
+# Fail-safe: if score_digest can't be imported/run, fall back to the dump's
+# `final_score` / raw `on_topic` label so the overview still renders (degraded).
+def _rescore_pool(pool: list) -> bool:
+    """Mutate pool items in place with `_ov_final` + `_ov_excluded`. Returns True if
+    the real deterministic re-score ran, False if it fell back to dump values."""
+    try:
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from score_digest import (  # noqa: E402
+            score_item, _load_thought_leaders, _load_tracked_projects,
+        )
+        tl_h, tl_a = _load_thought_leaders()
+        trk = _load_tracked_projects()
+        for it in pool:
+            try:
+                out = score_item(it, tl_h, tl_a, trk)
+                bd = out.get("_breakdown", {})
+                it["_ov_final"] = float(out.get("_final", 0.0))
+                it["_ov_excluded"] = bool(bd.get("junk_backstop")) or bd.get("effective_on_topic") == "off"
+            except Exception:
+                # per-item fallback: trust the dump's values for this one item
+                it["_ov_final"] = _num(it.get("final_score"))
+                it["_ov_excluded"] = (it.get("on_topic") or "core") == "off"
+        return True
+    except Exception:
+        # whole-module fallback: the overview still works off the dump's fields
+        for it in pool:
+            it["_ov_final"] = _num(it.get("final_score"))
+            it["_ov_excluded"] = (it.get("on_topic") or "core") == "off"
+        return False
+
+
 def _id(it: dict) -> str:
     return it.get("id") or it.get("url") or it.get("tweet_id") or ""
 
@@ -50,6 +87,10 @@ def _text(it: dict) -> str:
 # Leading @mentions on a reply tweet ("@a @b actual point") carry no story signal —
 # strip them so the label reads as the actual point, not the reply targets.
 _LEADING_MENTIONS = re.compile(r"^(?:\s*@\w{1,15}\b[,:]?\s*)+")
+# A tweet that opens with a bare/t.co URL ("https://t.co/x has officially entered…")
+# would otherwise make the label LEAD with an opaque link. Strip leading URL(s) so the
+# gist is the actual sentence. Also strips a trailing-only url-fragment lead-in.
+_LEADING_URL = re.compile(r"^(?:\s*https?://\S+\s*)+", re.IGNORECASE)
 # Newsy lead-ins that carry zero content if taken alone ("BREAKING:", "JUST IN:",
 # "NEW:", "🚨") — strip a leading one so the label is the actual headline, not the
 # klaxon. Only stripped when it's a short prefix followed by real text.
@@ -107,6 +148,7 @@ def _label(it: dict, limit: int = 90) -> str:
         return _clip(_WS.sub(" ", base), limit)
     txt = (it.get("tweet_text") or it.get("title") or it.get("text") or "").strip()
     txt = _WS.sub(" ", _LEADING_MENTIONS.sub("", txt)).strip()
+    txt = _LEADING_URL.sub("", txt).strip()  # don't let a label lead with an opaque t.co link
     gist = _gist(txt, limit)
     handle = str(it.get("authorHandle") or "").strip().lstrip("@")
     if not gist:
@@ -160,13 +202,20 @@ def _engagement(it: dict) -> float:
 def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int = 12) -> dict:
     pool = _pool(data)
     n = len(pool)
-    # only consider on-topic (core/adjacent) items for theme/story headlines; an
-    # 'off' political/unrelated item shouldn't define the AI landscape — but we DO
-    # report how much off-topic noise the pool carried (Ace asked to know the mood).
-    on = [it for it in pool if (it.get("on_topic") or "core") != "off"]
+    # Re-score through the SAME deterministic authority that gates the brief (incl.
+    # Backstop-4 junk demotion + off-topic guard), so the overview can't surface
+    # crypto/scam/fragment junk the model mislabeled `core`. Stamps _ov_final/_ov_excluded.
+    rescored = _rescore_pool(pool)
+    # Headlines/themes consider only items the deterministic engine would NOT exclude
+    # (junk-flagged or effective-off-topic). We still report how much noise the pool
+    # carried (Ace asked to know the mood).
+    on = [it for it in pool if not it.get("_ov_excluded", (it.get("on_topic") or "core") == "off")]
     off_count = n - len(on)
 
-    # --- theme histogram (topic -> count + summed final_score as salience) ---
+    def _score(it):  # ranking/salience authority = the real deterministic final
+        return _num(it.get("_ov_final", it.get("final_score")))
+
+    # --- theme histogram (topic -> count + summed deterministic score as salience) ---
     # Examples must be the STRONGEST items per topic, not the first-seen ones, or a
     # single over-tagged junk tweet (one crypto post tagged models+coding+security)
     # becomes the face of every theme. Iterate high-score → low so examples[:3] are
@@ -176,10 +225,10 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
     theme_salience: dict = defaultdict(float)
     theme_examples: dict = defaultdict(list)
     theme_example_ids: dict = defaultdict(set)
-    on_by_score = sorted(on, key=lambda x: _num(x.get("final_score")), reverse=True)
+    on_by_score = sorted(on, key=_score, reverse=True)
     used_example_ids: set = set()
     for it in on_by_score:
-        sal = _num(it.get("final_score"))
+        sal = _score(it)
         label = _label(it)
         iid = _id(it)
         for t in set(_topics(it)):
@@ -203,12 +252,12 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
         "examples": theme_examples[t],
     } for t in themes if theme_examples[t]]
 
-    # --- top stories (highest final_score, deduped by event_key/text) ---
+    # --- top stories (highest deterministic score, deduped by event_key/text) ---
     # Each gets a stable 1-based `ref` number so the Overview prose can cite [N]
     # and inject_overview resolves [N] → the real URL (links never come from the LLM).
     seen_keys = set()
     stories = []
-    for it in sorted(on, key=lambda x: _num(x.get("final_score")), reverse=True):
+    for it in sorted(on, key=_score, reverse=True):
         key = it.get("event_key") or _text(it)[:80].lower()
         if key in seen_keys:
             continue
@@ -223,7 +272,7 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
             "handle": it.get("authorHandle"),
             "source": it.get("source"),
             "content_type": it.get("content_type"),
-            "final_score": round(_num(it.get("final_score")), 1),
+            "final_score": round(_score(it), 1),
             "engagement": int(_engagement(it)),
             "url": url,
         })
@@ -251,6 +300,7 @@ def aggregate(data: dict, brief: str, top_n_themes: int = 8, top_n_stories: int 
         "pool_size": n,
         "on_topic_size": len(on),
         "off_topic_count": off_count,
+        "rescored": rescored,
         "themes": theme_rows,
         "top_stories": stories,
         "loud_authors": loud_rows,
