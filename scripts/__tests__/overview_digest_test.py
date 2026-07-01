@@ -36,7 +36,8 @@ def test_skips_junk_topics():
     topics = {t["topic"] for t in agg["themes"]}
     assert "x.com" not in topics, "x.com must be filtered as junk"
     assert "tracked-project" not in topics
-    assert "models" in topics
+    # themes are canonicalized to clean display names (models -> "Models")
+    assert "Models" in topics
 
 
 def test_label_no_midword_truncation():
@@ -75,8 +76,36 @@ def test_theme_examples_are_top_scored_and_deduped_across_themes():
         1 for exs in by_topic.values() for e in exs if "Mecha Comet" in e
     )
     assert junk_appearances <= 1, f"over-tagged item headlined {junk_appearances} themes"
-    # and the real per-lane items surface
-    assert any("DeepSeek" in e for e in by_topic.get("models", []))
+    # and the real per-lane items surface (themes now keyed by canonical name)
+    assert any("DeepSeek" in e for e in by_topic.get("Models", []))
+
+
+def test_themes_canonicalized_and_merged():
+    """Raw topic slugs are canonicalized to clean display names and near-duplicate
+    slugs merge into ONE theme — the fix for the derpy Landscape (2026-06-30):
+    `ai-ml` must not surface as the mangled "Ai MI", and `agents`+`coding-agents`
+    must be a single "Agents" lane, not two near-identical bullets."""
+    pool = {"all_scored": [
+        tweet("m1", "Opus 4.8 shipped with a bigger context window.", 90, ["models"]),
+        tweet("a1", "New autonomous coding agent tops SWE-bench.", 85, ["agents"]),
+        tweet("a2", "Cursor-style agent loop with tool use.", 84, ["coding-agents"]),
+        tweet("d1", "CLI devtool for repo-wide refactors.", 80, ["dev-tools"]),
+        tweet("d2", "Builder toolkit for local pipelines.", 79, ["builder-tools"]),
+        tweet("x1", "Fresh open-weight ML release with notes.", 78, ["ai-ml"]),
+    ]}
+    agg = od.aggregate(pool, "morning-digest")
+    topics = [t["topic"] for t in agg["themes"]]
+    # clean display names, never the raw slug or a mangled Title-Case of it
+    assert "AI/ML" in topics and "Ai Ml" not in topics and "ai-ml" not in topics
+    assert "Dev Tools" in topics and "dev-tools" not in topics
+    # agents + coding-agents collapse to ONE "Agents" lane (no duplicate)
+    assert topics.count("Agents") == 1
+    assert "Coding Agents" not in topics and "coding-agents" not in topics
+    agents_theme = next(t for t in agg["themes"] if t["topic"] == "Agents")
+    assert agents_theme["count"] == 2, "both agent items count into the merged lane"
+    # dev-tools + builder-tools merged
+    dev_theme = next(t for t in agg["themes"] if t["topic"] == "Dev Tools")
+    assert dev_theme["count"] == 2
 
 
 def test_empty_theme_dropped():

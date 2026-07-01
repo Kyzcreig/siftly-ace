@@ -33,6 +33,67 @@ SKIP_TOPICS = {
     "tracked-project", "general", "ai", "news",
 }
 
+# Canonical theme mapping: raw topic slugs → a clean, human display name, with
+# near-duplicate slugs collapsed onto ONE theme. This runs at the AGGREGATE layer
+# so the model receives already-merged, correctly-cased themes it cannot mangle.
+# Two bugs this fixes (2026-06-30, Ace flagged the derpy Landscape):
+#   - `ai-ml` was Title-Cased by the LLM into the garbled "Ai MI".
+#   - `agents` and `coding-agents` surfaced as two separate near-identical themes
+#     with copy-pasted descriptions (the prompt asked the LLM to merge; it didn't).
+# Keys are lowercased slugs; values are the display name. Slugs sharing a value are
+# merged into a single theme (counts + salience + examples pooled). A slug not in
+# the map falls back to a Title-Cased, hyphen-spaced version of itself.
+_CANON_THEME = {
+    "models": "Models",
+    "model": "Models",
+    "llms": "Models",
+    "open-weights": "Open Weights",
+    "open-weight": "Open Weights",
+    "agents": "Agents",
+    "agent": "Agents",
+    "coding-agents": "Agents",
+    "coding-agent": "Agents",
+    "autonomous-agents": "Agents",
+    "agent-tooling": "Agents",
+    "dev-tools": "Dev Tools",
+    "developer-tools": "Dev Tools",
+    "builder-tools": "Dev Tools",
+    "tooling": "Dev Tools",
+    "coding": "Coding",
+    "ai-ml": "AI/ML",
+    "ai-and-machine-learning": "AI/ML",
+    "machine-learning": "AI/ML",
+    "ml": "AI/ML",
+    "local-ai": "Local AI",
+    "local-llms": "Local AI",
+    "local-llm": "Local AI",
+    "on-device": "Local AI",
+    "benchmarks": "Benchmarks",
+    "benchmark": "Benchmarks",
+    "evals": "Benchmarks",
+    "security": "Security",
+    "prompt-injection": "Security",
+    "research": "Research",
+    "papers": "Research",
+    "hardware": "Hardware",
+    "gpus": "Hardware",
+    "robotics": "Robotics",
+}
+
+
+def _canonical_theme(slug: str) -> str:
+    """Map a raw topic slug to a clean, merged display theme name.
+
+    Known slugs collapse onto a shared human name (so agents + coding-agents are
+    ONE theme); unknown slugs degrade to a Title-Cased, space-separated form
+    (`foo-bar` → `Foo Bar`) so the model never has to guess capitalization.
+    """
+    s = (slug or "").strip().lower()
+    if s in _CANON_THEME:
+        return _CANON_THEME[s]
+    # Fallback: hyphen/underscore → space, Title Case each word.
+    return " ".join(w.capitalize() for w in s.replace("_", "-").split("-") if w)
+
 
 def _pool(data: dict) -> list:
     return data.get("all_scored") or data.get("pool") or []
@@ -158,33 +219,45 @@ def _label(it: dict, limit: int = 90) -> str:
 
 
 def _topics(it: dict) -> list:
-    """topic labels for an item, robust to BOTH brief shapes:
+    """Canonical theme names for an item, robust to BOTH brief shapes:
       - morning-digest: signals is a DICT with topic_hits=[{topic, why}, ...]
       - x-feed-brief:    signals is a LIST of {name, ...}; the topic_hits entry
                          carries hits=[raw keyword, ...]
-    Returns lowercased topic/keyword strings (skipping noise labels)."""
+    Returns clean, merged display theme names (via `_canonical_theme`), de-duped
+    within the item so a post tagged both `agents` and `coding-agents` counts once
+    for the merged `Agents` theme rather than inflating two near-identical lanes.
+    """
     sig = it.get("signals")
-    out = []
+    raw = []
     if isinstance(sig, dict):
         for h in (sig.get("topic_hits") or []):
             t = (h.get("topic") if isinstance(h, dict) else str(h)) or ""
             t = t.strip().lower()
             if t and t not in SKIP_TOPICS:
-                out.append(t)
+                raw.append(t)
     elif isinstance(sig, list):
         for entry in sig:
             if isinstance(entry, dict) and entry.get("name") == "topic_hits":
                 for kw in (entry.get("hits") or []):
                     t = str(kw).strip().lower()
                     if t and t not in SKIP_TOPICS:
-                        out.append(t)
+                        raw.append(t)
     # fallback: a top-level topic_hits list (defensive)
-    if not out:
+    if not raw:
         for h in (it.get("topic_hits") or []):
             t = (h.get("topic") if isinstance(h, dict) else str(h)) or ""
             t = t.strip().lower()
             if t and t not in SKIP_TOPICS:
-                out.append(t)
+                raw.append(t)
+    # Canonicalize + merge near-duplicate slugs, preserving first-seen order and
+    # dropping intra-item duplicates (agents + coding-agents → one "Agents").
+    out = []
+    seen = set()
+    for t in raw:
+        canon = _canonical_theme(t)
+        if canon and canon not in seen:
+            seen.add(canon)
+            out.append(canon)
     return out
 
 
