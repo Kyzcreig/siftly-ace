@@ -73,6 +73,7 @@ type MemoryBookmark = {
 class MemoryIngestDb implements XurlIngestDb {
   rows = new Map<string, MemoryBookmark>()
   states = new Map<string, { source: string; lastCursor: string | null; runCount: number }>()
+  calls = { findUnique: 0, findMany: 0, create: 0, createMany: 0, update: 0, mediaCreateMany: 0, transaction: 0 }
   private nextMediaId = 1
 
   private createMediaItems(tweetId: string, mediaRows: Record<string, any>[] = []): MemoryMediaItem[] {
@@ -84,13 +85,23 @@ class MemoryIngestDb implements XurlIngestDb {
     }))
   }
 
+  private rowForBookmarkId(bookmarkId: string): MemoryBookmark | undefined {
+    return [...this.rows.values()].find((row) => row.id === bookmarkId)
+  }
+
   bookmark = {
     findUnique: async ({ where }: { where: { tweetId: string } }) => {
+      this.calls.findUnique++
       return this.rows.get(where.tweetId) ?? null
     },
+    findMany: async ({ where }: { where: { tweetId: { in: string[] } } }) => {
+      this.calls.findMany++
+      return where.tweetId.in.map((tweetId) => this.rows.get(tweetId)).filter((row): row is MemoryBookmark => !!row)
+    },
     create: async ({ data }: { data: Record<string, any> }) => {
+      this.calls.create++
       const row = {
-        id: `bookmark-${data.tweetId}`,
+        id: data.id ?? `bookmark-${data.tweetId}`,
         tweetId: data.tweetId,
         text: data.text,
         rawJson: data.rawJson,
@@ -101,7 +112,26 @@ class MemoryIngestDb implements XurlIngestDb {
       this.rows.set(data.tweetId, row)
       return row
     },
+    createMany: async ({ data }: { data: Record<string, any>[] }) => {
+      this.calls.createMany++
+      let count = 0
+      for (const item of data) {
+        if (this.rows.has(item.tweetId)) continue
+        this.rows.set(item.tweetId, {
+          id: item.id,
+          tweetId: item.tweetId,
+          text: item.text,
+          rawJson: item.rawJson,
+          entities: item.entities ?? null,
+          source: item.source,
+          mediaItems: [],
+        })
+        count++
+      }
+      return { count }
+    },
     update: async ({ where, data }: { where: { tweetId: string }; data: Record<string, any> }) => {
+      this.calls.update++
       const existing = this.rows.get(where.tweetId)
       if (!existing) throw new Error(`missing row ${where.tweetId}`)
 
@@ -125,6 +155,25 @@ class MemoryIngestDb implements XurlIngestDb {
       this.rows.set(where.tweetId, row)
       return row
     },
+  }
+
+  mediaItem = {
+    createMany: async ({ data }: { data: Record<string, any>[] }) => {
+      this.calls.mediaCreateMany++
+      let count = 0
+      for (const item of data) {
+        const row = this.rowForBookmarkId(item.bookmarkId)
+        if (!row) continue
+        row.mediaItems.push(...this.createMediaItems(row.tweetId, [item]))
+        count++
+      }
+      return { count }
+    },
+  }
+
+  $transaction = async (ops: Promise<unknown>[]) => {
+    this.calls.transaction++
+    return Promise.all(ops)
   }
 
   ingestState = {
@@ -180,6 +229,21 @@ describe('xurl ingest', () => {
     expect(result.rowsFetched).toBe(2)
     expect(db.rows).toHaveLength(2)
     expect(db.states.get('bookmark')?.runCount).toBe(1)
+  })
+
+  it('uses set-based bookmark lookup and createMany for new ingest batches', async () => {
+    const db = new MemoryIngestDb()
+    const runXurl = async (): Promise<XurlTweetPage> => page(['1', '2'])
+
+    const result = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
+
+    expect(result.created).toBe(2)
+    expect(db.rows).toHaveLength(2)
+    expect(db.calls.findMany).toBe(1)
+    expect(db.calls.findUnique).toBe(0)
+    expect(db.calls.createMany).toBe(1)
+    expect(db.calls.create).toBe(0)
+    expect(db.calls.transaction).toBeGreaterThanOrEqual(1)
   })
 
   it('skips an identical second run without churning media rows', async () => {

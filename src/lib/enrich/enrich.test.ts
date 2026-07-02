@@ -12,6 +12,7 @@ import {
   enqueueVideoItems,
   estimateVisionCost,
   extractFactualEnrichment,
+  enrichBookmarkRows,
   generateImageCaption,
   isCaptionCandidate,
   isTerminalTranscriptionFailure,
@@ -23,6 +24,7 @@ import {
   runOcrForMediaItems,
   transcribeWithParakeet,
   type EnrichBookmarkInput,
+  type EnrichDb,
   type VideoEnrichDb,
 } from './index'
 
@@ -166,6 +168,81 @@ describe('Phase 3 enrichment', () => {
     expect(enrichment.categorySlugs).toEqual(expect.arrayContaining(['finance-crypto', 'finance-investing', 'politics']))
     // context annotations are still preserved on entities for downstream use
     expect(enrichment.entities.contextAnnotations.length).toBe(3)
+  })
+
+  it('batches bookmark enrichment updates and category assignment writes', async () => {
+    const calls = { transactions: 0, categoryLookups: 0, createMany: 0, upserts: 0 }
+    let categoryRows: Array<{ bookmarkId: string; categoryId: string; confidence: number }> = []
+    const bookmarks: EnrichBookmarkInput[] = [
+      {
+        id: 'bookmark-ai',
+        tweetId: '101',
+        text: 'Claude FastAPI benchmark launch with code on GitHub',
+        authorHandle: 'builder',
+        rawJson: '{}',
+        entities: null,
+        semanticTags: null,
+        enrichmentMeta: null,
+        mediaItems: [],
+        categories: [],
+      },
+      {
+        id: 'bookmark-finance',
+        tweetId: '102',
+        text: 'Bitcoin market update for startup founders',
+        authorHandle: 'analyst',
+        rawJson: '{}',
+        entities: null,
+        semanticTags: null,
+        enrichmentMeta: null,
+        mediaItems: [],
+        categories: [],
+      },
+    ]
+    const db: EnrichDb = {
+      bookmark: {
+        update: async () => ({}),
+      },
+      $transaction: async (ops) => {
+        calls.transactions++
+        return Promise.all(ops)
+      },
+      category: {
+        findMany: async () => {
+          calls.categoryLookups++
+          return [
+            { id: 'cat-ai', slug: 'ai-resources' },
+            { id: 'cat-dev', slug: 'dev-tools' },
+            { id: 'cat-crypto', slug: 'finance-crypto' },
+            { id: 'cat-startup', slug: 'startups-business' },
+          ]
+        },
+      },
+      bookmarkCategory: {
+        upsert: async () => {
+          calls.upserts++
+          return {}
+        },
+        createMany: async ({ data }) => {
+          calls.createMany++
+          categoryRows = data
+          return { count: data.length }
+        },
+      },
+    }
+
+    const result = await enrichBookmarkRows(db, bookmarks, new Date('2026-06-07T12:00:00Z'))
+
+    expect(result.enriched).toBe(2)
+    expect(calls.transactions).toBe(1)
+    expect(calls.categoryLookups).toBe(1)
+    expect(calls.createMany).toBe(1)
+    expect(calls.upserts).toBe(0)
+    expect(categoryRows).toEqual(expect.arrayContaining([
+      { bookmarkId: 'bookmark-ai', categoryId: 'cat-ai', confidence: 0.8 },
+      { bookmarkId: 'bookmark-ai', categoryId: 'cat-dev', confidence: 0.8 },
+      { bookmarkId: 'bookmark-finance', categoryId: 'cat-crypto', confidence: 0.8 },
+    ]))
   })
 
   it('keeps vision/OCR behind a cost-estimate confirmation gate', () => {

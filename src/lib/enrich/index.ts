@@ -82,11 +82,13 @@ export interface EnrichDb {
     findMany?: (args: Record<string, unknown>) => Promise<EnrichBookmarkInput[]>
     update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>
   }
+  $transaction?: (ops: Promise<unknown>[]) => Promise<unknown[]>
   category?: {
     findMany: (args: Record<string, unknown>) => Promise<Array<{ id: string; slug: string }>>
   }
   bookmarkCategory?: {
     upsert: (args: Record<string, unknown>) => Promise<unknown>
+    createMany?: (args: { data: Array<{ bookmarkId: string; categoryId: string; confidence: number }>; skipDuplicates?: boolean }) => Promise<unknown>
   }
 }
 
@@ -418,30 +420,62 @@ export function buildEnrichmentUpdate(bookmark: EnrichBookmarkInput, enrichment:
   }
 }
 
-async function writeCategoryAssignments(db: EnrichDb, bookmarkId: string, slugs: string[]): Promise<void> {
-  if (!db.category || !db.bookmarkCategory || slugs.length === 0) return
-  const categories = await db.category.findMany({ where: { slug: { in: slugs } }, select: { id: true, slug: true } })
-  const categoryBySlug = new Map(categories.map((category) => [category.slug, category.id]))
-  for (const slug of slugs) {
-    const categoryId = categoryBySlug.get(slug)
-    if (!categoryId) continue
-    await db.bookmarkCategory.upsert({
-      where: { bookmarkId_categoryId: { bookmarkId, categoryId } },
-      update: { confidence: 0.8 },
-      create: { bookmarkId, categoryId, confidence: 0.8 },
-    })
+async function runEnrichTransaction(db: EnrichDb, ops: Promise<unknown>[]): Promise<void> {
+  if (ops.length === 0) return
+  if (db.$transaction) {
+    await db.$transaction(ops)
+    return
+  }
+  await Promise.all(ops)
+}
+
+async function runEnrichChunkedTransactions(db: EnrichDb, ops: Promise<unknown>[], chunkSize = 50): Promise<void> {
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    await runEnrichTransaction(db, ops.slice(i, i + chunkSize))
   }
 }
 
+async function writeCategoryAssignmentsBatch(
+  db: EnrichDb,
+  assignments: Array<{ bookmarkId: string; slugs: string[] }>,
+): Promise<void> {
+  if (!db.category || !db.bookmarkCategory) return
+  const slugs = uniquePreserveCase(assignments.flatMap((assignment) => assignment.slugs))
+  if (slugs.length === 0) return
+  const categories = await db.category.findMany({ where: { slug: { in: slugs } }, select: { id: true, slug: true } })
+  const categoryBySlug = new Map(categories.map((category) => [category.slug, category.id]))
+  const data: Array<{ bookmarkId: string; categoryId: string; confidence: number }> = []
+  for (const assignment of assignments) {
+    for (const slug of assignment.slugs) {
+      const categoryId = categoryBySlug.get(slug)
+      if (!categoryId) continue
+      data.push({ bookmarkId: assignment.bookmarkId, categoryId, confidence: 0.8 })
+    }
+  }
+  if (data.length === 0) return
+  if (db.bookmarkCategory.createMany) {
+    await db.bookmarkCategory.createMany({ data, skipDuplicates: true })
+    return
+  }
+  const ops = data.map((row) => db.bookmarkCategory!.upsert({
+    where: { bookmarkId_categoryId: { bookmarkId: row.bookmarkId, categoryId: row.categoryId } },
+    update: { confidence: row.confidence },
+    create: row,
+  }))
+  await runEnrichChunkedTransactions(db, ops)
+}
+
 export async function enrichBookmarkRows(db: EnrichDb, bookmarks: EnrichBookmarkInput[], now = new Date()): Promise<{ enriched: number }> {
-  let enriched = 0
+  const updateOps: Promise<unknown>[] = []
+  const assignments: Array<{ bookmarkId: string; slugs: string[] }> = []
   for (const bookmark of bookmarks) {
     const enrichment = extractFactualEnrichment(bookmark)
-    await db.bookmark.update({ where: { id: bookmark.id }, data: buildEnrichmentUpdate(bookmark, enrichment, now) })
-    await writeCategoryAssignments(db, bookmark.id, enrichment.categorySlugs)
-    enriched++
+    updateOps.push(db.bookmark.update({ where: { id: bookmark.id }, data: buildEnrichmentUpdate(bookmark, enrichment, now) }))
+    assignments.push({ bookmarkId: bookmark.id, slugs: enrichment.categorySlugs })
   }
-  return { enriched }
+  await runEnrichChunkedTransactions(db, updateOps)
+  await writeCategoryAssignmentsBatch(db, assignments)
+  return { enriched: bookmarks.length }
 }
 
 export async function enrichBookmarks(options: {
