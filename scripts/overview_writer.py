@@ -124,34 +124,63 @@ def lint(prose: str, agg: dict, brief: str) -> list[str]:
     if meta:
         errors.append("banned meta/scaffolding phrases: " + "; ".join(meta))
 
+    # 6. Stat-dump density: a lead that stacks raw item-counts reads like a spreadsheet.
+    #    Rule 3 allows at most ONE soft quantity; 2+ bare counts = reject.
+    stat_res = [
+        r"\b\d{1,4}\s+[a-z][a-z-]*\s+items?\b",        # "85 coding items"
+        r"\b\d{1,4}\s+(?:on-topic|off-topic)\b",        # "196 on-topic"
+        r"\b\d{1,4}-item\b",                            # "225-item sample"
+        r"[a-z]{3,}\s*\(\s*\d{1,4}\s*\)",               # "models (109)", "agents (63)"
+        r"\b\d{1,4}\s+(?:posts?|tweets?|repos?|stories|launches|items?)\b",
+    ]
+    stat_hits = []
+    for rx in stat_res:
+        stat_hits += re.findall(rx, low)
+    if len(stat_hits) >= 2:
+        errors.append(
+            f"stat-dump detected ({len(stat_hits)} raw item-counts) — the overview must read as PROSE, "
+            "not a readout; describe the shape of the day in words, at most one soft quantity")
+
     return errors
 
 
 def build_prompt(agg: dict, brief: str, prior_errors: list[str] | None = None) -> str:
     header = HEADERS.get(brief, HEADERS["morning-digest"])
-    scope = ("global AI news day (multi-source: X, HN, Reddit, GitHub, newsletters)"
-             if brief == "morning-digest" else "Ace's X timeline — feed mood, themes, loud voices")
+    if brief == "morning-digest":
+        scope = "the global AI news day, drawn from X, HN, Reddit, GitHub, and newsletters"
+        lead_ex = ('e.g. "The day tilted from model takes toward implementation — builders shipping '
+                   'vertical agent tools rather than arguing benchmarks. GLM-5.2 became free to run '
+                   'through Cloudflare Workers AI [1], while Gemini Spark brought an agentic assistant '
+                   'onto the Mac desktop [7]. A build-day, not a think-piece day."')
+    else:
+        scope = "Ace's X timeline — the feed's mood, recurring themes, and loudest voices"
+        lead_ex = ('e.g. "Ace\'s graph stayed mostly on Fable, Hermes, and practical agent ops. '
+                   'Mollick framed delegation as an org-design problem, routing work between '
+                   'expensive and cheap agents [1]; Teknium shipped Hermes Agent v0.18.0 with MoA '
+                   'and /learn [3]. Security ran underneath it all — browser-agent prompt-injection '
+                   'is now a workflow concern, not a curiosity [6]."')
     fb = ""
     if prior_errors:
         fb = ("\n\nYOUR PREVIOUS DRAFT FAILED THESE DETERMINISTIC CHECKS — fix ALL of them:\n- "
               + "\n- ".join(prior_errors))
-    return f"""You are the editor of a daily AI brief for Ace, an AI-builder. Write the overview section: a tight ~250-word editorial synthesis of the {scope}, from the aggregate JSON below.
+    return f"""You are the editor of a daily AI brief for Ace, an AI-builder. Write the overview section — a tight, well-written editorial read of {scope}, from the aggregate JSON below. Think "sharp newsletter columnist," NOT "dashboard." It should read as flowing PROSE a person wrote, naming the specific people/tools/models that mattered and what they actually did.
 
 SHAPE (exactly):
 {header}
-<lead paragraph, 2–4 flowing sentences: what actually MOVED today — the 1–2 biggest events in your own words — placed against the shape of the field (busiest lanes, shippers vs think-pieces). A count may ride INSIDE a sentence, never open it.>
-• **<Theme>** — <ONE written sentence with a real, specific claim about that lane.>
+<A substantial lead paragraph (3–5 flowing sentences) — the heart of the overview. Lead with what the period was ABOUT: the recurring themes, who was loud, what actually moved, and the mood/shift underneath it. Weave named people and their real claims into the sentences. This paragraph carries most of the content; {lead_ex}>
+• **<Theme>** — <ONE crisp sentence naming who's doing what in this lane.>
 • **<Theme>** — <same>
-• **<Theme>** — <same>
-<optional one-line mood/shape closer>
+<2–4 bullets total — they're a SHORT coda to the paragraph, not the main event. Keep them tight.>
+<optional one-line Mood: closer>
 
 HARD RULES (a deterministic linter rejects violations):
 1. NEVER use "@handle highlighted/shared/posted/noted/flagged <fragment>" as a sentence spine. Lead with the EVENT/CLAIM; @handle and [N] ride inside the sentence as attribution. ❌ "@alex_atoms highlighted how to use GLM-5.2 for free [1]." ✅ "GLM-5.2 is now runnable for free via Cloudflare Workers AI, per a circulating guide [1]."
 2. NEVER paste raw titles/labels/tweet fragments verbatim — paraphrase into a claim. If a fragment is too thin to turn into a real claim, DROP that story and pick another.
-3. Theme bullets: full written sentences (≥60 chars), never a bare repo slug or a truncated "…" fragment.
-4. Cite stories with [N] using ONLY the integer `ref` values in `top_stories`; each ref at most once; 3–6 citations total. Do not write URLs.
-5. ≤1900 chars total. No meta-talk about scoring/selection/salience/clusters. Every sentence carries a proper noun or number and tells Ace something NEW.
-6. Cover the FIELD (themes/content_mix breadth), not just the top stories.{fb}
+3. PROSE-FIRST, NOT STATS: the lead is a written READ, not a readout. Do NOT open with or lean on raw item counts ("85 coding items and 74 agent items", "196 on-topic, 29 off-topic"). At most ONE soft quantity may ride inside a sentence ("the busiest lane by far"); a draft that stacks multiple bare numbers reads like a spreadsheet and will be REJECTED. Describe the shape of the day in WORDS.
+4. The LEAD PARAGRAPH does the heavy lifting; bullets are a short coda (2–4, each one tight sentence naming who's doing what). Do NOT dump the content into bullets and leave a thin lead — the paragraph should be the richest part, like a columnist's opening.
+5. Theme bullets: full written sentences (≥60 chars), never a bare repo slug or a truncated "…" fragment.
+6. Cite stories with [N] using ONLY the integer `ref` values in `top_stories`; each ref at most once; 3–6 citations total. Do not write URLs.
+7. ≤1900 chars total. No meta-talk about scoring/selection/salience/clusters. Every sentence carries a proper noun and tells Ace something NEW.{fb}
 
 AGGREGATE:
 {json.dumps(agg, ensure_ascii=False)}
@@ -190,6 +219,11 @@ def selftest() -> int:
             "the busiest lane, and the day skewed heavily toward shipping over think-pieces.\n"
             "• **Coding** — Vibe-Trading from HKUDS turned an LLM loop into a live trading agent, the lane's most-starred repo today.\n"
             "• **Agents** — Agent frameworks dominated GitHub trending, with three of the top five repos being orchestration layers.")
+    statdump = ("🗞️ **The Landscape**\n"
+                "AI Builder Twitter tilted toward implementation: 85 coding items and 74 agent items made the day "
+                "feel less about benchmarks, with models (109) and agents (63) leading the mix [1]. Gemini Spark also shipped [2].\n"
+                "• **Coding** — Vibe-Trading from HKUDS turned an LLM loop into a live trading agent, the lane's most-starred repo today.\n"
+                "• **Agents** — Agent frameworks dominated GitHub trending, with three of the top five repos being orchestration layers.")
     checks = [
         ("bad: roll-call", any("roll-call" in e for e in lint(bad, agg, "morning-digest"))),
         ("bad: paste", any("paste" in e for e in lint(bad, agg, "morning-digest"))),
@@ -200,6 +234,8 @@ def selftest() -> int:
         ("dup ref", any("more than once" in e for e in lint(good.replace("[2]", "[1]"), agg, "morning-digest"))),
         ("missing header", any("header" in e for e in lint(good.replace("🗞️ **The Landscape**", "Landscape"), agg, "morning-digest"))),
         ("too long", any("too long" in e for e in lint(good + "\nx" * 2000, agg, "morning-digest"))),
+        ("stat-dump rejected", any("stat-dump" in e for e in lint(statdump, agg, "morning-digest"))),
+        ("one soft count ok", not any("stat-dump" in e for e in lint(good, agg, "morning-digest"))),
     ]
     ok = True
     for name, passed in checks:
