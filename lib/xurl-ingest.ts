@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -83,6 +84,7 @@ interface ExistingMediaItemRow {
 
 interface ExistingBookmarkRow {
   id: string
+  tweetId?: string | null
   source?: string | null
   text?: string | null
   rawJson?: string | null
@@ -96,9 +98,15 @@ type DbDelegateMethod<TResult = unknown> = (args: any) => Promise<TResult>
 export interface XurlIngestDb {
   bookmark: {
     findUnique: DbDelegateMethod<ExistingBookmarkRow | null>
+    findMany?: DbDelegateMethod<ExistingBookmarkRow[]>
     create: DbDelegateMethod<{ id: string }>
+    createMany?: DbDelegateMethod<{ count: number }>
     update: DbDelegateMethod<{ id: string }>
   }
+  mediaItem?: {
+    createMany?: DbDelegateMethod<{ count: number }>
+  }
+  $transaction?: ((ops: Promise<unknown>[]) => Promise<unknown[]>) | (<T>(fn: (tx: XurlIngestDb) => Promise<T>) => Promise<T>)
   ingestState?: {
     findUnique?: DbDelegateMethod<{ lastCursor?: string | null } | null>
     upsert: DbDelegateMethod
@@ -508,7 +516,15 @@ function sameMeaningfulContent(existing: ExistingBookmarkRow, incoming: ParsedXu
 }
 
 function createBookmarkData(row: ParsedXurlTweet): Record<string, unknown> {
-  const data: Record<string, unknown> = {
+  const data = createBookmarkFlatData(row)
+  const media = mediaCreateRows(row)
+  if (media.length > 0) data.mediaItems = { create: media }
+  return data
+}
+
+function createBookmarkFlatData(row: ParsedXurlTweet, id?: string): Record<string, unknown> {
+  return {
+    ...(id ? { id } : {}),
     tweetId: row.tweetId,
     text: row.text,
     authorHandle: row.authorHandle,
@@ -518,9 +534,10 @@ function createBookmarkData(row: ParsedXurlTweet): Record<string, unknown> {
     entities: row.entities,
     source: row.source,
   }
-  const media = mediaCreateRows(row)
-  if (media.length > 0) data.mediaItems = { create: media }
-  return data
+}
+
+function mediaCreateManyRows(row: ParsedXurlTweet, bookmarkId: string): Record<string, unknown>[] {
+  return mediaCreateRows(row).map((media) => ({ ...media, bookmarkId }))
 }
 
 function updateBookmarkData(row: ParsedXurlTweet, source: XurlSource, includeMedia: boolean): Record<string, unknown> {
@@ -545,7 +562,22 @@ function updateBookmarkData(row: ParsedXurlTweet, source: XurlSource, includeMed
   return data
 }
 
-async function upsertRows(
+async function runTransaction(db: XurlIngestDb, ops: Promise<unknown>[]): Promise<void> {
+  if (ops.length === 0) return
+  if (db.$transaction) {
+    await (db.$transaction as (ops: Promise<unknown>[]) => Promise<unknown[]>)(ops)
+    return
+  }
+  await Promise.all(ops)
+}
+
+async function runChunkedTransactions(db: XurlIngestDb, ops: Promise<unknown>[], chunkSize = 50): Promise<void> {
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    await runTransaction(db, ops.slice(i, i + chunkSize))
+  }
+}
+
+async function upsertRowsSequential(
   db: XurlIngestDb,
   rows: ParsedXurlTweet[],
 ): Promise<{ created: number; updated: number; skipped: number }> {
@@ -558,6 +590,7 @@ async function upsertRows(
       where: { tweetId: row.tweetId },
       select: {
         id: true,
+        tweetId: true,
         source: true,
         text: true,
         rawJson: true,
@@ -585,7 +618,6 @@ async function upsertRows(
     }
 
     const includeMedia = row.media.length > 0 && !sameMediaItems(existing.mediaItems, row)
-
     await db.bookmark.update({
       where: { tweetId: row.tweetId },
       data: updateBookmarkData(row, source, includeMedia),
@@ -594,6 +626,101 @@ async function upsertRows(
   }
 
   return { created, updated, skipped }
+}
+
+async function upsertRows(
+  db: XurlIngestDb,
+  rows: ParsedXurlTweet[],
+): Promise<{ created: number; updated: number; skipped: number }> {
+  if (rows.length === 0) return { created: 0, updated: 0, skipped: 0 }
+  // NOTE: media capability is only needed on the CREATE side (updates use nested
+  // writes via bookmark.update). We can't know creates before the findMany diff,
+  // so require mediaItem.createMany only when ANY incoming row carries media —
+  // the strictly-update-only-media case still batches (Greptile P2 refinement
+  // happens below where creates with media re-check the capability).
+  const needsMediaCreateMany = rows.some((row) => row.media.length > 0)
+  if (
+    !db.bookmark.findMany ||
+    !db.bookmark.createMany ||
+    !db.$transaction ||
+    (needsMediaCreateMany && !db.mediaItem?.createMany)
+  ) {
+    return upsertRowsSequential(db, rows)
+  }
+
+  let skipped = 0
+  const tweetIds = [...new Set(rows.map((row) => row.tweetId))]
+  const existingRows = await db.bookmark.findMany({
+    where: { tweetId: { in: tweetIds } },
+    select: {
+      id: true,
+      tweetId: true,
+      source: true,
+      text: true,
+      rawJson: true,
+      entities: true,
+      mediaItems: { select: { type: true, url: true, thumbnailUrl: true }, orderBy: { id: 'asc' } },
+    },
+  })
+  const existingByTweetId = new Map(existingRows.map((row) => [String(row.tweetId), row]))
+  const createRows: { id: string; row: ParsedXurlTweet }[] = []
+  const updateRows: { row: ParsedXurlTweet; source: XurlSource; includeMedia: boolean }[] = []
+
+  for (const row of rows) {
+    const existing = existingByTweetId.get(row.tweetId)
+    if (!existing) {
+      createRows.push({ id: randomUUID(), row })
+      continue
+    }
+
+    const source = pickSource(existing.source, row.source)
+    if (sourcePriority(existing.source) > sourcePriority(row.source)) {
+      skipped++
+      continue
+    }
+
+    const contentUnchanged = sameMeaningfulContent(existing, row)
+    if (source === existing.source && contentUnchanged) {
+      skipped++
+      continue
+    }
+
+    updateRows.push({ row, source, includeMedia: row.media.length > 0 && !sameMediaItems(existing.mediaItems, row) })
+  }
+
+  if (createRows.length > 0) {
+    await runTransaction(db, [db.bookmark.createMany({
+      data: createRows.map(({ id, row }) => createBookmarkFlatData(row, id)),
+      skipDuplicates: true,
+    })])
+    // Media rows must reference the ACTUAL persisted bookmark ids: skipDuplicates
+    // can silently drop a bookmark that raced in between findMany and createMany,
+    // and the surviving row then has a DIFFERENT id than our pre-generated UUID —
+    // inserting media against the phantom id would orphan it (Greptile P1).
+    const anyMedia = createRows.some(({ row }) => row.media.length > 0)
+    if (anyMedia && db.mediaItem?.createMany && db.bookmark.findMany) {
+      const persisted = await db.bookmark.findMany({
+        where: { tweetId: { in: createRows.map(({ row }) => row.tweetId) } },
+        select: { id: true, tweetId: true },
+      })
+      const idByTweetId = new Map(persisted.map((r) => [String(r.tweetId), r.id]))
+      const mediaRows = createRows.flatMap(({ row }) => {
+        const realId = idByTweetId.get(row.tweetId)
+        return realId ? mediaCreateManyRows(row, realId) : []
+      })
+      if (mediaRows.length > 0) {
+        await runTransaction(db, [db.mediaItem.createMany({ data: mediaRows })])
+      }
+    }
+  }
+
+  const updateOps = updateRows.map(({ row, source, includeMedia }) => db.bookmark.update({
+    where: { tweetId: row.tweetId },
+    data: updateBookmarkData(row, source, includeMedia),
+  }))
+  await runChunkedTransactions(db, updateOps)
+
+  return { created: createRows.length, updated: updateRows.length, skipped }
 }
 
 async function persistState(
