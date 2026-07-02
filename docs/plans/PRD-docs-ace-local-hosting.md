@@ -582,3 +582,35 @@ holds). Question: add the defense-in-depth second layer too?
 - **Recommendation: Option B** — the honest realization of I5's original intent, removes the
   single-point-of-failure, separates budgets. Cost is one out-of-session OAuth setup. Ship Phases 1–2 now
   (no token needed); gate Phase 3 on this call.
+
+---
+
+## OQ-P0 RESOLVED (2026-07-02) — Option B shipped: scoped endpoint token minted
+
+Ace chose **Option B** (separate scope-limited token). Done + proven:
+- **New X app `docs-ace-buttons`** (Ace created it in the dev portal; confidential/web-app client,
+  Read+Write permission). Creds stored in 1Password: `X API App - docs-ace-buttons` (Engineering,
+  id `lqeglykz43fki5iq3tdfxqai3i`) — consumer key/secret, bearer, oauth2 client id/secret, AND the
+  minted `oauth2_access_token`/`oauth2_refresh_token`/`oauth2_scope`.
+- **Token minted via a manual PKCE flow** (NOT `xurl auth oauth2`, which opened the authorize URL in the
+  Mac Studio's GUI browser that isn't logged into X + needs the callback on that box). Manual flow: Apollo
+  generated the S256 authorize URL requesting ONLY the narrow scopes; Ace opened it on HIS machine
+  (already logged into X), clicked Authorize, pasted back the `localhost:8080/callback?code=…`; Apollo
+  exchanged the code (Basic-auth, client secret) for the token. No x.com login on the Mac Studio, no 2FA.
+  (The auth code is single-use + ~seconds-lived — the first attempt expired in chat round-trip; regenerate
+  and paste fast is the working pattern.)
+- **Granted scopes (verified from the token response):** `tweet.read users.read like.write bookmark.write
+  offline.access` — NO tweet.write/delete/DM. Has a refresh token (auto-renews).
+- **Empirical proof (live, net-zero footprint), via the real X API v2 endpoints the endpoint will use:**
+  - LIKE tweet 20 → `200 {liked:true}`; read-back `GET /2/users/56282605/liked_tweets` → id `20` present
+    (real effect); UNLIKE → `200 {liked:false}` (reverted).
+  - BOOKMARK → `200 {bookmarked:true}`; UNBOOKMARK → `200 {bookmarked:false}`.
+  - **POST /2/tweets → `403 Forbidden`** — the scope limit is REAL; the token structurally cannot post,
+    even though the app's *permission* is Read+Write (scopes were narrowed at authorize-time). This is the
+    Option-B defense-in-depth guarantee, proven: a total endpoint compromise can only toggle
+    likes/bookmarks.
+- **Note for the Phase-3 build:** the endpoint should call the X API v2 directly with THIS token
+  (`POST/DELETE /2/users/:id/{likes,bookmarks}`) rather than `xurl` (whose default app is `siftly-ace`
+  = the full-scope ingest token). Wire the endpoint to read the `docs-ace-buttons` access token from
+  1Password + refresh via the refresh_token when it 401s (offline.access). I5 is now backed by BOTH the
+  endpoint verb allow-list AND a genuinely scope-limited token. OQ-P0 closed.
