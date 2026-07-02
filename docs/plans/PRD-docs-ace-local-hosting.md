@@ -538,3 +538,47 @@ buttons 403 all morning) and a **cross-origin-preflight canary** (alerts if a fu
 Phase-0-write-scope-pivot-is-a-fork and corpus-poisoning-detection-absent residuals are noted as known,
 accepted-for-v0.1 items. Version bumped v0.2 → v0.3. **Converged: APPROVE-WITH-CHANGES with every change
 folded in-spec, no open blockers.**
+
+---
+
+## PHASE-0 GROUND-TRUTH (probed 2026-07-02, live)
+
+- **Serving substrate (confirmed):** Caddy runs on `.18` via `~/.hermes/var/skills-portal/Caddyfile`
+  (`pgrep` → `/opt/homebrew/bin/caddy run --config …/skills-portal/Caddyfile`). Each `.ace` name is a
+  per-host block: `bind 192.168.1.18` + `tls <leaf.crt> <leaf.key>` + either `file_server` (static, e.g.
+  index/crons/skills) or `reverse_proxy 127.0.0.1:<port>` (dynamic, e.g. `x.ace`→:3000). `docs.ace` +
+  `*.brief.ace` slot in as new blocks. Because brief pages need the `/api/x/*` endpoint, `*.brief.ace`
+  is a `reverse_proxy` to the static-server-with-endpoint, not a bare `file_server`.
+- **Cert path (confirmed):** own root CA "Ace Local Root CA, O = Ace Ventures"; CA key in 1Password
+  (`Ace Local Root CA — Private Key`, Engineering vault); hardened per-name issuance scripts exist
+  (`issue-index-leaf.sh` etc. — CA key only in a mode-600 temp file, pubkey-match guard, openssl-verify).
+  A `*.brief.ace` wildcard leaf is a trivial copy with `subjectAltName=DNS:*.brief.ace`.
+  **OQ1 RESOLVED: wildcard cert is mintable** (our own CA) → D-4 subdomain scheme feasible as-specced;
+  the two-fixed-name fallback is NOT needed.
+- **DNS (confirmed):** `dig skills.ace @192.168.1.208` → `192.168.1.18`; AGH supports `*.` wildcard
+  rewrites (per `local-dns` skill). Add one rewrite `*.brief.ace → 192.168.1.18`.
+- **X WRITE-SCOPE GATE (B2) — PASSED, net-zero footprint.** Tweet id `20`: `xurl like 20` →
+  `{liked:true}`, read-back confirmed id `20` in likes (real effect), `xurl unlike 20` → reverted. Same
+  for bookmark/unbookmark. **Token HAS like+bookmark write scope.** Working argv = plain
+  `xurl <subcommand> <id>`. No re-auth pivot needed.
+- **🔴 I5-SCOPE FINDING (falsifies a spec assumption — needs an Ace decision):** the probe assumed the
+  token was read+like+bookmark scoped so a bypass is bounded to reversible actions. **It is NOT limited —
+  `xurl post` SUCCEEDED** (test tweet posted, immediately deleted + verified gone). The `siftly-ace`
+  token carries FULL write scope (post/delete/DM/follow/like/bookmark). So I5's "blast radius bounded to
+  reversible actions *by token scope*" is FALSE — the bound now rests ENTIRELY on the endpoint's verb
+  allow-list (the fixed `{action→subcommand}` map, which never maps to post/delete/DM). Real control, but
+  the defense-in-depth SECOND layer (a scope-limited token) is absent. Decision below.
+
+### OQ-P0 — token blast-radius (raised by the Phase-0 I5 finding)
+The endpoint allow-list already prevents post/delete/DM regardless of token scope (primary control,
+holds). Question: add the defense-in-depth second layer too?
+- **Option A (ship as-is):** rely on the endpoint verb allow-list alone. Simplest; one app for ingest
+  reads + button writes. Residual: an endpoint authz bypass (I1) AND an allow-list bug *together* could
+  post/delete as Ace.
+- **Option B (scope-limited endpoint token):** a SEPARATE X app/token scoped to ONLY
+  `like.write`+`bookmark.write`+`tweet.read`+`users.read` for `/api/x/*`, leaving the full-scope
+  `siftly-ace` token for ingest. Even total endpoint compromise → only like/bookmark toggles. Cost: one
+  out-of-session OAuth flow (~15 min); also cleanly separates write-budget from read-budget (I8).
+- **Recommendation: Option B** — the honest realization of I5's original intent, removes the
+  single-point-of-failure, separates budgets. Cost is one out-of-session OAuth setup. Ship Phases 1–2 now
+  (no token needed); gate Phase 3 on this call.
