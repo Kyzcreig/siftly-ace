@@ -453,16 +453,34 @@ async function writeCategoryAssignmentsBatch(
     }
   }
   if (data.length === 0) return
-  if (db.bookmarkCategory.createMany) {
-    await db.bookmarkCategory.createMany({ data, skipDuplicates: true })
-    return
+  const upsertAssignments = async () => {
+    const ops = data.map((row) => db.bookmarkCategory!.upsert({
+      where: { bookmarkId_categoryId: { bookmarkId: row.bookmarkId, categoryId: row.categoryId } },
+      update: { confidence: row.confidence },
+      create: row,
+    }))
+    await runEnrichChunkedTransactions(db, ops)
   }
-  const ops = data.map((row) => db.bookmarkCategory!.upsert({
-    where: { bookmarkId_categoryId: { bookmarkId: row.bookmarkId, categoryId: row.categoryId } },
-    update: { confidence: row.confidence },
-    create: row,
-  }))
-  await runEnrichChunkedTransactions(db, ops)
+  // Prisma 7's SQLite connector rejects createMany({ skipDuplicates }) with
+  // "Unknown argument `skipDuplicates`". Re-enrichment legitimately re-inserts
+  // the same (bookmarkId, categoryId) pairs (composite @@id), so we DO need
+  // dedup here — fall back to the upsert path on a unique-constraint violation
+  // (P2002) rather than dropping the semantic.
+  if (db.bookmarkCategory.createMany) {
+    try {
+      await db.bookmarkCategory.createMany({ data })
+      return
+    } catch (error) {
+      if (!isEnrichUniqueConstraintError(error)) throw error
+      // fall through to upsert to reconcile the colliding rows
+    }
+  }
+  await upsertAssignments()
+}
+
+function isEnrichUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  return (error as { code?: unknown }).code === 'P2002'
 }
 
 export async function enrichBookmarkRows(db: EnrichDb, bookmarks: EnrichBookmarkInput[], now = new Date()): Promise<{ enriched: number }> {

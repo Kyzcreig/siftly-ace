@@ -100,6 +100,12 @@ class MemoryIngestDb implements XurlIngestDb {
     },
     create: async ({ data }: { data: Record<string, any> }) => {
       this.calls.create++
+      if (this.rows.has(data.tweetId)) {
+        // Real Prisma raises P2002 on the tweetId unique constraint.
+        const err = new Error('Unique constraint failed on the fields: (`tweetId`)') as Error & { code?: string }
+        err.code = 'P2002'
+        throw err
+      }
       const row = {
         id: data.id ?? `bookmark-${data.tweetId}`,
         tweetId: data.tweetId,
@@ -112,7 +118,13 @@ class MemoryIngestDb implements XurlIngestDb {
       this.rows.set(data.tweetId, row)
       return row
     },
-    createMany: async ({ data }: { data: Record<string, any>[] }) => {
+    createMany: async ({ data, ...rest }: { data: Record<string, any>[]; skipDuplicates?: boolean }) => {
+      // Prisma 7's SQLite connector REJECTS unknown args like `skipDuplicates`.
+      // Mirror that here so a regression can't stay green against a lenient mock.
+      const extraKeys = Object.keys(rest)
+      if (extraKeys.length > 0) {
+        throw new Error(`Unknown argument \`${extraKeys[0]}\`. Available options are marked with ?.`)
+      }
       this.calls.createMany++
       let count = 0
       for (const item of data) {
@@ -244,6 +256,40 @@ describe('xurl ingest', () => {
     expect(db.calls.createMany).toBe(1)
     expect(db.calls.create).toBe(0)
     expect(db.calls.transaction).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not pass skipDuplicates to createMany (Prisma 7 SQLite rejects it) and survives a duplicate-key race', async () => {
+    const db = new MemoryIngestDb()
+    // Simulate a concurrent writer that inserted tweetId "1" between our
+    // findMany diff and the batch create: the batch create raises P2002, and
+    // ingest must fall back to per-row inserts, skipping only the racing dup.
+    const realCreateMany = db.bookmark.createMany.bind(db.bookmark)
+    let raced = false
+    db.bookmark.createMany = async (args: { data: Record<string, any>[]; skipDuplicates?: boolean }) => {
+      // Guard: the production code must NOT send skipDuplicates anymore.
+      if ('skipDuplicates' in args) {
+        throw new Error('Unknown argument `skipDuplicates`. Available options are marked with ?.')
+      }
+      if (!raced) {
+        raced = true
+        db.rows.set('1', {
+          id: 'racer-1', tweetId: '1', text: 'racer', rawJson: '{}',
+          entities: null, source: 'bookmark', mediaItems: [],
+        })
+        const err = new Error('Unique constraint failed') as Error & { code?: string }
+        err.code = 'P2002'
+        throw err
+      }
+      return realCreateMany(args)
+    }
+
+    const runXurl = async (): Promise<XurlTweetPage> => page(['1', '2'])
+    const result = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
+
+    // "1" already existed (the racer); "2" must still be inserted per-row.
+    expect(db.rows.has('2')).toBe(true)
+    expect(db.rows.get('1')?.id).toBe('racer-1')
+    expect(result.created).toBeGreaterThanOrEqual(1)
   })
 
   it('skips an identical second run without churning media rows', async () => {

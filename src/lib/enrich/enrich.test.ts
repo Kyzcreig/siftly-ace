@@ -223,7 +223,13 @@ describe('Phase 3 enrichment', () => {
           calls.upserts++
           return {}
         },
-        createMany: async ({ data }) => {
+        createMany: async ({ data, ...rest }: { data: any[]; skipDuplicates?: boolean }) => {
+          // Prisma 7's SQLite connector rejects unknown args like
+          // `skipDuplicates`; mirror that so the bug can't stay green here.
+          const extraKeys = Object.keys(rest)
+          if (extraKeys.length > 0) {
+            throw new Error(`Unknown argument \`${extraKeys[0]}\`. Available options are marked with ?.`)
+          }
           calls.createMany++
           categoryRows = data
           return { count: data.length }
