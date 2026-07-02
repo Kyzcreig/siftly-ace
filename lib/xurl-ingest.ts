@@ -577,6 +577,43 @@ async function runChunkedTransactions(db: XurlIngestDb, ops: Promise<unknown>[],
   }
 }
 
+// Prisma 7's SQLite connector does NOT support createMany({ skipDuplicates })
+// (Unknown argument `skipDuplicates`), so we can't lean on the connector to
+// swallow a duplicate-key race. createRows is already unique-by-tweetId
+// (dedupeXurlTweets + the findMany diff above), so the ONLY duplicate that can
+// occur is a concurrent writer inserting the same tweetId between our diff and
+// this write. Batch-insert; on a unique-constraint violation (P2002) fall back
+// to per-row inserts that ignore only the racing duplicate — preserving the
+// original skipDuplicates intent without depending on connector support.
+async function createBookmarksTolerant(db: XurlIngestDb, data: Record<string, unknown>[]): Promise<void> {
+  if (data.length === 0) return
+  const createMany = db.bookmark.createMany
+  if (createMany) {
+    try {
+      await runTransaction(db, [createMany({ data })])
+      return
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error
+      // fall through to per-row inserts below to skip only the racing duplicate
+    }
+  }
+  // Rare duplicate-key race (or no batch support): insert one-by-one, ignoring
+  // only the rows whose unique key already exists.
+  for (const row of data) {
+    try {
+      await db.bookmark.create({ data: row as { id: string } })
+    } catch (rowError) {
+      if (!isUniqueConstraintError(rowError)) throw rowError
+    }
+  }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: unknown }).code
+  return code === 'P2002'
+}
+
 async function upsertRowsSequential(
   db: XurlIngestDb,
   rows: ParsedXurlTweet[],
@@ -689,10 +726,7 @@ async function upsertRows(
   }
 
   if (createRows.length > 0) {
-    await runTransaction(db, [db.bookmark.createMany({
-      data: createRows.map(({ id, row }) => createBookmarkFlatData(row, id)),
-      skipDuplicates: true,
-    })])
+    await createBookmarksTolerant(db, createRows.map(({ id, row }) => createBookmarkFlatData(row, id)))
     // Media rows must reference the ACTUAL persisted bookmark ids: skipDuplicates
     // can silently drop a bookmark that raced in between findMany and createMany,
     // and the surviving row then has a DIFFERENT id than our pre-generated UUID —
