@@ -227,7 +227,7 @@ describe('xurl ingest', () => {
     expect(calls[1]).toContain('pagination_token=second')
     expect(result.created).toBe(2)
     expect(result.rowsFetched).toBe(2)
-    expect(db.rows).toHaveLength(2)
+    expect(db.rows.size).toBe(2)
     expect(db.states.get('bookmark')?.runCount).toBe(1)
   })
 
@@ -238,7 +238,7 @@ describe('xurl ingest', () => {
     const result = await ingestXurlSources({ db, runXurl, sources: ['bookmark'], maxPages: 1, resumeFromCursor: true })
 
     expect(result.created).toBe(2)
-    expect(db.rows).toHaveLength(2)
+    expect(db.rows.size).toBe(2)
     expect(db.calls.findMany).toBe(1)
     expect(db.calls.findUnique).toBe(0)
     expect(db.calls.createMany).toBe(1)
