@@ -633,6 +633,11 @@ async function upsertRows(
   rows: ParsedXurlTweet[],
 ): Promise<{ created: number; updated: number; skipped: number }> {
   if (rows.length === 0) return { created: 0, updated: 0, skipped: 0 }
+  // NOTE: media capability is only needed on the CREATE side (updates use nested
+  // writes via bookmark.update). We can't know creates before the findMany diff,
+  // so require mediaItem.createMany only when ANY incoming row carries media —
+  // the strictly-update-only-media case still batches (Greptile P2 refinement
+  // happens below where creates with media re-check the capability).
   const needsMediaCreateMany = rows.some((row) => row.media.length > 0)
   if (
     !db.bookmark.findMany ||
@@ -683,18 +688,31 @@ async function upsertRows(
     updateRows.push({ row, source, includeMedia: row.media.length > 0 && !sameMediaItems(existing.mediaItems, row) })
   }
 
-  const createOps: Promise<unknown>[] = []
   if (createRows.length > 0) {
-    createOps.push(db.bookmark.createMany({
+    await runTransaction(db, [db.bookmark.createMany({
       data: createRows.map(({ id, row }) => createBookmarkFlatData(row, id)),
       skipDuplicates: true,
-    }))
-    const mediaRows = createRows.flatMap(({ id, row }) => mediaCreateManyRows(row, id))
-    if (mediaRows.length > 0 && db.mediaItem?.createMany) {
-      createOps.push(db.mediaItem.createMany({ data: mediaRows }))
+    })])
+    // Media rows must reference the ACTUAL persisted bookmark ids: skipDuplicates
+    // can silently drop a bookmark that raced in between findMany and createMany,
+    // and the surviving row then has a DIFFERENT id than our pre-generated UUID —
+    // inserting media against the phantom id would orphan it (Greptile P1).
+    const anyMedia = createRows.some(({ row }) => row.media.length > 0)
+    if (anyMedia && db.mediaItem?.createMany && db.bookmark.findMany) {
+      const persisted = await db.bookmark.findMany({
+        where: { tweetId: { in: createRows.map(({ row }) => row.tweetId) } },
+        select: { id: true, tweetId: true },
+      })
+      const idByTweetId = new Map(persisted.map((r) => [String(r.tweetId), r.id]))
+      const mediaRows = createRows.flatMap(({ row }) => {
+        const realId = idByTweetId.get(row.tweetId)
+        return realId ? mediaCreateManyRows(row, realId) : []
+      })
+      if (mediaRows.length > 0) {
+        await runTransaction(db, [db.mediaItem.createMany({ data: mediaRows })])
+      }
     }
   }
-  await runTransaction(db, createOps)
 
   const updateOps = updateRows.map(({ row, source, includeMedia }) => db.bookmark.update({
     where: { tweetId: row.tweetId },
