@@ -1,6 +1,6 @@
 # PRD — `docs.ace`: a local here.now clone (unified doc portal, in-page X actions, share-to-here.now)
 
-**Status:** DRAFT v1.1 — pass-1 review folded (APPROVE-WITH-CHANGES; 3 blockers + 5 required changes addressed), pending pass-2. Supersedes v0.3 (*.brief.ace). Carries fwd proven Phase-0 + scoped token.
+**Status:** APPROVED v1.2 — 2 review passes converged (pass-1 & pass-2 both APPROVE-WITH-CHANGES, all folded). Supersedes v0.3. Phase-0 DONE (scoped token proven); ready for Phase 1 build.
 **Author:** Apollo
 **Date:** 2026-07-02
 **Owner:** Apollo (Mac Studio host)
@@ -83,27 +83,42 @@ I4, I6, I7 are updated for the docs.ace unification. I9–I11 are new for the po
   a `*.docs.ace` page passes the I1 gate. Doc content is untrusted (tweet text, overview prose, handles),
   so `html_report.ts` + the portal generator's XSS-escaping is a **security dependency** of the endpoint.
   As **defense-in-depth that doesn't rely on the escaping being perfect forever**, every `*.docs.ace`
-  response carries a strict CSP: `script-src 'self' 'nonce-<per-response>'` (no `unsafe-inline`, no
-  `eval`), so a stored-XSS regression becomes a *blocked script* rather than an act-as-Ace self-forge.
-  The injected button JS is the ONLY intended same-origin script and runs via the nonce.
+  response carries a strict CSP whose `script-src` uses a **`'sha256-<hash>'` source** for the fixed,
+  known button JS (NOT a per-response nonce — a nonce would require injecting fresh bytes per GET,
+  contradicting I4's static/identical-from-any-server property; a hash of the fixed script preserves it).
+  Full policy: `default-src 'none'; script-src 'sha256-<buttonjs-hash>'; style-src 'self' 'unsafe-inline'`
+  (the house-kit dark theme uses inline styles) `; img-src 'self' https://pbs.twimg.com https://*.twimg.com`
+  (tweet media/avatars) `; connect-src 'self'` (the same-origin button fetch) `; base-uri 'none';
+  frame-ancestors 'none'`. So a stored-XSS injected `<script>` (no matching hash) is blocked, while tweet
+  media + theme still render. The CSP header is part of the 4-way config-drift surface (§7).
   - *Closeout proof:* the render/portal XSS battery stays green, tagged as guarding the endpoint; a
-    hostile tweet/overview/title payload renders inert AND is CSP-blocked (an injected `<script>` without
-    the nonce does not execute — verified with a headless-browser load, not just a grep).
+    hostile tweet/overview/title payload renders inert AND a **headless-browser load of a page with an
+    injected non-hashed `<script>` shows it is CSP-BLOCKED** (not just grep); tweet images + dark theme
+    still render under the policy.
 
-- **Invariant I2 — the scoped X token never leaves Mac Studio, and the ROTATING refresh token is
-  persisted atomically under a refresh mutex.** No access/refresh token is copied to here.now variables,
-  embedded in any served/shared HTML, or logged. Because X `offline.access` refresh tokens are
-  **single-use / rotating**, the endpoint (a) serializes refreshes behind a **mutex** (a concurrent
-  double-401 can't double-rotate → one-invalidates-the-other lockout), and (b) on a successful refresh
-  **atomically writes the NEW access+refresh token back to the single source of truth** (1Password item
-  `docs-ace-buttons`, temp-write+rename semantics), which it re-reads on restart — so a process restart
-  after a refresh never re-loads a stale, now-invalid token.
-  - *Why:* without write-back + a mutex, the design fails closed into a recurring lockout (buttons 403
-    until manual re-auth) — the token-health canary would only detect it, not prevent it.
-  - *Closeout proof:* `grep -ri "bearer\|oauth\|token" <served_html> <shared_copy_html>` returns nothing;
-    a forced double-refresh (two concurrent 401s) results in ONE rotation and both callers succeed on the
-    new token; killing + restarting the endpoint after a refresh still authenticates (reads the
-    written-back token); the button's `fetch()` target is a relative `/api/x/...`.
+- **Invariant I2 — the scoped X token never leaves Mac Studio; the ROTATING refresh token is
+  persisted-and-verified BEFORE serving, under a cross-process lock.** No token is copied to here.now
+  variables, embedded in any served/shared HTML, or logged. X `offline.access` refresh tokens are
+  **single-use/rotating** — X invalidates the old refresh token the instant `/oauth2/token` returns the
+  new one — so the endpoint:
+  - (a) Serializes refreshes behind a **cross-process file lock** (`flock` on a lockfile, NOT an
+    in-process async mutex — an in-process mutex does not cover two overlapping processes during a launchd
+    graceful restart).
+  - (b) On a successful token response, **persists-and-VERIFIES the new refresh token to the SoT BEFORE
+    releasing the lock or serving the tap.** SoT = a **local 0600 file mirror** (`~/.hermes/state/docs-ace-x-token.json`,
+    atomic temp-write+rename — a real local atomic op) as the hot path; 1Password holds the *seed* token
+    and is updated best-effort as a backup (NOT the per-refresh hot path — `op item edit` is a remote
+    PATCH, not atomic, and per-refresh network latency/failure is exactly the lockout vector). The local
+    mirror is re-read on restart.
+  - (c) If the write-back FAILS after X has rotated, fire a **LOUD #alerts immediately** (the only valid
+    refresh token is now in memory — a restart would lose it) and keep serving from memory until it can
+    persist; do not silently fail just the tap.
+  - *Why:* without verify-before-serve + a cross-process lock, the design relocates the lockout past the
+    rotation instead of closing it. There is an irreducible in-memory-only window between X's rotation and
+    a verified persist — the requirement is to MINIMIZE + ALERT on it, not claim it's eliminated.
+  - *Closeout proof:* `grep -ri "bearer\|oauth\|token" <served_html> <shared_copy_html>` = nothing; two
+    concurrent 401s → ONE rotation, both succeed; killing+restarting after a refresh authenticates from
+    the local mirror; a simulated write-back failure fires #alerts and does NOT leave a silently-stale SoT.
 
 - **Invariant I3 — the briefs never fail to deliver, and never post a DEAD link.** The `ace` publisher
   self-verifies its own minted URL (HTTP 200 + expected `<title>`) BEFORE returning success; a
@@ -160,13 +175,15 @@ I4, I6, I7 are updated for the docs.ace unification. I9–I11 are new for the po
   removes the doc's served files + index entry (trash/soft-delete, not `rm -rf`); **revoke-share** deletes
   the here.now copy via `DELETE /api/v1/publish/<slug>`. The `(doc → here.now slug)` mapping is stored
   **durably in the D-12 index store** (not in-memory), so a restart/disk-loss can't orphan a public copy.
-  **Fallback:** if the local mapping is ever missing, revoke can still enumerate the account's here.now
-  sites via `GET /api/v1/publishes` and match by the doc's recorded slug/title — so "public stays public"
-  is not reachable. Neither action can touch a doc other than the one targeted; both require an explicit
-  same-origin (I1-gated) request.
+  **Fallback (deterministic, not fuzzy):** the published copy embeds a **`docs.ace` doc-id marker** in its
+  metadata (a `<meta name="docs-ace-id" content="<doc_identity_key-hash>">`), so if the local mapping is
+  ever lost, revoke enumerates the account's here.now sites (`GET /api/v1/publishes`) and correlates by the
+  EXACT marker (not by fuzzy slug/title, which are random-per-publish and can near-collide) — so "public
+  stays public" is not reachable and the wrong site can't be revoked. Neither action can touch a doc other
+  than the one targeted; both require an explicit same-origin (I1-gated) request.
   - *Closeout proof:* delete removes exactly one slug's files (adjacent docs untouched); revoke deletes
-    exactly one here.now site; after wiping the local mapping, the listing-fallback still finds + revokes
-    the copy; a cross-origin delete/revoke → 403, no effect.
+    exactly one here.now site; after wiping the local mapping, the marker-fallback finds + revokes the
+    exact copy (and refuses an ambiguous match); a cross-origin delete/revoke → 403, no effect.
 
 - **Invariant I11 — doc-share's contract is preserved when the default flips.** After `doc-share` defaults
   to `ace`, every existing caller (prd-share, brief crons, ad-hoc shares) still gets a working URL back;
@@ -202,18 +219,30 @@ I4, I6, I7 are updated for the docs.ace unification. I9–I11 are new for the po
 - **D-10 — Buttons optimistic but fail closed:** tap fills ♥/🔖; on endpoint error/re-auth the fill
   reverts + shows a visible error (never a silent success). No persistent "already liked" state in v1.0
   (costs a read per item per load). *(v0.3.)*
-- **D-11 — Slug is deterministic per doc-identity via a SEED+SALT-ESCALATION function (retry reuses;
-  genuine collisions resolve without overwrite).** `slug = words(hash(doc_identity_key || salt))` where
-  `salt` starts at 0. On publish: compute the slug; if the target dir exists AND belongs to a DIFFERENT
-  `doc_identity_key` (a true birthday collision, plausible over a 90-day+ two-word corpus), increment
-  `salt` and recompute until a free-or-same-identity slug is found. So a **retry of the same
-  doc-identity is byte-deterministic → reuses its slug** (keeps a posted #daily link alive), while two
-  *different* docs that hash-collide get distinct slugs via salt escalation — **never an overwrite of
-  another doc's files.** The `(doc_identity_key → slug, salt)` binding is persisted in the index (D-12
-  store) so a retry re-derives the exact prior slug even across restarts. *(Fixes pass-1 B3; the
-  Phase-1 "collision → distinct slug" negative now means a cross-identity collision, not a retry.)*
-- **D-12 — Archive retention:** keep N days on disk (default 90) for direct reach; the portal indexes
-  full history from a compact metadata store even after raw HTML is pruned. *(v0.3.)*
+- **D-11 — Slug is deterministic per an explicit `doc_identity_key` via a SEED+SALT-ESCALATION function.**
+  **`doc_identity_key` is defined PER DOC-TYPE** so retry-reuse means the right thing: **briefs →
+  `(brief_name, PT_date)`** (a same-day re-run reuses the slug → keeps the posted #daily link alive; a
+  same-day content change intentionally REPLACES that day's brief at the same slug, which is the desired
+  behavior — a corrected morning digest keeps its link); **PRDs/named docs → a stable doc path/id**
+  (edits reuse the slug so a shared/linked PRD URL survives revisions); **ad-hoc doc-share → the source
+  file path** (or an explicit `--doc-id`). `slug = words(hash(doc_identity_key || salt))`, salt from 0;
+  on publish, if the target dir exists AND belongs to a DIFFERENT `doc_identity_key` (a true birthday
+  collision), increment salt and recompute until free-or-same-identity — so two *different* docs that
+  hash-collide get distinct slugs, **never overwriting each other**, while the same identity is
+  byte-deterministic. The `(doc_identity_key → slug, salt, here.now-share-slug)` binding is persisted in
+  the D-12 store so retries re-derive the exact prior slug across restarts. *(Fixes pass-1 B3 + pass-2 B3:
+  identity key pinned per type; Phase-1's "collision → distinct slug" negative = a cross-identity
+  collision, not a retry.)*
+- **D-12 — Archive retention + a DURABLE index store (three invariants depend on it).** Keep N days on
+  disk (default 90) for direct reach; the portal indexes full history from a compact metadata + FTS store
+  (OQ1: sqlite FTS5) even after raw HTML is pruned. **This store now carries the D-11 slug/salt binding,
+  the I10 share→here.now mapping, and the doc metadata — so it is load-bearing and MUST be durable:** it
+  lives on the local disk, is included in the fleet backup, and its loss is recoverable (the slug binding
+  can be re-derived from `doc_identity_key`; the share mapping via the I10 marker-fallback). **Pruning
+  raw HTML at 90d does NOT prune the store's binding rows** — so a salt-escalated retry after a prune
+  still re-derives the same slug deterministically (the pruned dir's identity is still recorded, avoiding
+  a salt=0 recompute that would land on a now-free-but-historically-taken slug). *(v0.3 + pass-2
+  durability fold.)*
 - **D-13 — Search = metadata cards + FULL-TEXT body index** (better than here.now's title/description-only
   search; cheap locally). *(Ace: Q4→b.)*
 - **D-14 — No portal login; network-identity is the auth** (matches index.ace/crons.ace); the X actions
@@ -307,9 +336,10 @@ Wildcard `*.docs.ace` + `docs.ace` AGH rewrites → `.18`; a `*.docs.ace` wildca
 ✅ Serving substrate (Caddy per-name blocks, file_server/reverse_proxy). ✅ `trust.ace` CA can mint a
 wildcard leaf (now `*.docs.ace`). ✅ AGH wildcard rewrite. ✅ **Scoped token minted + proven**
 (`docs-ace-buttons`: like/bookmark 200 read-back, POST 403; refresh token; in 1Password). ✅ here.now
-surface reverse-engineered (list/detail/metadata/delete via the live API key). *One residual to confirm
-at build: the here.now `DELETE /api/v1/publish/<slug>` for revoke-share (documented; verify live on a
-throwaway slug).*
+surface reverse-engineered (list/detail/metadata/delete via the live API key). **HARD Phase-0-EXIT GATE
+before Phase 5 (pass-2): verify `DELETE /api/v1/publish/<slug>` live on a throwaway slug** — it now gates
+BOTH revoke-share AND the I10 marker-fallback, so two folded blockers depend on it. Publish a throwaway
+here.now site, DELETE it, confirm it 404s. Must pass before Phase 5 starts.
 
 ### Phase 1 — docs-host + `ace` publisher + DNS/cert/Caddy (v1.0 core)
 Ships: docs-host serving `<slug>.docs.ace` over HTTPS; the `ace` publisher (with I3 self-verify);
@@ -387,10 +417,10 @@ Ships: `doc-share`'s default publisher → `ace` (I7/I11); `herenow` stays an ex
 
 - **Credentials + token lifecycle:** the scoped `docs-ace-buttons` token stays in 1Password/on-box (I2),
   auto-refreshes under a mutex with atomic write-back of the rotated refresh token; `trust.ace` CA signs
-  the wildcard cert; no secret in any served OR shared byte. **Launchd token-bootstrap gate (pass-1):**
-  because launchd's sparse env is a documented fleet footgun (op service-account token missing → endpoint
-  starts tokenless → buttons 403 all morning), the endpoint's startup asserts it holds a live token
-  before binding (a launch-contract check, Phase-3), failing loud rather than serving tokenless.
+  the wildcard cert; no secret in any served OR shared byte. **Launchd token-bootstrap gate (pass-1/2):**
+  the endpoint's startup asserts it holds a **VALID** token before binding — a cheap live probe
+  (`GET /2/users/me` succeeds), NOT mere presence, because a stale-but-present token after a failed
+  write-back (I2) would pass a presence check and then serve 403s all morning. Fail loud on invalid/absent.
 - **Cert renewal (pass-1):** the single `*.docs.ace` wildcard leaf gates every slug + the portal, so
   expiry = a total-HTTPS outage. Reuse the fleet's per-name leaf-issuance discipline
   (`issue-*-leaf.sh`: CA key in a 600 temp file, pubkey-match guard, openssl-verify, idempotent
@@ -399,9 +429,12 @@ Ships: `doc-share`'s default publisher → `ace` (I7/I11); `herenow` stays an ex
 - **Public surface:** none by default. `*.docs.ace`/`docs.ace` are LAN+tailnet only; the endpoint binds
   those interfaces only (I1). Public exposure only via explicit per-doc Share (I6), which publishes a
   **button-stripped static copy** (no endpoint, no token) to here.now.
-- **Rate limit (pass-1, concrete):** the endpoint caps X-action writes at **≤10 actions / 60s / origin**
-  (token-bucket); a runaway button-JS loop or forged flood hits the cap (429) well below X's own write
-  limits and cannot touch the ingest read budget (I8). Stated as a named constant, tested with a burst.
+- **Rate limit (pass-1/2, concrete):** the endpoint caps X-action writes at **≤10 actions / 60s** via a
+  token-bucket, keyed **per-device** (by a device cookie/identifier) so a runaway loop on one device
+  can't throttle Ace's other devices — with a global ceiling as a backstop. A forged flood hits the cap
+  (429) well below X's own write limits and cannot touch the ingest read budget (I8). Named constants,
+  tested with a burst. *(Single-legit-origin means the per-origin bucket alone would be one shared bucket
+  — per-device keying is the fix.)*
 - **Failure alerts:** the brief retry-wrapper/safety-net page #alerts on terminal failure; add a `.ace`
   canary for `docs.ace`/`*.docs.ace`; a **token-health canary** (cheap read; alerts if the scoped token
   silently expired); a **cross-origin-preflight canary** (fires an `OPTIONS` from a disallowed origin,
@@ -537,4 +570,26 @@ the NEW surface (token lifecycle, share/portal), all folded:
 
 Version bumped v1.0 → v1.1.
 
-### Pass 2 — pending (verifies the B1/B2/B3 + RC folds didn't introduce second-order issues).
+### Pass 2 (Opus, claude-bpp) — Verdict: APPROVE WITH CHANGES → converged, all folded to v1.2
+Confirmed the pass-1 folds are real; caught three sharp second-order issues (all pin-the-mechanism, no
+redesign), all folded:
+- **B1 deeper — refresh write-back failure window + wrong atomic primitive.** X invalidates the old
+  refresh token the instant the new one issues; if write-back then fails, the only valid token is in
+  memory → restart loses it. And "temp-write+rename on a 1Password *item*" is a category error (`op item
+  edit` is a remote PATCH, not atomic). Fold: I2 now uses a **cross-process `flock`** (covers a launchd
+  graceful restart, which an in-process mutex doesn't), a **local 0600 file mirror** as the atomic
+  hot-path SoT (1Password = seed/backup, not per-refresh), **persist-and-VERIFY before serving**, and a
+  **loud alert on write-back failure**.
+- **CSP nonce contradicted I4's static property.** A per-response nonce = non-static bytes. Fold: I1x
+  switches to a **`'sha256-<buttonjs-hash>'`** source (button JS is fixed/known), and specifies the FULL
+  policy so tweet media (`img-src pbs.twimg.com`) + house theme (`style-src 'unsafe-inline'`) don't
+  silently break; CSP added to the 4-way config-drift surface.
+- **B3 — `doc_identity_key` was undefined** (its definition decides whether retry-reuse works). Fold:
+  D-11 pins it per doc-type: briefs=`(brief_name, PT_date)`, PRDs=stable path/id, ad-hoc=source path/`--doc-id`.
+Plus the required changes: I10 embeds a deterministic `docs-ace-id` meta marker for the revoke fallback
+(not fuzzy title); D-12 states the store's durability posture (backed up, binding rows survive HTML
+pruning — three invariants depend on it); the here.now DELETE is elevated to a **hard Phase-0-exit gate**
+before Phase 5; the launch-contract check probes token **validity** (`GET /2/users/me`) not presence; the
+rate limit is keyed **per-device**. OQ4 (read-surface / tailnet-ACL) carried unchanged, load-bearing at
+v1.1. Version bumped v1.1 → v1.2. **Converged: APPROVE-WITH-CHANGES with every change folded in-spec, no
+open blockers.**
