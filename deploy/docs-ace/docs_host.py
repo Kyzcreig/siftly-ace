@@ -38,6 +38,11 @@ try:
     import x_token  # noqa: E402
 except Exception:  # pragma: no cover
     x_token = None
+try:
+    from portal import render_portal, portal_csp  # noqa: E402
+except Exception:  # pragma: no cover
+    render_portal = None
+    portal_csp = None
 
 PORT = int(os.environ.get("DOCS_HOST_PORT", "8790"))
 ROOT = Path(os.environ.get("DOCS_ROOT", os.path.expanduser("~/.hermes/var/docs-portal/docroot")))
@@ -46,8 +51,10 @@ ROOT = Path(os.environ.get("DOCS_ROOT", os.path.expanduser("~/.hermes/var/docs-p
 # 'evil-docs.ace.attacker.com' would pass). host = one DNS label + ".docs.ace".
 SLUG_HOST_RE = re.compile(r"^([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\.docs\.ace$")
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
-# Origin must be https://<one-label>.docs.ace with NO port/userinfo/path (anchored full match).
-ORIGIN_RE = re.compile(r"^https://[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.docs\.ace$")
+# Origin must be https://<label>.docs.ace OR https://docs.ace (apex portal), NO port/path.
+ORIGIN_RE = re.compile(r"^https://(?:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.)?docs\.ace$")
+# Host for an ACTION request: a slug host (button) or the apex (portal action).
+ACTION_HOST_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.)?docs\.ace$")
 TWEET_ID_RE = re.compile(r"^\d{5,25}$")
 CSRF_HEADER = "X-Docs-Ace-CSRF"
 
@@ -107,11 +114,11 @@ def resolve_slug_dir(slug: str) -> Path | None:
 class Handler(BaseHTTPRequestHandler):
     server_version = "docs-ace/1.0"
 
-    def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra: dict | None = None):
+    def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra: dict | None = None, csp: str | None = None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Content-Security-Policy", CSP)
+        self.send_header("Content-Security-Policy", csp or CSP)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         for k, v in (extra or {}).items():
@@ -178,6 +185,34 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0]
+        # ---- portal doc actions (Phase 5): share / revoke / delete ----
+        dm = re.match(r"^/api/doc/(share|revoke|delete)$", path)
+        if dm:
+            action = dm.group(1)
+            if not ACTION_HOST_RE.match(_host_of(self)):
+                self._json(403, {"error": "bad host"}); return
+            if not self._origin_ok():
+                self._json(403, {"error": "bad origin"}); return
+            if self.headers.get(CSRF_HEADER) != "1":
+                self._json(403, {"error": "missing csrf marker"}); return
+            try:
+                n = int(self.headers.get("Content-Length") or "0")
+                body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            except Exception:
+                self._json(400, {"error": "bad body"}); return
+            slug = str(body.get("slug", "")).strip()
+            if not SLUG_RE.match(slug):
+                self._json(400, {"error": "bad slug"}); return
+            try:
+                import doc_actions
+                res = getattr(doc_actions, action)(slug)
+            except Exception as e:
+                self._json(502, {"error": str(e)[:120]}); return
+            acao = self.headers.get("Origin", "")
+            code = 200 if res.get("ok") else 400
+            self._json(code, res, extra={"Access-Control-Allow-Origin": acao, "Vary": "Origin"})
+            return
+
         m = re.match(r"^/api/x/(like|unlike|bookmark|unbookmark)$", path)
         if not m:
             self._json(404, {"error": "not found"})
@@ -229,10 +264,25 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, b'{"ok":true,"service":"docs-host"}', "application/json")
             return
 
-        # apex portal (docs.ace) — Phase 4 builds the real portal; Phase 1 stub.
+        # apex portal (docs.ace) — cards + full-text search (Phase 4).
         if host in ("docs.ace", "docs", ""):
-            self._send(200, b"<!doctype html><title>docs.ace</title><h1>docs.ace</h1>"
-                            b"<p>portal coming in Phase 4</p>")
+            # search endpoint (JSON): /api/search?q=...
+            if path == "/api/search":
+                q = ""
+                if "?" in self.path:
+                    from urllib.parse import parse_qs, urlparse
+                    q = (parse_qs(urlparse(self.path).query).get("q") or [""])[0]
+                try:
+                    import docs_index
+                    results = docs_index.search(q)
+                except Exception as e:
+                    self._json(500, {"error": str(e)[:100]}); return
+                self._json(200, {"results": results})
+                return
+            if render_portal is None:
+                self._send(503, b"portal unavailable")
+                return
+            self._send(200, render_portal().encode(), csp=(portal_csp() if portal_csp else None))
             return
 
         # per-doc host: <slug>.docs.ace

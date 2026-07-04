@@ -11,6 +11,8 @@
 	</array>
 	<key>EnvironmentVariables</key>
 	<dict>
+		<key>HOME</key>
+		<string>/Users/alexgierczyk</string>
 		<key>DOCS_HOST_PORT</key>
 		<string>8790</string>
 		<key>DOCS_ROOT</key>
