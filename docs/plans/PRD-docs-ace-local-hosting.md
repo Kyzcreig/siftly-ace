@@ -1,6 +1,6 @@
 # PRD — `docs.ace`: a local here.now clone (unified doc portal, in-page X actions, share-to-here.now)
 
-**Status:** APPROVED v1.2 — 2 review passes converged (pass-1 & pass-2 both APPROVE-WITH-CHANGES, all folded). Supersedes v0.3. Phase-0 DONE (scoped token proven); ready for Phase 1 build.
+**Status:** APPROVED v1.3 — 2 Opus passes converged + a fresh-model self-review tightening pass (Fable-5). Supersedes v0.3. Phase-0 DONE (scoped token proven); ready for Phase 1 build.
 **Author:** Apollo
 **Date:** 2026-07-02
 **Owner:** Apollo (Mac Studio host)
@@ -48,10 +48,11 @@ unified `*.docs.ace` portal; briefs become content type #1, not a separate host.
 - **NOT** a new scoring/selection/render path for the briefs. Only the *publish/delivery* step and
   *button injection* change; scoring/overview/render are untouched.
 - **NOT** exposing the X-action endpoint publicly or to here.now. It binds LAN+tailnet only, forever.
-- **v1.0 (this cut) explicitly does NOT:** migrate every doc-share caller to docs.ace on day one
-  (v1.1 flips the default); implement the full portal delete/revoke UI before the host + briefs are
-  proven (portal is v1.2). v1.0 = host + `<slug>.docs.ace` serving + brief cutover + X buttons +
-  share-copy.
+- **v1.0 (this cut) explicitly does NOT:** migrate every doc-share caller to docs.ace on day one — that
+  default flip is **v1.1** (Phase 6). v1.0 = host + `<slug>.docs.ace` serving + brief cutover + X buttons +
+  the portal (cards + full-text search) + Share/Revoke/Delete (Phases 1–5). *(Within v1.0, phases are
+  sequenced so the host + briefs (Phases 1–3) are proven before the portal actions (Phases 4–5) build on
+  them.)*
 
 ---
 
@@ -63,8 +64,13 @@ I4, I6, I7 are updated for the docs.ace unification. I9–I11 are new for the po
 - **Invariant I1 — X actions require ORIGIN-authorized, CSRF-preflight-protected requests, not just
   network reachability.** The `/api/x/*` endpoint's credential is the server-side scoped token (not a
   browser cookie), so reachability alone is a confused-deputy hole. Before any action it enforces, and
-  proceeds ONLY if all pass: (a) **Origin/Referer** must match `https://<slug>.docs.ace` (server-side
-  filter; a non-browser client can forge this, so it's not the load-bearing control — see (b)); (b) **a
+  proceeds ONLY if all pass: (a) **Origin/Referer** must match the pattern `https://<label>.docs.ace`
+  (a strict **suffix+shape** check: scheme `https`, host ends in `.docs.ace`, exactly one leading DNS
+  label, no port/userinfo — NOT a fixed slug list, since slugs are unbounded; and NOT a naive
+  `endswith(".docs.ace")` which `evil-docs.ace.attacker.com` would pass — anchor the full host). A
+  non-browser client can forge Origin, so it's not the load-bearing control — see (b). **The CORS
+  `Access-Control-Allow-Origin` reflects the request Origin ONLY when it passes this same check** (never
+  a wildcard `*`, which is incompatible with credentialed/custom-header requests anyway); (b) **a
   forced CORS preflight — THE load-bearing browser control:** a required non-simple header
   `X-Docs-Ace-CSRF: 1` makes the request non-simple → a real browser MUST preflight, and the CORS
   response WITHHOLDS `Access-Control-Allow-Origin`/`-Headers` for any non-`docs.ace` origin, so the
@@ -120,8 +126,10 @@ I4, I6, I7 are updated for the docs.ace unification. I9–I11 are new for the po
     concurrent 401s → ONE rotation, both succeed; killing+restarting after a refresh authenticates from
     the local mirror; a simulated write-back failure fires #alerts and does NOT leave a silently-stale SoT.
 
-- **Invariant I3 — the briefs never fail to deliver, and never post a DEAD link.** The `ace` publisher
-  self-verifies its own minted URL (HTTP 200 + expected `<title>`) BEFORE returning success; a
+- **Invariant I3 — the briefs never fail to deliver, and never post a DEAD/WRONG link.** The `ace`
+  publisher self-verifies its own minted URL (HTTP 200 + a **per-publish content marker** it embedded —
+  e.g. the `docs-ace-id` meta or the exact title — so a 200 serving a STALE/other doc is caught, not just
+  a 404) BEFORE returning success; a
   mint-but-unreachable result (DNS/Caddy/cert drift) is a publisher FAILURE that falls through to the
   inline-render post to #daily. #daily is never empty AND never carries a dead `*.docs.ace` link.
   - *Closeout proof:* breaking the SERVE path (remove the Caddy route/cert, not just kill the process) and
@@ -223,7 +231,9 @@ I4, I6, I7 are updated for the docs.ace unification. I9–I11 are new for the po
   **`doc_identity_key` is defined PER DOC-TYPE** so retry-reuse means the right thing: **briefs →
   `(brief_name, PT_date)`** (a same-day re-run reuses the slug → keeps the posted #daily link alive; a
   same-day content change intentionally REPLACES that day's brief at the same slug, which is the desired
-  behavior — a corrected morning digest keeps its link); **PRDs/named docs → a stable doc path/id**
+  behavior — a corrected morning digest keeps its link; **note:** if that brief had already been
+  *shared* to here.now, the public copy is now stale — Share is manual/rare on briefs so this is
+  acceptable, but a re-Share overwrites and Revoke still works via the I10 marker); **PRDs/named docs → a stable doc path/id**
   (edits reuse the slug so a shared/linked PRD URL survives revisions); **ad-hoc doc-share → the source
   file path** (or an explicit `--doc-id`). `slug = words(hash(doc_identity_key || salt))`, salt from 0;
   on publish, if the target dir exists AND belongs to a DIFFERENT `doc_identity_key` (a true birthday
@@ -299,7 +309,8 @@ publisher flag; the inline fallback (I3) is unchanged.
 ### 5.3 X-action endpoint (trust boundary — I1/I1x/I2/I5/I8)
 Same-process with docs-host (same origin). I1 authz gate before any action. Maps
 `{like,unlike,bookmark,unbookmark} → POST/DELETE /2/users/:id/{likes,bookmarks}` with the **scoped
-`docs-ace-buttons` token** (read from 1Password at process start; refreshed via refresh_token on 401).
+`docs-ace-buttons` token** (read from the local 0600 mirror at process start — seeded from 1Password;
+refreshed via refresh_token on 401 under the I2 flock + verify-before-serve).
 tweet_id validated `^\d{5,25}$`; request built as structured params (no shell). Quote-tweets pin the
 PRIMARY tweet_id. Rate-limited (I8); audit log records action+tweet_id+result, never the token.
 **Ground-truthed working X v2 calls (Phase-0):** `POST /2/users/56282605/likes {tweet_id}` /
@@ -371,8 +382,10 @@ injection in `html_report.ts` for X items.
   `angalexg` (confirm via `GET /2/users/:id/liked_tweets`); tap 🔖 → in bookmarks; second tap undoes.
 - *Negative (the real threat — B1):* (a) **forced-preflight** — `OPTIONS` from a disallowed origin
   WITHHOLDS ACAO/ACAH; (b) cross-origin POST (non-`docs.ace` Origin) → 403, **zero API calls** (spy); (c)
-  missing `X-Docs-Ace-CSRF` → rejected; (d) forged Host → 403; (e) `action=post`/`follow` → 404/400, zero
-  call; (f) `tweet_id="1; rm"` / `abc` → 400, zero call; (g) off-network → refused (I1d); (h)
+  missing `X-Docs-Ace-CSRF` → rejected; (d) forged Host → 403; (d2) **Origin-suffix bypass** —
+  `https://evil-docs.ace.attacker.com` and `https://docs.ace.evil.com` → 403, zero call (proves the
+  anchored check, not `endswith`); (e) `action=post`/`follow` → 404/400, zero call; (f)
+  `tweet_id="1; rm"` / `abc` → 400, zero call; (g) off-network → refused (I1d); (h)
   stored-XSS payload in a brief renders inert (I1x); (i) no token in any served byte/log.
 - *Verify:* the tap→read-back; the preflight/cross-origin/CSRF/host/verb/injection tests each with a spy
   showing zero API calls on bad input, one on the legit call; XSS battery green.
@@ -415,9 +428,10 @@ Ships: `doc-share`'s default publisher → `ace` (I7/I11); `herenow` stays an ex
 
 ## 7. Security, Privacy, Ops, Observability
 
-- **Credentials + token lifecycle:** the scoped `docs-ace-buttons` token stays in 1Password/on-box (I2),
-  auto-refreshes under a mutex with atomic write-back of the rotated refresh token; `trust.ace` CA signs
-  the wildcard cert; no secret in any served OR shared byte. **Launchd token-bootstrap gate (pass-1/2):**
+- **Credentials + token lifecycle:** the scoped `docs-ace-buttons` token is held in a **local 0600
+  mirror** seeded from 1Password (I2), refreshed under a **cross-process `flock`** with persist-and-verify
+  before serving; `trust.ace` CA signs the wildcard cert; no secret in any served OR shared byte.
+  **Launchd token-bootstrap gate (pass-1/2):**
   the endpoint's startup asserts it holds a **VALID** token before binding — a cheap live probe
   (`GET /2/users/me` succeeds), NOT mere presence, because a stale-but-present token after a failed
   write-back (I2) would pass a presence check and then serve 403s all morning. Fail loud on invalid/absent.
@@ -461,7 +475,7 @@ Ships: `doc-share`'s default publisher → `ace` (I7/I11); `herenow` stays an ex
 | Delete/revoke hits the wrong doc or is irreversible | I10: single-doc scoped, soft-delete (trash) local, here.now DELETE by exact slug; cross-origin destructive call → 403 |
 | Token lacks write scope | DONE (Phase-0): scoped token proven like/bookmark 200, POST 403 |
 | Write actions starve ingest budget | I8: SEPARATE app/token (done) + rate cap |
-| here.now `DELETE` for revoke unproven | Phase-0 residual: verify on a throwaway slug before Phase 5 |
+| here.now `DELETE` for revoke unproven | HARD Phase-0-exit gate: verify on a throwaway slug (gates BOTH revoke AND the I10 marker-fallback) before Phase 5 starts |
 | doc-share default flip breaks a caller | I11: Phase-6 smokes every caller; `herenow` stays reachable; own review |
 | Quote-tweet: which id acts? | pin PRIMARY (Phase-3 unit) |
 
@@ -593,3 +607,37 @@ before Phase 5; the launch-contract check probes token **validity** (`GET /2/use
 rate limit is keyed **per-device**. OQ4 (read-surface / tailnet-ACL) carried unchanged, load-bearing at
 v1.1. Version bumped v1.1 → v1.2. **Converged: APPROVE-WITH-CHANGES with every change folded in-spec, no
 open blockers.**
+
+### Self-review tightening pass (Fable-5, fresh model over the converged spec)
+Ace switched the model and asked for a fresh critical pass. A converged spec accumulates *partial-edit
+staleness* — the two Opus passes each fixed their own deltas but left older lines that those deltas
+contradicted. Eight fixes, no redesign:
+
+**Correctness contradictions (stale lines the folds left behind):**
+- **A/§7** — the credentials line still described the pass-1 "mutex + atomic write-back to 1Password";
+  rewritten to match the folded I2 (local 0600 mirror + cross-process `flock` + verify-before-serve).
+- **B/§5.3** — still said the token is "read from 1Password at process start"; corrected to the I2 local
+  mirror SoT.
+- **C/§2** — Non-Goals claimed "portal is v1.2" while the Roadmap ships the portal + Share/Revoke/Delete in
+  **v1.0 Phases 1–5**; reconciled to v1.0 with an intra-version sequencing note.
+- **D/§8** — the here.now-`DELETE` risk row still called it an unproven "residual"; pass-2 had elevated it
+  to a **hard Phase-0-exit gate** — row updated to match.
+
+**Real gaps neither Opus pass caught:**
+- **E/I1 (the important one)** — the Origin allow-list was written as `https://<slug>.docs.ace`, but slugs
+  are unbounded so it must be a PATTERN match — and a naive `endswith(".docs.ace")` would let
+  **`evil-docs.ace.attacker.com` pass the load-bearing Origin gate**. Tightened to a strict anchored
+  suffix+shape check (scheme=https, host ends in `.docs.ace`, exactly one leading label, no port/userinfo)
+  + specified CORS reflects the Origin only on that same check (never `*`).
+- **F/Phase-3** — added the matching negative test (`evil-docs.ace.attacker.com` / `docs.ace.evil.com` →
+  403, zero call) so the anchored check is proven, not assumed.
+
+**Tightenings:**
+- **G/I3** — self-verify checked "200 + title", which a stale/other doc served at 200 with a generic title
+  could pass; tightened to a **per-publish content marker** (the `docs-ace-id` meta) so mint-but-WRONG-
+  content is caught, not just mint-but-404.
+- **H/D-11** — noted that a same-day brief *replace* makes an already-published here.now share stale
+  (acceptable + documented; re-Share overwrites, Revoke still works via the I10 marker).
+
+Version bumped v1.2 → v1.3. Still no open blockers; these are correctness/coverage tightenings the
+convergence loop structurally tends to miss (each pass optimizes its own diff, not the whole).
