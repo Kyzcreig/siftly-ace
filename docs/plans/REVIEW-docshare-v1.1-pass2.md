@@ -1,0 +1,33 @@
+# Independent Senior Review (Opus)
+
+## Verdict: BLOCK
+
+The three Pass-1 blockers are genuinely folded — gating (INV-3/§6), fallback (INV-4/D-6), and the secret-vs-sensitivity split (INV-3b) are real improvements, not cosmetic. But the fold pushed the load-bearing risk into the **live-flip path**, and that path's exposure gate and identity key are asserted, not mechanized. Two new blockers, both on the continuous-firehose side blocker-1 was supposed to close.
+
+## Critical Blockers (severity-ordered, cite section/evidence)
+
+1. **The live default-flip's exposure gate is undefined/unwired — R2's "mitigation" is asserted, not built (§5A, D-5, INV-3b, INV-3b closeout).** INV-3b's two real defenses are (a) the heuristic content-sensitivity pass and (b) a per-doc human ack — but both are wired ONLY into the backfill importer (§5B manifest). For the live flip, §5A/D-5 substitute "a documented sensitivity default per `type`" plus "the per-doc ack." Two problems: (i) the **heuristic sensitivity pass never runs on a live ad-hoc share** — a `report`-type share containing internal architecture or a 1P UUID defaults to docs.ace with only privacy-scan (the exact false-assurance from Pass-1 blocker 3, reopened for the live path); (ii) **"per-doc ack" has no mechanism for a one-shot `doc-share report.md`** — there is no manifest to ack against. It's either an unspecified interactive prompt (which breaks every non-interactive/cron caller of doc-share — INV-1 doesn't cover that) or it isn't enforced at all. The PRD's stated top risk R2 ("ad-hoc PRD/report shares silently go LAN-public") is therefore mitigated on paper only. This is safe **only** under OQ4=tailnet-restrict — but the PRD keeps option (a) accept-LAN-readable live and lets report/overview flip to docs.ace regardless (§5A), so it must be safe under accept, and it is not.
+
+2. **D-4's single identity-key rule does not cover the live-flip path's actual inputs, and collides with existing brief slug behavior → INV-5's cross-path claim is unfounded (D-4, INV-5, §5A).** D-4 defines `canonical_source_path` as "repo-relative for repo docs / vault-relative for Obsidian." But the live-flip firehose is dominated by **generated artifacts** (e.g. build-report.sh emits `/tmp/*.html`; ad-hoc shares of transient files) that are neither repo- nor vault-relative — D-4 gives them no stable key, so they either collide or mint a fresh slug every run. INV-5 asserts "the backfill path and the live-flip path share the same key space and the collision check spans both," but the live path has no defined key for its most common input. Separately, docs.ace **already** publishes briefs with an intentional *fresh-slug-daily* behavior; D-4's deterministic path-hash would map a brief to one stable slug forever — the PRD never reconciles the new identity key with the existing fresh-slug callers. The "run backfill twice → identical slugs; live-flip same doc → same slug as backfill" closeout can't be met for any non-repo/non-vault source.
+
+## Required Changes
+
+- **Wire the INV-3b heuristic sensitivity pass into the live docs-ace backend (§5A), not just backfill (§5B)** — every path to docs.ace runs it, per INV-2's own "every path" framing. Then define the live-share ack concretely: an interactive confirm is incompatible with automated callers, so either (a) gate live sensitive types to hard-fail-with-instruction (no silent flip) until OQ4=tailnet-restrict, or (b) make the ack a non-interactive `--ack`/`--allow-docs-ace` flag the caller must pass, defaulting closed.
+- **Reconcile the wording contradiction:** INV-3 ("neither flip nor sensitive backfill lands until OQ4 returns a decision") vs §5A ("report/overview default to docs-ace with the per-doc ack" — reads as pre-decision). State unambiguously whether report/overview flip pre- or post-Phase-0, and under which OQ4 outcomes.
+- **Extend D-4 to cover generated/non-repo/non-vault sources** (define a canonical key for `/tmp` and ad-hoc artifacts, or explicitly exclude them from the deterministic-slug contract and route them to fresh-slug), and **reconcile with the existing brief fresh-slug-daily behavior** so the flip doesn't change how briefs slug.
+- **Prove the #alerts fallback actually DELIVERS**, not just that doc-share calls notify — AC line 3 should capture a received alert, not an emitted one (delivery-path integrity).
+- **Enumerate the automated callers of doc-share** (build-report.sh, brief publishers) and show the default flip doesn't break them or trigger an ack prompt — add to INV-1's closeout.
+
+## Lens Notes (one line each)
+- **Architecture:** Shared publish-contract extraction / parity lint (§5A) is the right call and resolves prior two-copy drift; identity-key layer is the weak seam now.
+- **Security/identity-isolation:** Backfill exposure is well-defended; the live firehose — the larger surface — still leans on a per-type default and an undefined ack, i.e. the same proxy-gate problem, relocated.
+- **DevOps/SRE:** Flip rollback (`.bak`) and canary "fallback-fired" signal added — good; alert-delivery proof and automated-caller compatibility still unproven.
+- **Implementation/maintainability:** Committing `backfill.py`/`ace_publisher.py` to `deploy/docs-ace/` closes the runtime-`var/` drift vector; live-path key rule is the remaining under-spec.
+- **QA:** Backfill E2E (rich doc, sensitivity catch, idempotency, delete) are real gates; the live-flip AC still can't test an ack that has no defined mechanism.
+- **Config-drift:** Salt pinned (D-4), scripts committed — two vectors closed; the D-4-vs-existing-fresh-slug collision is a newly-surfaced one.
+
+## Residual Risks / Open Questions
+- If OQ4=accept (option a) is chosen, blocker 1 is a live LAN exposure hole — is option (a) actually acceptable, or should the PRD drop it and commit to tailnet-restrict as a precondition rather than an option?
+- OQ5 (40 vs 199 scope) still interacts with exposure: more live report/overview types flipping = more un-content-scanned surface until blocker 1 is fixed.
+- What is the behavior of an automated `build-report.sh` share the moment the default flips — does it silently start writing daily briefs through the new key rule and lose fresh-slug semantics?
+- Slug reconciliation when a backfilled doc (repo path key) is later re-shared live from a `/tmp` render (no repo path): D-4 gives them different keys → two cards, the exact dup INV-5 claims to prevent.
