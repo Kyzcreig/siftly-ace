@@ -95,10 +95,17 @@ DOC_ID_META = '<meta name="docs-ace-id" content="{}">'
 
 
 def inject_marker(html: str, marker: str) -> str:
-    """Embed the docs-ace-id marker into <head> (or prepend if no head). Idempotent-ish."""
+    """Embed the docs-ace-id marker into <head> (or prepend if no head). Idempotent-ish.
+
+    NB: the 'already present' check must match a REAL <meta ...> tag, not the bare attribute
+    string — a doc whose PROSE documents the marker system (e.g. this system's own PRD renders
+    an escaped `&lt;meta name="docs-ace-id" ...&gt;` code span) contains `name="docs-ace-id"`
+    without a real tag, and a loose `in html` check would (a) think the marker exists and (b)
+    fail to replace it → publish a markerless page that fails self-verify. Anchor on `<meta `.
+    """
     tag = DOC_ID_META.format(marker)
-    if 'name="docs-ace-id"' in html:
-        return re.sub(r'<meta name="docs-ace-id" content="[^"]*">', tag, html)
+    if re.search(r'<meta\s+name="docs-ace-id"\s+content="[^"]*"\s*/?>', html):
+        return re.sub(r'<meta\s+name="docs-ace-id"\s+content="[^"]*"\s*/?>', tag, html, count=1)
     if "<head>" in html:
         return html.replace("<head>", "<head>" + tag, 1)
     if re.search(r"<head[^>]*>", html):
