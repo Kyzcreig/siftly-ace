@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored deploy snapshots (docs-ace assets, prompt snapshots). These mirror
+    // files whose canonical copy lives OUTSIDE the repo (~/.hermes/var/docs-portal);
+    // x-buttons.js's sha256 is CSP-pinned, so lint must never pressure an edit here.
+    "deploy/**",
   ]),
   {
     // Test files: mocks/fixtures legitimately use `any` for partial Prisma
