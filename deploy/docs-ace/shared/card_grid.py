@@ -76,6 +76,7 @@ _THEMES = {
         "serif": '"Fraunces",Georgia,serif',
         "sans": '"Inter Tight",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',
         "hero_weight": "300",
+        "hero_size": "40px",
         "bggrad": "background-image:radial-gradient(ellipse 80% 50% at 50% -8%,rgba(212,172,104,.08),transparent 60%);",
         "title_serif": True,
         "csp_fonts": True,
@@ -88,6 +89,7 @@ _THEMES = {
         "serif": '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
         "sans": '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
         "hero_weight": "650",
+        "hero_size": "27px",
         "bggrad": "",
         "title_serif": False,
         "csp_fonts": False,
@@ -153,6 +155,21 @@ GRID_JS = r"""
     document.dispatchEvent(new CustomEvent('card-action',{detail:{
       act:b.getAttribute('data-act'), id:card?card.getAttribute('data-id'):null, btn:b, card:card}}));
   });
+  // layout toggle (grid ⇄ list), persisted per-portal in localStorage.
+  var lay=document.getElementById('layout');
+  if(lay){
+    var key='cardgrid-layout:'+(document.title||location.pathname);
+    function setLayout(mode){
+      var list=mode==='list';
+      grid.classList.toggle('list',list);
+      lay.querySelector('.licon').textContent=list?'▤':'▦';
+      lay.setAttribute('aria-pressed',list?'true':'false');
+      try{localStorage.setItem(key,mode);}catch(e){}
+    }
+    var saved;try{saved=localStorage.getItem(key);}catch(e){}
+    setLayout(saved||(lay.getAttribute('data-default-list')?'list':'grid'));
+    lay.addEventListener('click',function(){setLayout(grid.classList.contains('list')?'grid':'list');});
+  }
   sortNow();
 })();
 """
@@ -178,10 +195,10 @@ _CSS = """
 body{background:var(--bg);color:var(--fg);font:15px/1.6 __SANS__;margin:0;padding:40px 28px 60px;__BGGRAD__ background-repeat:no-repeat}
 .wrap{max-width:1140px;margin:0 auto}
 .eyebrow{color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px}
-h1{font-family:__SERIF__;font-weight:__HW__;font-size:40px;line-height:1.1;margin:0 0 6px;letter-spacing:-.01em}
+h1{font-family:__SERIF__;font-weight:__HW__;font-size:__HEROSIZE__;line-height:1.12;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.3em;flex-wrap:wrap}
 h1 em{font-style:italic;color:var(--accent);font-weight:400}
-.sub{color:var(--muted);font-size:14px;margin-bottom:26px}
-.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+.controls{gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .searchwrap{position:relative;flex:1;min-width:220px;max-width:520px}
 #q{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--fg);font:15px __SANS__;padding:11px 15px 11px 38px}
 #q::placeholder{color:var(--muted);opacity:.7}
@@ -190,8 +207,24 @@ h1 em{font-style:italic;color:var(--accent);font-weight:400}
 select{background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--fg);font:13px __SANS__;padding:10px 13px;cursor:pointer}
 select:focus{outline:none;border-color:var(--accent)}
 .controls.js{display:flex}.controls{display:none}
-#count{color:var(--muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:22px}
+#layout{display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--muted);cursor:pointer;padding:9px 12px;font:15px __SANS__;line-height:1;transition:border-color .15s,color .15s}
+.controls.js #layout{display:inline-flex;align-items:center;gap:6px}
+#layout:hover{border-color:var(--accent);color:var(--accent)}
+#count{color:var(--muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:20px}
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;align-items:stretch}
+/* list layout mode: one card per row. Icon leads (fixed lane) → title (flex, ellipsis) →
+   badges → meta → actions, all on the right. display:contents on .ctype hoists the icon +
+   badges into the card's flex row so they can be ordered independently → titles left-align. */
+#grid.list{display:flex;flex-direction:column;gap:10px}
+#grid.list .card{flex-direction:row;align-items:center;height:auto;gap:12px;padding:12px 18px}
+#grid.list .ctype{display:contents}
+#grid.list .cicon{order:1;flex:0 0 20px;text-align:center;margin-right:0;font-size:17px}
+#grid.list .ctitle{order:2;flex:1 1 auto;min-width:0;font-size:16px;margin-bottom:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#grid.list .ctype .badge{order:3;flex:0 0 auto;margin-left:0}
+#grid.list .cmeta{order:4;flex:0 0 auto;margin-bottom:0;white-space:nowrap}
+#grid.list .cbody{display:none}
+#grid.list .cacts{order:5;flex:0 0 auto;margin-top:0}
+@media(max-width:640px){#grid.list .card{flex-wrap:wrap}#grid.list .ctitle{flex:1 1 60%}}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;transition:border-color .18s,transform .18s,box-shadow .18s;display:flex;flex-direction:column;height:100%}
 .card[hidden]{display:none}
 .card:hover{border-color:var(--b1soft);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
@@ -299,6 +332,12 @@ def render_card_grid(spec: dict) -> str:
             for s in sorts)
         dirs = "".join(f' data-dir-{esc(s["id"])}="{esc(s.get("dir","desc"))}"' for s in sorts)
         ctrls.append(f'<select id="sort"{dirs}>{so}</select>')
+    # optional layout toggle (grid ⇄ list); default on. Persists via localStorage.
+    if spec.get("layout_toggle", True):
+        default_list = "1" if spec.get("layout") == "list" else ""
+        ctrls.append(f'<button id="layout" type="button" data-default-list="{default_list}" '
+                     f'aria-label="Toggle grid or list layout" title="Toggle grid / list view">'
+                     f'<span class="licon">▦</span></button>')
 
     cards_html = render_cards(cards) if cards else '<p class="empty">Nothing here yet.</p>'
     endpoint_js = ""
@@ -316,6 +355,7 @@ def render_card_grid(spec: dict) -> str:
            .replace("__SANS__", theme["sans"])
            .replace("__SERIF__", theme["serif"])
            .replace("__HW__", theme["hero_weight"])
+           .replace("__HEROSIZE__", theme.get("hero_size", "40px"))
            .replace("__BGGRAD__", theme["bggrad"])
            .replace("__TITLEFONT__", theme["serif"] if theme["title_serif"] else theme["sans"])
            .replace("__TITLEWT__", "400" if theme["title_serif"] else "600"))
