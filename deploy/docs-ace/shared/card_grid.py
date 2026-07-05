@@ -196,16 +196,24 @@ select:focus{outline:none;border-color:var(--accent)}
 .card[hidden]{display:none}
 .card:hover{border-color:var(--b1soft);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
 .ctype{color:var(--accent);font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;margin-bottom:9px}
+.cicon{font-size:15px;margin-right:6px;letter-spacing:normal}
 .badge{background:var(--goldsoft);color:var(--accent);border:1px solid var(--b1soft);border-radius:20px;padding:1px 9px;font-size:9px;letter-spacing:.08em;margin-left:8px;text-transform:uppercase}
+.badge.ok{background:rgba(63,185,80,.14);color:#4ac26b;border-color:rgba(63,185,80,.3)}
+.badge.warn{background:rgba(210,153,34,.14);color:#d8a629;border-color:rgba(210,153,34,.3)}
+.badge.bad{background:rgba(248,81,73,.14);color:#f0776f;border-color:rgba(248,81,73,.3)}
+.badge.neutral{background:transparent;color:var(--muted);border-color:var(--border)}
 .ctitle{font-family:__TITLEFONT__;color:var(--fg);font-weight:__TITLEWT__;font-size:19px;line-height:1.25;text-decoration:none;display:block;margin-bottom:8px;letter-spacing:-.005em}
 .ctitle:hover{color:var(--accent)}
 .cmeta{color:var(--muted);font-size:12px;margin-bottom:14px;font-variant-numeric:tabular-nums}
+.cbody{color:var(--fg);opacity:.82;font-size:13.5px;line-height:1.5;margin-bottom:14px}
 .cacts{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto}
 .cacts button{cursor:pointer;background:var(--chip);border:1px solid var(--border);border-radius:8px;color:var(--chip-fg);font:12px __SANS__;padding:5px 12px;transition:border-color .15s,color .15s,background .15s}
 .cacts button:hover{border-color:var(--accent);color:var(--accent);background:var(--goldsoft)}
 .cacts button.danger:hover{border-color:var(--danger);color:var(--danger)}
 .cacts button:disabled{opacity:.45;cursor:default}
 .empty{color:var(--muted);font-family:__SERIF__;font-style:italic;font-size:17px;padding:20px 0}
+.foot{color:var(--muted);font-size:12px;margin-top:32px;padding-top:18px;border-top:1px solid var(--border);line-height:1.6}
+.foot a{color:var(--accent);text-decoration:none}
 @media(max-width:640px){body{padding:28px 18px 40px}h1{font-size:32px}#grid{grid-template-columns:1fr}}
 """
 
@@ -219,7 +227,7 @@ def render_card_html(c: dict) -> str:
     parts = []
     data = [f'data-id="{esc(c.get("id",""))}"']
     hay = " ".join(str(x) for x in [c.get("title",""), c.get("meta",""), c.get("eyebrow",""),
-                                     c.get("search",""), c.get("kind","")]).lower()
+                                     c.get("body",""), c.get("search",""), c.get("kind","")]).lower()
     data.append(f'data-search="{esc(hay)}"')
     for fk, fv in (c.get("facets") or {}).items():
         data.append(f'data-f-{esc(fk)}="{esc(fv)}"')
@@ -228,11 +236,16 @@ def render_card_html(c: dict) -> str:
     for sk, sv in (c.get("sort") or {}).items():
         data.append(f'data-sort-{esc(sk)}="{esc(sv)}"')
     parts.append(f'<article class="card" {" ".join(data)}>')
-    # eyebrow + badges
-    eb = esc(c.get("eyebrow","")) if c.get("eyebrow") else ""
-    badges = "".join(f'<span class="badge">{esc(b["text"])}</span>' for b in (c.get("badges") or []))
-    if eb or badges:
-        parts.append(f'<div class="ctype">{eb} {badges}</div>')
+    # eyebrow (+ optional icon) + badges. badge variant → colored pill (ok/warn/bad/neutral).
+    eb = esc(c.get("eyebrow", "")) if c.get("eyebrow") else ""
+    icon = f'<span class="cicon">{esc(c["icon"])}</span>' if c.get("icon") else ""
+    def _badge(b):
+        v = b.get("variant", "")
+        cls = f"badge {esc(v)}" if v in ("ok", "warn", "bad", "neutral") else "badge"
+        return f'<span class="{cls}">{esc(b["text"])}</span>'
+    badges = "".join(_badge(b) for b in (c.get("badges") or []))
+    if eb or badges or icon:
+        parts.append(f'<div class="ctype">{icon}{eb} {badges}</div>')
     # title (linked)
     title = c.get("title") or c.get("id") or ""
     if c.get("href"):
@@ -241,6 +254,9 @@ def render_card_html(c: dict) -> str:
         parts.append(f'<div class="ctitle">{esc(title)}</div>')
     if c.get("meta"):
         parts.append(f'<div class="cmeta">{esc(c["meta"])}</div>')
+    # body / summary line (optional)
+    if c.get("body"):
+        parts.append(f'<div class="cbody">{esc(c["body"])}</div>')
     # actions
     if c.get("actions"):
         btns = "".join(
@@ -307,16 +323,26 @@ def render_card_grid(spec: dict) -> str:
     hero = _sanitize_hero(spec.get("hero", esc(spec.get("title", "Portal"))))
     eyebrow = f'<div class="eyebrow">{esc(spec["eyebrow"])}</div>' if spec.get("eyebrow") else ""
     sub = f'<div class="sub">{esc(spec["subtitle"])}</div>' if spec.get("subtitle") else ""
+    # footer: trusted HTML (caller esc()'s dynamic bits), matches dashboard-table-builder convention.
+    footer = f'<div class="foot">{spec["footer"]}</div>' if spec.get("footer") else ""
+    # prebody (between hero and controls) / postbody (after grid) — raw trusted HTML the caller owns
+    # (esc() any dynamic bits). Matches dashboard-table-builder's `prebody`. For KPI strips, ledgers,
+    # side tables a pure card-grid doesn't model. docs.ace sets neither → its render is unaffected.
+    prebody = spec.get("prebody", "") or ""
+    postbody = spec.get("postbody", "") or ""
     # progressive enhancement: controls hidden until html.js; a tiny inline sets it (its own hash if CSP)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(spec.get("title","Portal"))}</title>
-<style>{theme["font"]}{theme["vars"]}{css}</style></head><body>
+<style>{theme["font"]}{theme["vars"]}{css}{spec.get("extra_css","")}</style></head><body>
 <div class="wrap">
 {eyebrow}<h1>{hero}</h1>{sub}
+{prebody}
 <div class="controls">{"".join(ctrls)}</div>
 <div id="count">{n} {noun}{'' if n==1 else 's'}</div>
 <div id="grid" data-noun="{esc(noun)}">{cards_html}</div>
+{postbody}
+{footer}
 </div>
 {endpoint_js}
 <script>{GRID_JS}</script>

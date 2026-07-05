@@ -1,6 +1,6 @@
 # PRD — greenhouse.ace portal migration onto the shared `card_grid` module
 
-**Status:** DRAFT (spec-only). **Owner:** Apollo. **Date:** 2026-07-04
+**Status:** ✅ SHIPPED 2026-07-05 (greenhouse.ace live on the module; sort dropdown added per Ace). **Owner:** Apollo. **Date:** 2026-07-04
 **Depends on:** `card_grid.py` (shipped this session; docs.ace = consumer #1).
 **Theme decision (Ace, 2026-07-04):** greenhouse **keeps `github-dark`** — do NOT flip it to noir.
 
