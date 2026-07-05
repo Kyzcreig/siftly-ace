@@ -1,181 +1,181 @@
-# PRD — doc-share → docs.ace default flip + durable-doc backfill (v1.2)
+# PRD — doc-share → docs.ace default flip + durable-doc backfill (v1.3)
 
-**Status:** DRAFT v1.2 (Pass-1 BLOCK folded; for Pass-2 review). **Owner:** Apollo. **Date:** 2026-07-05
+**Status:** DRAFT v1.3 (OQ4=A accepted; sensitivity tower removed; identity-key + fallback fixed).
+**Owner:** Apollo. **Date:** 2026-07-05
 **Parent PRD:** `PRD-docs-ace-local-hosting.md` (v1.3 APPROVED) — its deferred **v1.1 / Phase 6**.
-**Trigger met:** docs.ace v1.0 stable; Ace asked to "backfill docs.ace with all our previous docs" +
-confirmed "keep here.now as an option in doc-share, default → docs.ace portal."
-**Review:** Pass-1 Opus = **BLOCK** (3 blockers, all folded below → §Changelog).
+**Reviews:** Pass-1 BLOCK + Pass-2 BLOCK folded. **Ace decisions (2026-07-05):** OQ4 = **(A) accept
+LAN-readable** (auth deferred to a future add if he cares); keep the identity-key fix + the
+fallback data-integrity fix.
 
 ## 1. Summary & Goal
 Make **docs.ace the default publish target for `doc-share`** (keeping here.now + gist as explicit
 opt-in backends) and **backfill a curated set of durable local docs** into docs.ace so it becomes the
-canonical "everything we made, in one place" archive. Every *new* durable doc then lands in docs.ace
-natively — **subject to the exposure gate (§3 INV-3 / Phase 0), because the flip makes all future
-ad-hoc shares LAN-public-by-default, which is a larger surface than the one-time backfill.**
+canonical "everything we made, in one place" archive. New durable docs then land in docs.ace natively.
 
-## 2. Non-Goals
-- **NOT** backfilling here.now's 200 transient publishes (daily-brief re-publishes, one-off review
-  shares, test pages) — churn, not durable docs. (here.now's API retains only a ~5-day rolling window;
-  no deep archive exists to recover.)
-- **NOT** removing here.now/gist from doc-share — they stay as `--backend here-now|gist` (Ace's ask).
-  Only the *default* changes, and only after Phase 0.
-- **NOT** auto-importing all ~230 candidate docs — backfill is a **curated, per-doc-acked allow-list**.
-- **NOT** changing docs.ace's auth *model* in this cut — but Phase 0 MAY change its network *binding*
-  (Caddy LAN→tailnet) as the resolution of OQ4.
+## 2. Exposure decision (was the load-bearing gate; now RESOLVED)
+docs.ace binds LAN `192.168.1.18`, no per-node auth → readable by any LAN host. **Ace accepted this
+(2026-07-05):** LAN-readable is fine for now; auth is a future add if he decides he cares. This is
+**strictly less exposed than today's default** — doc-share currently defaults to **here.now (public
+internet)**, so the flip to a LAN-only portal *reduces* exposure. Consequently the entire per-share
+content-sensitivity/ack machinery from v1.2 is **removed** (nothing to gate once exposure is accepted).
 
-## 3. Constitution / Invariants
-- **INV-1 (backends retained, default opt-out-able):** default backend becomes `docs-ace`, but every
-  caller still reaches here.now/gist via `--backend` / `DOC_SHARE_BACKEND`. *Closeout proof:* both
-  still publish to old targets; grep shows no regression in caller wiring.
-- **INV-2 (secret gate runs on every path — but is NOT the exposure gate):** `privacy-scan.sh` runs
-  before every backend incl. docs-ace. *This blocks literal secrets/RFC-1918/tailscale/.ace IPs only —
-  it is explicitly NOT sufficient to declare content safe for a no-login LAN archive* (see INV-3b).
-  *Closeout proof:* fake secret → blocked on docs-ace path.
-- **INV-3 (exposure posture decided BEFORE the flip AND the backfill):** docs.ace binds
-  `192.168.1.18` (LAN) with no per-node auth → readable by **any LAN host**. Neither the default flip
-  (Phase 1) NOR sensitive backfill (Phase 2) lands until OQ4 (§9) returns a decision. *Closeout proof:*
-  OQ4 decision recorded; Phase 1 default-flip does not merge before it.
-- **INV-3b (content-sensitivity gate, distinct from the secret scan):** a durable doc reaches docs.ace
-  ONLY after a **content-sensitivity check** that the literal-secret scan can't do — a heuristic pass
-  (internal host/domain names, 1Password item UUIDs, credential *references*, private architecture) +
-  an **explicit per-doc human ack** in the backfill manifest (and, for the live flip, a documented
-  sensitivity default per `type`). *Closeout proof:* a PRD carrying a 1P item UUID (e.g. the parent
-  AGENTS.md style `xxxx…`) is flagged by the sensitivity pass, not waved through by privacy-scan.
-- **INV-4 (fallback never escalates exposure, never loses data, never silent):** on docs-ace publish
-  failure, doc-share does **NOT** silently fall back to public here.now. It either (a) **hard-fails
-  loudly** (default), or (b) falls back only if the caller explicitly allowed a public target for that
-  doc AND re-runs the scan with here.now's *public* threat model — and **every fallback fires a
-  #alerts notification**. *Closeout proof:* host-down + no opt-in → loud fail, no here.now publish, no
-  silent data loss; host-down + opt-in → here.now URL + a #alerts line.
-- **INV-5 (idempotent, single-key, collision-checked across BOTH paths):** a doc's docs.ace slug is
-  `words(hash(doc_identity_key||salt))` where `doc_identity_key` follows **ONE** deterministic rule
-  (D-4) — the backfill path and the live-flip path share the same key space and the collision check
-  spans both. Re-publishing the same source updates in place; never a dup card. *Closeout proof:* run
-  backfill twice → identical slugs; publish the same doc via the live flip → same slug as its backfill.
-- **INV-6 (backfill reversible, in-docroot):** every backfilled doc is soft-deletable via
-  `/api/doc/delete`; no write outside docroot. *Closeout proof:* delete → 404 + neighbor serves.
+## 3. Non-Goals
+- **NOT** backfilling here.now's ~200 transient publishes (daily-brief re-publishes, one-off review
+  shares, test pages) — churn, and here.now retains only a ~5-day window anyway.
+- **NOT** removing here.now/gist — they stay as `--backend here-now|gist` (Ace's ask). Only the
+  *default* changes.
+- **NOT** auto-importing all ~230 candidate docs — backfill is a **curated allow-list** (dry-run
+  default, human-approved manifest).
+- **NOT** adding auth / tailnet-restriction in this cut (explicitly deferred by Ace; future work).
+- **NOT** a per-share content-sensitivity heuristic or ack prompt (removed — exposure accepted).
 
-## 4. Resolved Decisions
+## 4. Constitution / Invariants
+- **INV-1 (backends retained, default opt-out-able):** default backend → `docs-ace`, but every caller
+  still reaches here.now/gist via `--backend` / `DOC_SHARE_BACKEND=here-now`. **The automated callers
+  of doc-share are enumerated and proven unbroken** (see D-3). *Closeout proof:* `--backend here-now`
+  and `--backend gist` still publish to old targets; the enumerated automated callers run unchanged.
+- **INV-2 (secret scan runs on every path):** `privacy-scan.sh` runs before every backend incl.
+  docs-ace (its `.ace`/RFC-1918/tailscale/secret patterns still apply). *Closeout proof:* fake secret
+  on the docs-ace path → blocked. (No longer claimed as an *exposure* gate — exposure is accepted.)
+- **INV-3 (fallback never silently loses a durable doc):** on docs-ace publish failure, doc-share does
+  **NOT** silently fall back to public here.now (which purges in ~5 days → silent durable loss). Default
+  = **hard-fail loudly** with the reason; `--allow-public-fallback` opts into a here.now fallback AND
+  **fires a #alerts notification that is proven to DELIVER** (not just emitted). *Closeout proof:*
+ host-down + no opt-in → loud non-zero exit, no here.now publish; host-down + opt-in → here.now URL +
+ a #alerts message **verified by reading it back from the #alerts channel by message ID** (round-trip
+ the content — the discord fetch, not a `notify.py exited 0` — matching the fleet's
+ alert-delivery-path-integrity discipline).
+- **INV-4 (deterministic dedup for real source files; fresh slug for transient — never a dup card):**
+  see D-2. A re-share of the **same on-disk source file** maps to the **same** docs.ace slug and
+  updates in place; a **generated/transient** input (`/tmp/*`, stdin, `--fresh`) gets a fresh
+  timestamp slug (today's behavior) and carries **no** dedup contract. The collision check spans both
+  the backfill and live paths. *Closeout proof:* share the same file twice → identical slug, one card;
+  share a `/tmp` render twice → two fresh slugs (documented, expected).
+- **INV-5 (briefs' slugging is untouched):** the briefs publish via `build-report.sh`'s own
+  `DOCS_PUBLISHER` path calling `ace_publisher.py --doc-id "…|<date>"` **directly** — they do NOT use
+  doc-share's default backend or key derivation. The flip cannot change how briefs slug. *Closeout
+  proof:* grep shows `build-report.sh` calls `ace_publisher.py` directly; a brief run pre/post-flip
+  yields the same deterministic per-day slug.
+- **INV-6 (backfill reversible, in-docroot, idempotent, orphans reconciled):** every backfilled doc is
+  soft-deletable via `/api/doc/delete`; no write outside docroot; re-run yields identical slugs; **a
+  rename/move that changes a doc's key auto-soft-deletes the orphaned old slug** (D-2 RC-4) — not a
+  dangling log note. *Closeout proof:* delete → 404 + neighbor serves; re-run → no dup cards; rename a
+  tracked source → old card gone, new card present (one card, not two).
+
+## 5. Resolved Decisions
 - **D-1:** Default `doc-share` backend → `docs-ace`; here.now + gist stay as `--backend` opts (Ace).
-  **Gated on Phase 0** (INV-3).
-- **D-2:** Backfill = curated allow-list with a **per-doc human ack** column, human-approved before it
-  runs. NOT auto-sweep.
-- **D-3:** Backfill source = local durable artifacts (siftly PRDs, reports, Obsidian overviews) via
-  `ace_publisher.py`. NOT here.now scraping.
-- **D-4 (pinned, single rule):** `doc_identity_key = "docshare|" + sha1(canonical_source_path)[:12]`
-  where `canonical_source_path` is the repo-relative path for repo docs / vault-relative for Obsidian.
-  Title/relpath "e.g." from v1.1 is **removed** — one rule only, so the same source always maps to one
-  slug. A **rename/move changes the key → orphans the old card**; the importer emits a
-  `renamed_from→to` note so the stale card can be deleted (INV-6). `salt` = the existing docs.ace salt
-  in `~/.hermes/var/docs-portal/` (same D-11 salt the briefs use; pinned, not per-run).
-- **D-5:** `type` taxonomy: `prd` / `report` / `overview` / `doc`. **Default sensitivity per type:**
-  `prd` = sensitive (never auto-flips to docs-ace pre-OQ4); `report`/`overview` = per-doc ack; briefs
-  keep `briefs`.
-- **D-6 (fallback default):** hard-fail-loud is the default (INV-4a); public fallback is opt-in per
-  publish (`--allow-public-fallback`), never automatic.
+  No sensitivity gating (exposure accepted, D-0/§2). Global override `DOC_SHARE_BACKEND=here-now` works.
+- **D-2 (identity key — the pinned rule, covers the firehose):**
+  - **Real on-disk source** (an arg that resolves to an existing file that is NOT under a temp root):
+    `doc_identity_key = "docshare|" + sha1(logical_id)[:12]` where `logical_id` is, in priority order,
+    the **repo-relative path** (if the file is inside a git work-tree: `git -C <dir> rev-parse
+    --show-toplevel` + relpath), else the **vault-relative path** (if under the Obsidian vault root),
+    else `os.path.realpath(src)` as the fallback. Using a *logical* id first means the SAME doc dedups
+    even when reached via a different absolute mount on a second host (RC-1); realpath is only the
+    last-resort key for files outside any known root. **Documented limitation:** a file outside any
+    repo/vault root dedups per-host/per-absolute-path only. A rename/move within a root changes the key
+    → the importer/CLI **auto-soft-deletes the old slug** when it can resolve the prior key (RC-4), not
+    just log a note.
+  - **Generated / transient input:** a fresh timestamp slug (`docshare|<epoch_ms>`), **no dedup**.
+    *Transient is detected by:* the resolved path is under ANY temp root — `$TMPDIR` (macOS
+    `/var/folders/…`), `/tmp`, `/private/tmp`, `/var/tmp` (all realpath-normalized so the `/tmp`→
+    `/private/tmp` symlink is handled) — OR the input is stdin — OR `--fresh` is passed. This makes the
+    common macOS `mktemp`→`/var/folders/…` render correctly transient (RC-2) instead of getting a
+    realpath key on an ephemeral path that orphans next run.
+  - A caller may always override with an explicit `--doc-id` (what the briefs do via ace_publisher).
+  - `salt` = the existing docs.ace D-11 salt in `~/.hermes/var/docs-portal/` (pinned, not per-run).
+- **D-3 (automated-caller safety):** enumerate every automated `doc-share.sh` caller and confirm the
+  flip is safe for each: `build-report.sh` bypasses doc-share's default (uses `ace_publisher.py`
+  directly, INV-5) — unaffected; any cron/skill that calls `doc-share.sh` for an internal artifact now
+  lands on docs.ace (a *tightening*, LAN vs public) and keeps working (URL still printed on stdout).
+  No interactive prompt is introduced (would break non-interactive callers), consistent with removing
+  the ack machinery.
+- **D-4:** Backfill = curated allow-list manifest, human-approved, dry-run default. Source = local
+  durable artifacts via `ace_publisher.py`. `type` ∈ `prd`/`report`/`overview`/`doc`.
+- **D-5 (fallback default):** hard-fail-loud (INV-3); `--allow-public-fallback` opt-in + delivered
+  #alerts. Never automatic silent public egress.
 
-## 5. Architecture / Design
+## 6. Architecture / Design
+**6A. doc-share `docs-ace` backend + default flip.**
+- New `scripts/backends/docs-ace.sh`: rendered HTML + title + derived doc-id (D-2) → `ace_publisher.py`,
+  prints `https://<slug>.docs.ace/` on stdout, non-zero on fail. **Shared-contract discipline:** factor
+  the common arg/scan/echo path so `docs-ace.sh` and `here-now.sh` don't drift, or add a parity check
+  asserting both expose the same flags. Pre-edit `.bak-<ts>-pre-docsace-default` of `doc-share.sh`.
+- Default flip: `here-now` → `docs-ace`; add `docs-ace` to the `--backend` allow-list; `privacy-scan.sh`
+  unchanged (runs before backend). No per-type routing (exposure accepted).
+- Fallback: INV-3 — hard-fail-loud default; `--allow-public-fallback` → re-scan (public model) +
+  here.now + **delivered** #alerts.
 
-**5A. doc-share `docs-ace` backend + gated default flip.**
-- New `scripts/backends/docs-ace.sh`: rendered HTML + title + derived doc-id → `ace_publisher.py`,
-  prints `https://<slug>.docs.ace/` on stdout, non-zero on fail. **To avoid the two-copy drift the
-  reviewer flagged:** factor the shared publish contract (arg parsing, scan invocation, URL echo) so
-  `docs-ace.sh` and `here-now.sh` don't diverge — or add a parity lint asserting both expose the same
-  flags. Pre-edit backup of `doc-share.sh` per house discipline (`.bak-<ts>-pre-docsace-default`).
-- Default flip: `here-now` → `docs-ace`, **only for types whose default sensitivity permits it
-  pre-OQ4** (D-5). Until OQ4=accept (or the Caddy re-bind lands), `prd`-type shares keep here.now
-  default; `report`/`overview` default to docs-ace with the per-doc ack. Post-OQ4=accept (or
-  tailnet-restricted), everything defaults to docs-ace.
-- Fallback: INV-4 — hard-fail-loud default; `--allow-public-fallback` re-scans (public threat model)
-  + fires #alerts; **NO silent private→public egress, NO silent durable-doc loss.**
+**6B. Curated backfill importer.**
+- `~/.hermes/var/docs-portal/backfill.py` **+ a committed copy in `deploy/docs-ace/`** (not
+  single-copy-on-disk runtime): manifest (JSON `[{path,type,title,doc_id?}]`) → render MD→HTML (reuse
+  `render-pretty-doc.sh`) → `ace_publisher.py` per entry → report slugs. **Idempotent, dry-run default,
+  cross-path collision check.**
+- Manifest helper scans candidate dirs → proposed manifest with a one-line summary per doc → Ace
+  trims/approves → importer runs only approved rows.
 
-**5B. Curated backfill importer.**
-- `~/.hermes/var/docs-portal/backfill.py` (+ committed copy in `deploy/docs-ace/`, so it's not a
-  single-copy-on-disk runtime script — reviewer point): takes an **allow-list manifest** (JSON:
-  `[{path, type, title, doc_id, acked_by, sensitivity}]`), renders MD→HTML (reuse
-  `render-pretty-doc.sh`), runs the **INV-3b sensitivity pass** per doc, calls `ace_publisher.py`,
-  reports slugs. **Idempotent, dry-run default, cross-path collision check.**
-- Manifest generation (Phase 2): a helper scans candidate dirs, emits a *proposed* manifest with a
-  one-line summary + a **sensitivity flag** per doc → Ace acks/trims → importer runs only acked rows.
+## 7. Implementation Phases
+- **Phase 1 — docs-ace backend + default flip + fallback (6A).**
+  - *Unit/script:* `doc-share.sh --backend docs-ace <file.md>` → `*.docs.ace` URL; doc in portal +
+    FTS-searchable; re-share same file → same slug (D-2 dedup); share a `/tmp` render → fresh slug.
+  - *E2E:* three-backend matrix (default→docs-ace, `--backend here-now`→here.now, `--backend gist`→gist);
+    **host-down → loud fail, no here.now (INV-3); `--allow-public-fallback` → here.now URL + a RECEIVED
+    #alerts message**; the enumerated automated callers (D-3) still work.
+  - *Negative:* fake secret → privacy-scan blocks on docs-ace path; `--backend bogus` → clean error.
+  - *Verify with:* the matrix + dedup/fresh check + the delivered-alert capture + caller smoke.
+- **Phase 2 — curated backfill (6B).**
+  - *Unit/script:* `backfill.py --manifest <m.json> --dry-run` lists intended; real run publishes;
+    re-run → identical slugs, no dup cards (INV-6); cross-path collision check passes.
+  - *E2E:* backfill 3-5 real durable docs **including one rich doc (mermaid/internal-links/an image)**
+    → each renders at its slug + body-searchable + right `type` facet.
+  - *Negative:* delete a backfilled doc → 404 + neighbor serves (INV-6).
+  - *Verify with:* dry-run + live render of the set + idempotency re-run + delete.
 
-## 6. Implementation Phases
+## 8. Security, Privacy, Ops
+- Exposure **accepted** (§2) — LAN-readable, no login; less exposed than today's public-here.now
+  default. Auth is future work if Ace wants it.
+- INV-2 secret scan still runs on every path (defense-in-depth, not the exposure gate).
+- **Fallback data-integrity (INV-3):** loud-fail default; opt-in public fallback with a *delivered*
+  alert; the docs.ace canary gains a **"fallback-fired" signal**. No silent durable-doc loss.
+- Backfill reversible + idempotent + dry-run default; scripts committed to `deploy/docs-ace/`.
 
-- **Phase 0 — OQ4 exposure decision (HARD PRECONDITION for BOTH Phase 1 flip AND Phase 2).**
-  Ground-truthed: Caddy binds `192.168.1.18` (LAN), no per-node auth. Present Ace the options (§9 OQ4).
-  *Verify with:* recorded decision. **The default flip and any sensitive backfill BLOCK until this
-  returns.** If "restrict to tailnet," the Caddy re-bind is part of Phase 0 and is itself verified
-  (docs.ace reachable from a tailnet node, refused from a non-tailnet LAN host).
-
-- **Phase 1 — docs-ace backend + gated default flip (5A).** *Gated on Phase 0 (blocker 1 fix).*
-  - *Unit/script:* `doc-share.sh --backend docs-ace <md>` → `*.docs.ace` URL; doc appears + FTS-searchable.
-  - *E2E:* three-backend matrix (default→per-D-5, `--backend here-now`→here.now, `--backend gist`→gist);
-    **host-down → loud fail (no here.now) by default; `--allow-public-fallback` → here.now URL + a real
-    #alerts line** (INV-4).
-  - *Negative:* fake secret → privacy-scan blocks on docs-ace path; a `prd`-type share pre-OQ4=accept
-    → stays here.now (does NOT silently land on the LAN portal); `--backend bogus` → clean error.
-  - *Verify with:* the matrix + the fallback-alert capture + the pre-OQ4 prd-routing check.
-
-- **Phase 2 — curated backfill (5B), gated on Phase 0.**
-  - *Unit/script:* `backfill.py --manifest <acked.json> --dry-run` lists intended publishes; real run
-    publishes; re-run → same slugs, no dup cards (INV-5); cross-path collision check passes.
-  - *E2E:* backfill 3-5 real durable docs **including one with mermaid/internal-links/an image** (not
-    only plain PRDs — reviewer point) → each renders at its slug + body-searchable + right `type`.
-  - *Negative:* a manifest doc carrying a 1P item UUID / internal host → flagged by the INV-3b
-    sensitivity pass (NOT waved through by privacy-scan); delete a backfilled doc → 404 + neighbor serves.
-  - *Verify with:* dry-run + live render of the set + idempotency re-run + the sensitivity-flag catch.
-
-## 7. Security, Privacy, Ops
-- **Load-bearing gate = Phase 0 (OQ4).** LAN-readable no-login archive of PRDs is materially more
-  sensitive than two daily briefs. Resolve exposure before the flip AND the backfill.
-- **Two distinct gates, not one:** INV-2 secret scan (literal secrets/IPs) + INV-3b content-sensitivity
-  (host names, 1P UUIDs, cred refs, architecture) + per-doc human ack. Neither alone is sufficient.
-- **New failure mode acknowledged (reviewer point):** the flip creates a docs-ace-down path. It
-  **hard-fails loud** by default (no silent public egress, no durable loss); public fallback is opt-in
-  and **alerts on every fire**. The docs.ace canary gains a **"fallback-fired" signal**.
-- Backfill reversible (soft-delete) + idempotent + dry-run default. Scripts committed to
-  `deploy/docs-ace/` (not single-copy runtime).
-
-## 8. Risks & Mitigations
-- **R1: default flip breaks a here.now-expecting caller.** → INV-1 + three-backend E2E + retained flags.
-- **R2: continuous ad-hoc PRD shares silently go LAN-public post-flip (the real top risk).** → INV-3
-  (gated on Phase 0) + D-5 per-type sensitivity default (prd stays here.now pre-OQ4=accept).
-- **R3: fallback egresses LAN-private content to public here.now / loses durable docs.** → INV-4
-  hard-fail-loud default + opt-in-public-with-alert.
-- **R4: backfill floods the clean index.** → D-2 curated, per-doc-acked, dry-run default.
-- **R5: doc_identity_key collisions / dup cards across the two write paths.** → D-4 single rule +
-  INV-5 cross-path collision check.
-- **R6: MD→HTML fails on rich PRDs (mermaid/images/links).** → Phase-2 E2E includes a rich doc.
-
-## 9. Open Questions
-- **OQ4 (load-bearing, Phase 0) — 1-3-1 for Ace:**
-  - *Problem:* docs.ace is LAN-readable, no login. Making it the default share target + a full-text PRD
-    archive exposes all internal PRDs to any device on the home LAN.
-  - *Options:* **(a) Accept LAN-readable** — simplest, but every PRD is readable by any LAN guest/IoT
-    device. **(b) Restrict Caddy bind to Ace's tailnet IP** — only Ace's own tailnet nodes reach
-    docs.ace; LAN devices get refused; robust, ~one Caddy edit + AGH/routing check (recommended).
-    **(c) Add a light auth gate** (basic-auth / a shared cookie) — most work, defends even a
-    compromised tailnet node, likely overkill for a personal homelab.
-  - *Recommendation:* **(b) tailnet-restrict** — matches "private, yours," keeps no-login convenience
-    for Ace's devices, closes the LAN-guest hole, and is cheap. Then default-flip everything safely.
-- **OQ5:** backfill scope — PRDs+reports (~40) first, or also Obsidian overviews (~199)? Recommend:
-  start PRDs+reports, add overviews only if the portal proves useful. (Interacts with R4 + exposure.)
+## 9. Risks & Mitigations
+- **R1: flip breaks a here.now-expecting caller.** → INV-1 + D-3 enumerated callers + three-backend E2E.
+- **R2: docs-ace-down silently loses a durable doc to here.now's purge.** → INV-3 loud-fail + opt-in.
+- **R3: dup cards / collisions across backfill + live paths.** → D-2 single rule + INV-4 cross-path check.
+- **R4: backfill floods the clean index.** → D-4 curated, dry-run default.
+- **R5: MD→HTML fails on rich PRDs.** → Phase-2 E2E includes a rich doc.
+- **R6: brief slugging changes on the flip.** → INV-5 (briefs bypass doc-share entirely); proven by grep.
 
 ## 10. Acceptance Criteria
-- [ ] OQ4 decided + (if "restrict") Caddy re-bind verified (tailnet reaches, non-tailnet LAN refused)
-  BEFORE the flip. Evidence: recorded decision + the reach/refuse probe.
-- [ ] `doc-share` defaults per D-5; `--backend here-now|gist` still reach old targets. Evidence: matrix.
-- [ ] docs-host-down → **loud fail by default**, no here.now, no loss; `--allow-public-fallback` →
-  here.now + a #alerts line. Evidence: both host-down runs.
-- [ ] privacy-scan blocks a secret AND the INV-3b sensitivity pass flags a 1P-UUID/internal-host doc.
-  Evidence: both catches.
-- [ ] Curated backfill of the acked manifest renders (incl. a rich doc) + body-searchable + typed;
-  idempotent re-run → no dup cards; cross-path slug identical; a backfilled doc is deletable. Evidence:
-  Phase-2 E2E.
+- [ ] `doc-share` defaults to docs.ace; `--backend here-now|gist` still reach old targets; enumerated
+  automated callers unbroken. Evidence: matrix + caller smoke.
+- [ ] Same on-disk file re-shared → identical slug (one card); `/tmp` render → fresh slug. Evidence:
+  the dedup/fresh check.
+- [ ] docs-host-down → loud fail, no here.now, no loss; `--allow-public-fallback` → here.now + a
+  #alerts message **read back from the channel by message ID** (round-tripped content, not a notify
+  exit code). Evidence: both host-down runs + the fetched alert message.
+- [ ] Briefs slug identically pre/post-flip (bypass doc-share). Evidence: grep + a brief run.
+- [ ] privacy-scan blocks a secret on the docs-ace path. Evidence: fake-secret doc → blocked.
+- [ ] Curated backfill of the manifest renders (incl. a rich doc) + body-searchable + typed; idempotent
+  re-run → no dup cards; a backfilled doc is deletable. Evidence: Phase-2 E2E.
 
 ## Changelog
-- **v1.2 (2026-07-05):** folded Pass-1 Opus BLOCK — (blocker 1) gated the default flip on Phase 0 +
-  added D-5 per-type sensitivity so PRDs don't silently go LAN-public pre-OQ4; (blocker 2) rewrote
-  fallback (INV-4) to hard-fail-loud default + opt-in-public-with-#alerts, no silent private→public
-  egress or durable loss; (blocker 3) added INV-3b content-sensitivity gate + per-doc ack, distinct
-  from the literal-secret scan; pinned D-4 to a single key rule + INV-5 cross-path collision check;
-  committed scripts to `deploy/docs-ace/`; Phase-2 E2E now includes a rich doc.
+- **v1.3-AWC (2026-07-05):** Pass-3 = APPROVE-WITH-CHANGES; folded 4 required changes — (RC-1) D-2
+  keys on a LOGICAL id (repo-relative → vault-relative → realpath fallback) so a doc dedups across the
+  fleet's multi-mount Obsidian topology, realpath only for files outside any known root (per-host
+  limitation documented); (RC-2) transient-detection predicate pinned to ALL temp roots incl. macOS
+  `$TMPDIR`/`/var/folders` (realpath-normalized) so `mktemp` renders don't orphan; (RC-3) the
+  delivered-alert AC now names its capture method (read back from #alerts by message ID, not a notify
+  exit code); (RC-4) rename-orphan is AUTO-soft-deleted, not a dangling note (INV-6). NOTE: the whole
+  sensitivity-tower removal is *conditional on OQ4=(A) accept* — a future reversal to restrict/auth
+  must re-add it. **APPROVED for implementation.**
+- **v1.3 (2026-07-05):** Ace decided OQ4=(A) accept LAN-readable → **removed the entire per-share
+  content-sensitivity + ack tower** (Pass-2 blocker 1 dissolves: nothing to gate once exposure is
+  accepted; and the flip is a *tightening* vs today's public-here.now default). Fixed the identity key
+  (Pass-2 blocker 2): D-2 now covers generated/`/tmp` inputs (fresh slug, no dedup) vs real on-disk
+  files (deterministic dedup), and INV-5 proves briefs bypass doc-share entirely so their fresh-slug
+  behavior is structurally untouched. Kept the fallback data-integrity fix (INV-3 loud-fail +
+  opt-in-with-*delivered*-alert) and the automated-caller enumeration (D-3). Net: the spec got
+  **smaller**, and the two remaining fixes are bounded (a key rule + a fallback branch), not new towers.
+- **v1.2:** folded Pass-1 BLOCK (gate flip on exposure, fallback semantics, secret-vs-sensitivity split).
