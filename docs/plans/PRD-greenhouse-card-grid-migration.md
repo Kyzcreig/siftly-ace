@@ -84,3 +84,26 @@ where noted. Keep GRID_JS byte-identical (CSP hash must not drift) — these are
 - `render_legacy()` retained for rollback; both repos committed/pushed.
 - Open question (OQ): does greenhouse want the module's **sort dropdown** (docs.ace has it; greenhouse
   today has none)? Default: omit for parity; add later if Ace wants it.
+
+---
+
+## As-built delta (2026-07-05) — post-migration UI iterations (Ace-directed)
+
+The migration shipped github-dark, then Ace requested a series of refinements. Final live state:
+
+1. **Theme: luxe noir** (reversed the "keep github-dark" call) — Fraunces serif + gold on #0c0c0e,
+   matching docs.ace/the briefs. `hero_size="30px"` for the short "Greenhouse" wordmark.
+2. **Sort dropdown added** (Newest / Title A–Z) — Ace said yes to the OQ.
+3. **Layout toggle (grid ⇄ list)** — shared-module feature; crisp inline-SVG grid/list icons
+   (not a unicode glyph); localStorage-persisted per portal.
+4. **Count moved into the controls row**, right-aligned (logs.ace pattern) — no standalone line.
+5. **KPI band → native `spec["kpis"]`** in the shared module, logs.ace bordered-band format
+   (top/bottom border, vertical dividers, serif value) — replaced the floating `.stat` boxes.
+6. **Status strip** given its own spaced line (was crowding the search row).
+7. **Click-to-expand card body** — full seed summary (un-clamped; was 300-char) revealed on card
+   click, works grid + list. `card.body` carries the full text; CSS clamps to 3 lines + expand.
+
+All 7 landed in the SHARED `card_grid` module (so docs.ace inherits them) except theme/hero_size/KPI
+DATA which are greenhouse-spec choices. docs.ace verified zero-regression at each step; its CSP
+computes `grid_js_sha256()` dynamically so every GRID_JS change auto-followed. Module doc: skill
+`dashboard-table-builder`. `render_legacy()` retained for rollback throughout.
