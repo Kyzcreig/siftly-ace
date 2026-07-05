@@ -19,21 +19,22 @@ import { getActiveModelFor } from './settings'
 export interface Translated {
   text: string          // English (or original if untranslated)
   translated: boolean    // true only when we actually replaced foreign text
-  srcLang: string        // human label of detected source script, e.g. "中文"
+  srcLang: string        // English language name of detected source, e.g. "French", "Chinese"
 }
 
-// Script ranges that indicate non-English content worth translating. Latin (incl.
-// accented), digits, punctuation, emoji do NOT count — a French/Spanish tweet with
-// only Latin chars is left as-is (rare, low value, and risks over-translating names).
+// Script ranges that indicate non-English content worth translating. Latin-script
+// languages (French/Spanish/German/...) are handled separately by the stopword
+// heuristic detectLatinForeign() below — x.com translates those too.
+// Labels are English language names (x.com parity: "Translated from Japanese").
 const SCRIPTS: Array<{ re: RegExp; label: string }> = [
-  { re: /[\u3040-\u30ff]/, label: '日本語' },                      // Hiragana/Katakana (check FIRST: JP text also has Han)
-  { re: /[\uac00-\ud7af]/, label: '한국어' },                      // Hangul
-  { re: /[\u4e00-\u9fff\u3400-\u4dbf]/, label: '中文' },          // CJK Han
-  { re: /[\u0400-\u04ff]/, label: 'Русский' },                    // Cyrillic
-  { re: /[\u0600-\u06ff\u0750-\u077f]/, label: 'العربية' },        // Arabic
-  { re: /[\u0590-\u05ff]/, label: 'עברית' },                       // Hebrew
-  { re: /[\u0e00-\u0e7f]/, label: 'ไทย' },                         // Thai
-  { re: /[\u0900-\u097f]/, label: 'हिन्दी' },                      // Devanagari
+  { re: /[\u3040-\u30ff]/, label: 'Japanese' },                    // Hiragana/Katakana (check FIRST: JP text also has Han)
+  { re: /[\uac00-\ud7af]/, label: 'Korean' },                      // Hangul
+  { re: /[\u4e00-\u9fff\u3400-\u4dbf]/, label: 'Chinese' },        // CJK Han
+  { re: /[\u0400-\u04ff]/, label: 'Russian' },                     // Cyrillic
+  { re: /[\u0600-\u06ff\u0750-\u077f]/, label: 'Arabic' },         // Arabic
+  { re: /[\u0590-\u05ff]/, label: 'Hebrew' },                      // Hebrew
+  { re: /[\u0e00-\u0e7f]/, label: 'Thai' },                        // Thai
+  { re: /[\u0900-\u097f]/, label: 'Hindi' },                       // Devanagari
 ]
 
 /** Detect the dominant non-English script, or null if the text is English/Latin. */
@@ -46,6 +47,41 @@ export function detectForeign(text: string): string | null {
     const hits = (text.match(g) || []).length
     if (hits >= 3) return label
   }
+  return null
+}
+
+// ── Latin-script language detection (French/Spanish/German/Portuguese/Italian) ──
+// x.com translates these too (Ace's example was a French tweet), so a script-only
+// detector misses the most common case. Cheap local stopword heuristic: count
+// distinctive function-word hits per language; require a clear margin over English
+// so an English tweet can never trigger a paid API call. Tokens chosen to avoid
+// English collisions (no "a", "on", "as"...).
+const LATIN_LANGS: Array<{ label: string; words: Set<string> }> = [
+  { label: 'French', words: new Set(['le', 'la', 'les', 'des', 'une', 'est', 'et', 'que', 'qui', 'dans', 'pour', 'pas', 'avec', 'sur', 'je', 'vous', 'nous', 'ce', 'cette', 'du', 'au', 'aux', 'mais', 'plus', 'être', 'sont', 'ça', 'très', 'comme', 'fait', 'aussi', 'bien', 'tout', 'tous', 'même', 'où', 'donc', 'quand', 'parce', 'depuis', 'était', 'j\u2019ai', "j'ai", 'c\u2019est', "c'est", 'n\u2019est', "n'est"]) },
+  { label: 'Spanish', words: new Set(['el', 'los', 'las', 'una', 'es', 'y', 'que', 'en', 'por', 'para', 'con', 'del', 'se', 'su', 'lo', 'como', 'más', 'pero', 'este', 'esta', 'son', 'muy', 'ya', 'hay', 'sí', 'también', 'porque', 'cuando', 'todo', 'nos', 'está', 'sobre', 'entre', 'desde', 'hasta']) },
+  { label: 'German', words: new Set(['der', 'die', 'das', 'und', 'ist', 'nicht', 'mit', 'ein', 'eine', 'für', 'auf', 'von', 'zu', 'dem', 'den', 'sich', 'auch', 'wir', 'ich', 'aber', 'wenn', 'oder', 'wird', 'sind', 'nur', 'noch', 'wie', 'bei', 'nach', 'werden', 'einen', 'schon', 'mehr', 'durch', 'sehr']) },
+  { label: 'Portuguese', words: new Set(['os', 'um', 'uma', 'é', 'e', 'que', 'em', 'para', 'por', 'com', 'do', 'da', 'dos', 'das', 'se', 'não', 'mais', 'como', 'mas', 'foi', 'são', 'você', 'muito', 'também', 'quando', 'isso', 'está', 'já', 'porque', 'sobre', 'tem', 'ao', 'pelo', 'pela']) },
+  { label: 'Italian', words: new Set(['il', 'lo', 'gli', 'una', 'è', 'che', 'per', 'con', 'del', 'della', 'si', 'non', 'più', 'come', 'ma', 'sono', 'anche', 'questo', 'questa', 'molto', 'ci', 'nel', 'alla', 'dei', 'delle', 'perché', 'quando', 'essere', 'stato', 'hanno', 'può']) },
+]
+const ENGLISH_WORDS = new Set(['the', 'and', 'is', 'are', 'to', 'of', 'in', 'that', 'it', 'for', 'with', 'this', 'was', 'you', 'have', 'not', 'be', 'at', 'we', 'they', 'from', 'but', 'what', 'all', 'can', 'your', 'my', 'so', 'if', 'will', 'just', 'about', 'how', 'when', 'out', 'get', 'like', 'now', 'has', 'more'])
+
+/** Detect a Latin-script non-English language, or null. Conservative: needs ≥4
+ *  distinctive hits AND a clear margin over English stopword hits. */
+export function detectLatinForeign(text: string): string | null {
+  if (!text) return null
+  // strip urls/mentions/hashtags so tokens are real words
+  const cleaned = text.replace(/https?:\/\/\S+|[@#]\w+/g, ' ').toLowerCase()
+  const tokens = cleaned.split(/[^a-zà-öø-ÿœ'\u2019]+/).filter(Boolean)
+  if (tokens.length < 6) return null // too short to judge reliably
+  let en = 0
+  for (const t of tokens) if (ENGLISH_WORDS.has(t)) en++
+  let best: { label: string; hits: number } | null = null
+  for (const { label, words } of LATIN_LANGS) {
+    let hits = 0
+    for (const t of tokens) if (words.has(t)) hits++
+    if (!best || hits > best.hits) best = { label, hits }
+  }
+  if (best && best.hits >= 4 && best.hits > en * 2 && best.hits / tokens.length >= 0.12) return best.label
   return null
 }
 
@@ -73,7 +109,9 @@ async function getProviderSafe(): Promise<'anthropic' | 'openai' | 'minimax'> {
 export async function translateToEnglish(text: string): Promise<Translated> {
   const original: Translated = { text, translated: false, srcLang: '' }
   if (!enabled() || !text || !text.trim()) return original
-  const srcLang = detectForeign(text)
+  // Script-based detection first (CJK/Cyrillic/etc.), then the Latin-language
+  // stopword heuristic (French/Spanish/... — the x.com-parity case Ace asked for).
+  const srcLang = detectForeign(text) || detectLatinForeign(text)
   if (!srcLang) return original
   const key = text
   const hit = cache.get(key)

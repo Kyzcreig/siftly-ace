@@ -152,7 +152,9 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   const likes = fmtCount((t as any).favorite_count)
   const replies = fmtCount((t as any).conversation_count)
   const meta = [likes && `♥ ${likes}`, replies && `💬 ${replies}`].filter(Boolean).join(' &nbsp; ')
-  const trTag = tr && tr.srcLang ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
+  // x.com-parity translation tag: "Translated from French · Show original" — the
+  // link opens the original-language post on x.com (Ace's ask, 2026-07-05).
+  const trTag = tr && tr.srcLang ? `<div class="tr-tag">Translated from ${esc(tr.srcLang)} · <a href="${url}" target="_blank" rel="noopener">Show original</a></div>` : ''
   const quoted = quotedCard((t as any).quoted_tweet)
   // Parent's own outbound link (not its media/quoted t.co) — surfaced only when
   // there's no quoted card already carrying a link, to avoid duplicate rows.
@@ -187,7 +189,7 @@ function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: 
   // Story summary: translated if foreign (option B), capped at 300 chars for display.
   const rawSummary = tr?.text ?? (item.summary != null ? String(item.summary) : '')
   const cappedSummary = capText(rawSummary, 300)
-  const trTag = tr && tr.srcLang ? `<span class="tr-tag">translated from ${esc(tr.srcLang)}</span>` : ''
+  const trTag = tr && tr.srcLang ? `<div class="tr-tag">Translated from ${esc(tr.srcLang)}${url ? ` · <a href="${url}" target="_blank" rel="noopener">Show original</a>` : ''}</div>` : ''
   const summary = cappedSummary.trim() && cappedSummary.trim() !== String(item.title)
     ? `<p class="ln-sum">${esc(cappedSummary)}</p>${trTag}` : ''
   const srcLabel = ({ github: 'GitHub', reddit: 'Reddit', hn: 'HN', perplexity: 'Perplexity' } as Record<string, string>)[src.toLowerCase()] || src
@@ -327,7 +329,9 @@ a{color:var(--gold);text-decoration:none}
 .ln-sum{font-size:16px;color:#bdb8af;line-height:1.62;margin:0 0 10px}
 .ln-meta{color:var(--dim);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;letter-spacing:.02em}
 .ln-meta .src{color:var(--gold);text-transform:uppercase;font-size:10px;letter-spacing:.15em}
-.tr-tag{display:inline-block;margin-top:6px;font-size:11px;color:var(--dim);font-style:italic;opacity:.8}
+.tr-tag{display:block;margin-top:6px;font-size:11px;color:var(--dim);font-style:italic;opacity:.85}
+.tr-tag a{color:var(--dim);text-decoration:underline;text-underline-offset:2px}
+.tr-tag a:hover{color:var(--gold)}
 /* footer */
 .foot{margin-top:56px;text-align:center;font-size:12px;color:var(--dim);letter-spacing:.04em;line-height:2.1;border-top:1px solid var(--line);padding-top:22px}
 `
