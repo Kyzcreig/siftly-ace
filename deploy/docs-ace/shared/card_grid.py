@@ -162,7 +162,7 @@ GRID_JS = r"""
     function setLayout(mode){
       var list=mode==='list';
       grid.classList.toggle('list',list);
-      lay.querySelector('.licon').textContent=list?'▤':'▦';
+      lay.classList.toggle('is-list',list);
       lay.setAttribute('aria-pressed',list?'true':'false');
       try{localStorage.setItem(key,mode);}catch(e){}
     }
@@ -178,6 +178,19 @@ GRID_JS = r"""
 def grid_js_sha256() -> str:
     """base64 sha256 of the fixed GRID_JS, for a consumer's CSP script-src pin."""
     return base64.b64encode(hashlib.sha256(GRID_JS.encode()).digest()).decode()
+
+
+# Crisp inline-SVG layout-toggle icons (16px, currentColor) — the JS shows/hides the pair by
+# grid/list state. Far more legible than a single unicode glyph at small size.
+_ICON_GRID = ('<svg class="ic-grid" width="16" height="16" viewBox="0 0 16 16" fill="none" '
+              'stroke="currentColor" stroke-width="1.6" aria-hidden="true">'
+              '<rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/>'
+              '<rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>')
+_ICON_LIST = ('<svg class="ic-list" width="16" height="16" viewBox="0 0 16 16" fill="none" '
+              'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">'
+              '<circle cx="2.2" cy="3" r="1.1" fill="currentColor" stroke="none"/><line x1="5.5" y1="3" x2="14.5" y2="3"/>'
+              '<circle cx="2.2" cy="8" r="1.1" fill="currentColor" stroke="none"/><line x1="5.5" y1="8" x2="14.5" y2="8"/>'
+              '<circle cx="2.2" cy="13" r="1.1" fill="currentColor" stroke="none"/><line x1="5.5" y1="13" x2="14.5" y2="13"/></svg>')
 
 
 def endpoint_inline_js(endpoint: str) -> str:
@@ -207,10 +220,13 @@ h1 em{font-style:italic;color:var(--accent);font-weight:400}
 select{background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--fg);font:13px __SANS__;padding:10px 13px;cursor:pointer}
 select:focus{outline:none;border-color:var(--accent)}
 .controls.js{display:flex}.controls{display:none}
-#layout{display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--muted);cursor:pointer;padding:9px 12px;font:15px __SANS__;line-height:1;transition:border-color .15s,color .15s}
-.controls.js #layout{display:inline-flex;align-items:center;gap:6px}
+.count{color:var(--muted);font-size:12.5px;letter-spacing:.02em;margin-left:auto;white-space:nowrap;text-transform:uppercase}
+#layout{background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--muted);cursor:pointer;padding:0 11px;height:40px;display:none;align-items:center;justify-content:center;transition:border-color .15s,color .15s}
+.controls.js #layout{display:inline-flex}
 #layout:hover{border-color:var(--accent);color:var(--accent)}
-#count{color:var(--muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:20px}
+#layout svg{display:block}
+#layout .ic-grid{display:none}#layout .ic-list{display:block}
+#layout.is-list .ic-grid{display:block}#layout.is-list .ic-list{display:none}
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;align-items:stretch}
 /* list layout mode: one card per row. Icon leads (fixed lane) → title (flex, ellipsis) →
    badges → meta → actions, all on the right. display:contents on .ctype hoists the icon +
@@ -332,12 +348,16 @@ def render_card_grid(spec: dict) -> str:
             for s in sorts)
         dirs = "".join(f' data-dir-{esc(s["id"])}="{esc(s.get("dir","desc"))}"' for s in sorts)
         ctrls.append(f'<select id="sort"{dirs}>{so}</select>')
+    # count sits INSIDE the controls row, right-aligned (logs.ace pattern) — no lonely line.
+    _n = len(cards)
+    ctrls.append(f'<span class="count" id="count" data-noun="{esc(noun)}">{_n} {noun}{"" if _n==1 else "s"}</span>')
     # optional layout toggle (grid ⇄ list); default on. Persists via localStorage.
+    # Two crisp inline-SVG icons (grid squares / list rows) — legible at small size.
     if spec.get("layout_toggle", True):
         default_list = "1" if spec.get("layout") == "list" else ""
         ctrls.append(f'<button id="layout" type="button" data-default-list="{default_list}" '
                      f'aria-label="Toggle grid or list layout" title="Toggle grid / list view">'
-                     f'<span class="licon">▦</span></button>')
+                     f'{_ICON_GRID}{_ICON_LIST}</button>')
 
     cards_html = render_cards(cards) if cards else '<p class="empty">Nothing here yet.</p>'
     endpoint_js = ""
@@ -355,7 +375,7 @@ def render_card_grid(spec: dict) -> str:
            .replace("__SANS__", theme["sans"])
            .replace("__SERIF__", theme["serif"])
            .replace("__HW__", theme["hero_weight"])
-           .replace("__HEROSIZE__", theme.get("hero_size", "40px"))
+           .replace("__HEROSIZE__", spec.get("hero_size") or theme.get("hero_size", "40px"))
            .replace("__BGGRAD__", theme["bggrad"])
            .replace("__TITLEFONT__", theme["serif"] if theme["title_serif"] else theme["sans"])
            .replace("__TITLEWT__", "400" if theme["title_serif"] else "600"))
@@ -379,7 +399,6 @@ def render_card_grid(spec: dict) -> str:
 {eyebrow}<h1>{hero}</h1>{sub}
 {prebody}
 <div class="controls">{"".join(ctrls)}</div>
-<div id="count">{n} {noun}{'' if n==1 else 's'}</div>
 <div id="grid" data-noun="{esc(noun)}">{cards_html}</div>
 {postbody}
 {footer}
