@@ -115,6 +115,12 @@ def publish(html: str, doc_id: str, type_: str, title: str | None) -> str:
     out_dir = ROOT / type_ / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     final_html = inject_marker(html, marker)
+    # Phase 3: inject like/bookmark buttons into X items (SERVED copy only; Share strips them).
+    try:
+        import inject_x_buttons
+        final_html, _nbtn = inject_x_buttons.inject(final_html)
+    except Exception as e:
+        _err(f"button injection skipped: {e}")
     # atomic-ish write
     tmp = out_dir / "index.html.tmp"
     tmp.write_text(final_html, encoding="utf-8")
@@ -124,6 +130,14 @@ def publish(html: str, doc_id: str, type_: str, title: str | None) -> str:
     bindings[doc_id] = {"slug": slug, "type": type_, "marker": marker,
                         "title": title or "", "updated": int(time.time())}
     save_bindings(bindings)
+
+    # index for the portal + FTS search (D-12/D-13). Index the PRE-button HTML body
+    # (buttons are UI, not content). Fail-safe: indexing never blocks a publish.
+    try:
+        import docs_index
+        docs_index.upsert(doc_id, slug, type_, title or "", marker, html, kind="html")
+    except Exception as e:
+        _err(f"index upsert skipped: {e}")
 
     url = f"https://{slug}.docs.ace/"
     # I3 self-verify: 200 + the content marker (catches mint-but-404 AND mint-but-wrong-content).

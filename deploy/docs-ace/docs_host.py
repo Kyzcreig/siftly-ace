@@ -266,18 +266,20 @@ class Handler(BaseHTTPRequestHandler):
 
         # apex portal (docs.ace) — cards + full-text search (Phase 4).
         if host in ("docs.ace", "docs", ""):
-            # search endpoint (JSON): /api/search?q=...
+            # search endpoint: /api/search?q=... → returns rendered card HTML (live search).
             if path == "/api/search":
                 q = ""
                 if "?" in self.path:
                     from urllib.parse import parse_qs, urlparse
                     q = (parse_qs(urlparse(self.path).query).get("q") or [""])[0]
                 try:
-                    import docs_index
+                    import docs_index, portal
                     results = docs_index.search(q)
+                    body = portal.render_cards_only(results)
                 except Exception as e:
-                    self._json(500, {"error": str(e)[:100]}); return
-                self._json(200, {"results": results})
+                    self._send(500, f"<p class='empty'>search error: {e}</p>".encode(),
+                               csp=(portal_csp() if portal_csp else None)); return
+                self._send(200, body.encode(), csp=(portal_csp() if portal_csp else None))
                 return
             if render_portal is None:
                 self._send(503, b"portal unavailable")

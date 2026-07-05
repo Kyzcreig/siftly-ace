@@ -27,7 +27,11 @@ def _conn():
     c.execute("""CREATE TABLE IF NOT EXISTS docs(
         doc_id TEXT PRIMARY KEY, slug TEXT UNIQUE, type TEXT, title TEXT,
         marker TEXT, created INTEGER, updated INTEGER,
-        herenow_slug TEXT, deleted INTEGER DEFAULT 0)""")
+        herenow_slug TEXT, deleted INTEGER DEFAULT 0, kind TEXT DEFAULT 'html')""")
+    # migrate: add kind column if an older DB lacks it
+    cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
+    if "kind" not in cols:
+        c.execute("ALTER TABLE docs ADD COLUMN kind TEXT DEFAULT 'html'")
     c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(slug, title, body)")
     return c
 
@@ -41,17 +45,17 @@ def _text_of(html: str) -> str:
     return re.sub(r"\s+", " ", txt).strip()
 
 
-def upsert(doc_id: str, slug: str, type_: str, title: str, marker: str, body_html: str):
+def upsert(doc_id: str, slug: str, type_: str, title: str, marker: str, body_html: str, kind: str = "html"):
     c = _conn()
     now = int(time.time())
     row = c.execute("SELECT created FROM docs WHERE doc_id=?", (doc_id,)).fetchone()
     created = row[0] if row else now
-    c.execute("""INSERT INTO docs(doc_id,slug,type,title,marker,created,updated,deleted)
-                 VALUES(?,?,?,?,?,?,?,0)
+    c.execute("""INSERT INTO docs(doc_id,slug,type,title,marker,created,updated,deleted,kind)
+                 VALUES(?,?,?,?,?,?,?,0,?)
                  ON CONFLICT(doc_id) DO UPDATE SET
                    slug=excluded.slug, type=excluded.type, title=excluded.title,
-                   marker=excluded.marker, updated=excluded.updated, deleted=0""",
-              (doc_id, slug, type_, title, marker, created, now))
+                   marker=excluded.marker, updated=excluded.updated, deleted=0, kind=excluded.kind""",
+              (doc_id, slug, type_, title, marker, created, now, kind))
     c.execute("DELETE FROM fts WHERE slug=?", (slug,))
     c.execute("INSERT INTO fts(slug,title,body) VALUES(?,?,?)", (slug, title, _text_of(body_html)))
     c.commit(); c.close()
@@ -73,24 +77,24 @@ def soft_delete(slug: str) -> bool:
 
 def get_by_slug(slug: str) -> dict | None:
     c = _conn()
-    r = c.execute("SELECT doc_id,slug,type,title,marker,created,updated,herenow_slug,deleted FROM docs WHERE slug=?",
+    r = c.execute("SELECT doc_id,slug,type,title,marker,created,updated,herenow_slug,deleted,kind FROM docs WHERE slug=?",
                   (slug,)).fetchone()
     c.close()
     if not r:
         return None
-    k = ["doc_id","slug","type","title","marker","created","updated","herenow_slug","deleted"]
+    k = ["doc_id","slug","type","title","marker","created","updated","herenow_slug","deleted","kind"]
     return dict(zip(k, r))
 
 
 def list_docs(include_deleted=False) -> list[dict]:
     c = _conn()
-    q = "SELECT doc_id,slug,type,title,created,updated,herenow_slug,deleted FROM docs"
+    q = "SELECT doc_id,slug,type,title,created,updated,herenow_slug,deleted,kind FROM docs"
     if not include_deleted:
         q += " WHERE deleted=0"
     q += " ORDER BY updated DESC"
     rows = c.execute(q).fetchall()
     c.close()
-    k = ["doc_id","slug","type","title","created","updated","herenow_slug","deleted"]
+    k = ["doc_id","slug","type","title","created","updated","herenow_slug","deleted","kind"]
     return [dict(zip(k, r)) for r in rows]
 
 
@@ -99,7 +103,6 @@ def search(query: str, limit: int = 50) -> list[dict]:
     q = (query or "").strip()
     if not q:
         return list_docs()[:limit]
-    # sanitize: FTS5 MATCH — quote each term to avoid syntax errors, prefix-match
     terms = re.findall(r"[A-Za-z0-9_]+", q)
     if not terms:
         return []
@@ -107,14 +110,14 @@ def search(query: str, limit: int = 50) -> list[dict]:
     c = _conn()
     try:
         rows = c.execute(
-            """SELECT d.doc_id,d.slug,d.type,d.title,d.created,d.updated,d.herenow_slug
+            """SELECT d.doc_id,d.slug,d.type,d.title,d.created,d.updated,d.herenow_slug,d.kind
                FROM fts JOIN docs d ON d.slug=fts.slug
                WHERE fts MATCH ? AND d.deleted=0
                ORDER BY rank LIMIT ?""", (match, limit)).fetchall()
     except sqlite3.OperationalError:
         rows = []
     c.close()
-    k = ["doc_id","slug","type","title","created","updated","herenow_slug"]
+    k = ["doc_id","slug","type","title","created","updated","herenow_slug","kind"]
     return [dict(zip(k, r)) for r in rows]
 
 
