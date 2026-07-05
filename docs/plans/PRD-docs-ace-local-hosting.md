@@ -1,6 +1,6 @@
 # PRD — `docs.ace`: a local here.now clone (unified doc portal, in-page X actions, share-to-here.now)
 
-**Status:** APPROVED v1.3 — 2 Opus passes converged + a fresh-model self-review tightening pass (Fable-5). Supersedes v0.3. Phase-0 DONE (scoped token proven); ready for Phase 1 build.
+**Status:** ✅ CLOSED OUT 2026-07-05 — all phases (1–5) shipped + live-verified; v1.1 Phase-6 doc-share default flip DONE; OQ4 resolved (docs.ace is LAN-only, tailnet peers cannot reach it). Closeout report in commit message + Obsidian `AI/docs.ace — System Overview.md`. Originally APPROVED v1.3 (2 Opus passes converged + Fable-5 self-review). Supersedes v0.3.
 **Author:** Apollo
 **Date:** 2026-07-02
 **Owner:** Apollo (Mac Studio host)
