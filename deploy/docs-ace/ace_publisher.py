@@ -114,7 +114,7 @@ def inject_marker(html: str, marker: str) -> str:
     return tag + html
 
 
-def publish(html: str, doc_id: str, type_: str, title: str | None, interactive: bool = False) -> str:
+def publish(html: str, doc_id: str, type_: str, title: str | None, interactive: bool = False, strict: bool = False) -> str:
     bindings = load_bindings()
     slug = resolve_slug(doc_id, bindings)
     marker = hashlib.sha256(doc_id.encode()).hexdigest()[:16]
@@ -136,13 +136,22 @@ def publish(html: str, doc_id: str, type_: str, title: str | None, interactive: 
     tmp.write_text(final_html, encoding="utf-8")
     os.replace(tmp, out_dir / "index.html")
 
-    # Interactive marker: docs-host serves this slug under INTERACTIVE_CSP (opt-in, per-doc).
-    # Presence of the file is the whole contract. Absent -> strict default CSP (unchanged).
-    marker_file = out_dir / ".interactive"
+    # CSP markers (2026-07-05): docs.ace serves NO CSP by default. Two mutually-exclusive
+    # opt-ins, each a marker file whose presence is the whole contract (read by docs_host):
+    #   .interactive -> INTERACTIVE_CSP (first-party JS graph apps; relaxed CDN allow-list)
+    #   .strict      -> strict default CSP (harden a doc that embeds untrusted content)
+    # A republish without the flag drops the stale marker, so a reused slug never keeps a
+    # relaxation/hardening it no longer wants.
+    inter_file = out_dir / ".interactive"
+    strict_file = out_dir / ".strict"
     if interactive:
-        marker_file.write_text("first-party interactive graph app; see docs_host INTERACTIVE_CSP\n")
-    elif marker_file.exists():
-        marker_file.unlink()  # a slug reused for a non-interactive doc must drop the relaxation
+        inter_file.write_text("first-party interactive graph app; see docs_host INTERACTIVE_CSP\n")
+    elif inter_file.exists():
+        inter_file.unlink()
+    if strict:
+        strict_file.write_text("hardened doc; docs_host serves this slug under the strict default CSP\n")
+    elif strict_file.exists():
+        strict_file.unlink()
 
     # record binding (durable, D-12)
     bindings[doc_id] = {"slug": slug, "type": type_, "marker": marker,
@@ -206,8 +215,13 @@ def main() -> int:
     ap.add_argument("--interactive", action="store_true",
                     help="mark as a first-party interactive graph app (drops .interactive marker; "
                          "docs-host serves it under the relaxed INTERACTIVE_CSP; skips X-button injection)")
+    ap.add_argument("--strict", action="store_true",
+                    help="harden this doc under the strict default CSP (drops .strict marker). "
+                         "docs.ace serves NO CSP by default; use this for a doc that embeds untrusted content.")
     ap.add_argument("--no-verify", action="store_true", help="skip self-verify (host not running yet)")
     a = ap.parse_args()
+    if a.interactive and a.strict:
+        _err("--interactive and --strict are mutually exclusive"); return 2
     try:
         html = Path(a.infile).read_text(encoding="utf-8")
     except Exception as e:
@@ -216,7 +230,7 @@ def main() -> int:
         if a.no_verify:
             global self_verify
             self_verify = lambda *args, **kw: True  # noqa: E731
-        url = publish(html, a.doc_id, a.type, a.title, interactive=a.interactive)
+        url = publish(html, a.doc_id, a.type, a.title, interactive=a.interactive, strict=a.strict)
     except Exception as e:
         _err(f"publish failed: {e}"); return 1
     print(url)  # ONLY the URL on stdout
