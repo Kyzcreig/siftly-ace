@@ -74,6 +74,22 @@ CSP = ("default-src 'none'; "
        "img-src 'self' https://pbs.twimg.com https://*.twimg.com data:; "
        "font-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
 
+# INTERACTIVE CSP (opt-in, per-doc): a doc dir may carry a `.interactive` marker file,
+# written by the publisher only for FIRST-PARTY interactive HTML apps we generate ourselves
+# (graphify graphs: D3/vis-network force graphs, Mermaid call-flow docs). The strict global
+# CSP above exists to neuter <script> injected into UNTRUSTED ingested HTML (tweets/docs);
+# a graph we generate from our own codebase is not that threat. This relaxation is scoped to
+# the single marked slug's own page — it never widens the CSP for portal or tweet/doc pages.
+# Allows: the doc's own inline scripts ('unsafe-inline') + the two CDNs graphify pulls
+# (vis-network via unpkg, mermaid via jsdelivr). connect-src 'self' so a graph can fetch its
+# own sibling data files but nothing off-host.
+INTERACTIVE_CSP = ("default-src 'none'; "
+                   "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
+                   "style-src 'self' 'unsafe-inline'; "
+                   "img-src 'self' data: blob:; "
+                   "font-src 'self' data:; connect-src 'self'; "
+                   "base-uri 'none'; frame-ancestors 'none'")
+
 
 def _host_of(handler: BaseHTTPRequestHandler) -> str:
     h = handler.headers.get("Host", "") or ""
@@ -319,7 +335,11 @@ class Handler(BaseHTTPRequestHandler):
         elif tr.suffix in (".jpg", ".jpeg"): ctype = "image/jpeg"
         elif tr.suffix in (".svg",): ctype = "image/svg+xml"
         elif tr.suffix in (".webp",): ctype = "image/webp"
-        self._send(200, tr.read_bytes(), ctype)
+        # Opt-in interactive CSP: only when this doc dir is explicitly marked (.interactive,
+        # written by the publisher for first-party graph apps). Scoped to this slug's own
+        # responses; all other docs keep the strict default CSP.
+        doc_csp = INTERACTIVE_CSP if (d / ".interactive").is_file() else None
+        self._send(200, tr.read_bytes(), ctype, csp=doc_csp)
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[docs-host] %s - %s\n" % (self.address_string(), fmt % args))

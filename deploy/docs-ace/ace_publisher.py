@@ -114,7 +114,7 @@ def inject_marker(html: str, marker: str) -> str:
     return tag + html
 
 
-def publish(html: str, doc_id: str, type_: str, title: str | None) -> str:
+def publish(html: str, doc_id: str, type_: str, title: str | None, interactive: bool = False) -> str:
     bindings = load_bindings()
     slug = resolve_slug(doc_id, bindings)
     marker = hashlib.sha256(doc_id.encode()).hexdigest()[:16]
@@ -123,15 +123,26 @@ def publish(html: str, doc_id: str, type_: str, title: str | None) -> str:
     out_dir.mkdir(parents=True, exist_ok=True)
     final_html = inject_marker(html, marker)
     # Phase 3: inject like/bookmark buttons into X items (SERVED copy only; Share strips them).
-    try:
-        import inject_x_buttons
-        final_html, _nbtn = inject_x_buttons.inject(final_html)
-    except Exception as e:
-        _err(f"button injection skipped: {e}")
+    # SKIP for interactive graph apps — their HTML is a self-contained JS app, not tweet/doc
+    # content, and button injection would corrupt it. They also serve under the relaxed CSP.
+    if not interactive:
+        try:
+            import inject_x_buttons
+            final_html, _nbtn = inject_x_buttons.inject(final_html)
+        except Exception as e:
+            _err(f"button injection skipped: {e}")
     # atomic-ish write
     tmp = out_dir / "index.html.tmp"
     tmp.write_text(final_html, encoding="utf-8")
     os.replace(tmp, out_dir / "index.html")
+
+    # Interactive marker: docs-host serves this slug under INTERACTIVE_CSP (opt-in, per-doc).
+    # Presence of the file is the whole contract. Absent -> strict default CSP (unchanged).
+    marker_file = out_dir / ".interactive"
+    if interactive:
+        marker_file.write_text("first-party interactive graph app; see docs_host INTERACTIVE_CSP\n")
+    elif marker_file.exists():
+        marker_file.unlink()  # a slug reused for a non-interactive doc must drop the relaxation
 
     # record binding (durable, D-12)
     bindings[doc_id] = {"slug": slug, "type": type_, "marker": marker,
@@ -192,6 +203,9 @@ def main() -> int:
     ap.add_argument("--type", default="docs")
     ap.add_argument("--doc-id", required=True, help="the doc_identity_key (D-11), e.g. 'morning-digest|2026-07-02'")
     ap.add_argument("--title", default=None)
+    ap.add_argument("--interactive", action="store_true",
+                    help="mark as a first-party interactive graph app (drops .interactive marker; "
+                         "docs-host serves it under the relaxed INTERACTIVE_CSP; skips X-button injection)")
     ap.add_argument("--no-verify", action="store_true", help="skip self-verify (host not running yet)")
     a = ap.parse_args()
     try:
@@ -202,7 +216,7 @@ def main() -> int:
         if a.no_verify:
             global self_verify
             self_verify = lambda *args, **kw: True  # noqa: E731
-        url = publish(html, a.doc_id, a.type, a.title)
+        url = publish(html, a.doc_id, a.type, a.title, interactive=a.interactive)
     except Exception as e:
         _err(f"publish failed: {e}"); return 1
     print(url)  # ONLY the URL on stdout
