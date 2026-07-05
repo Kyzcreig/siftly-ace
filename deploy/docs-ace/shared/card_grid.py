@@ -150,10 +150,17 @@ GRID_JS = r"""
   if(sortSel)sortSel.addEventListener('change',function(){sortNow();apply();});
   // card action buttons (delegated): dispatch a CustomEvent the page handles.
   grid.addEventListener('click',function(e){
-    var b=e.target.closest('[data-act]');if(!b)return;
-    var card=b.closest('.card');
-    document.dispatchEvent(new CustomEvent('card-action',{detail:{
-      act:b.getAttribute('data-act'), id:card?card.getAttribute('data-id'):null, btn:b, card:card}}));
+    var b=e.target.closest('[data-act]');
+    if(b){
+      var card=b.closest('.card');
+      document.dispatchEvent(new CustomEvent('card-action',{detail:{
+        act:b.getAttribute('data-act'), id:card?card.getAttribute('data-id'):null, btn:b, card:card}}));
+      return;
+    }
+    // expand/collapse full body on card click (ignore clicks on links/buttons).
+    if(e.target.closest('a,button'))return;
+    var c=e.target.closest('.card.has-body');
+    if(c)c.classList.toggle('expanded');
   });
   // layout toggle (grid ⇄ list), persisted per-portal in localStorage.
   var lay=document.getElementById('layout');
@@ -211,6 +218,14 @@ body{background:var(--bg);color:var(--fg);font:15px/1.6 __SANS__;margin:0;paddin
 h1{font-family:__SERIF__;font-weight:__HW__;font-size:__HEROSIZE__;line-height:1.12;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.3em;flex-wrap:wrap}
 h1 em{font-style:italic;color:var(--accent);font-weight:400}
 .sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+/* KPI band — logs.ace format: bordered top+bottom, even grid w/ vertical dividers, serif value */
+.kpis{display:grid;grid-template-columns:repeat(var(--kpin,3),1fr);gap:0;margin:0 0 30px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:20px 0}
+.kpi{padding:0 22px;border-right:1px solid var(--border)}
+.kpi:last-child{border-right:none}
+.kpi .kv{font-family:__TITLEFONT__;font-weight:__TITLEWT__;font-size:30px;letter-spacing:-.01em;color:var(--fg)}
+.kpi .kl{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.18em;margin-top:4px}
+.kpi .ks{color:var(--dim);font-size:11px;margin-top:3px}
+@media(max-width:560px){.kpis{grid-template-columns:repeat(var(--kpin,3),1fr)}.kpi{padding:0 12px}.kpi .kv{font-size:24px}}
 .controls{gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .searchwrap{position:relative;flex:1;min-width:220px;max-width:520px}
 #q{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--fg);font:15px __SANS__;padding:11px 15px 11px 38px}
@@ -239,6 +254,10 @@ select:focus{outline:none;border-color:var(--accent)}
 #grid.list .ctype .badge{order:3;flex:0 0 auto;margin-left:0}
 #grid.list .cmeta{order:4;flex:0 0 auto;margin-bottom:0;white-space:nowrap}
 #grid.list .cbody{display:none}
+#grid.list .cexpand{display:none!important}
+#grid.list .card.has-body{cursor:pointer}
+#grid.list .card.expanded{flex-wrap:wrap}
+#grid.list .card.expanded .cbody{display:block;-webkit-line-clamp:none;overflow:visible;order:6;flex:1 1 100%;margin:8px 0 0;padding-left:32px}
 #grid.list .cacts{order:5;flex:0 0 auto;margin-top:0}
 @media(max-width:640px){#grid.list .card{flex-wrap:wrap}#grid.list .ctitle{flex:1 1 60%}}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;transition:border-color .18s,transform .18s,box-shadow .18s;display:flex;flex-direction:column;height:100%}
@@ -254,7 +273,12 @@ select:focus{outline:none;border-color:var(--accent)}
 .ctitle{font-family:__TITLEFONT__;color:var(--fg);font-weight:__TITLEWT__;font-size:19px;line-height:1.25;text-decoration:none;display:block;margin-bottom:8px;letter-spacing:-.005em}
 .ctitle:hover{color:var(--accent)}
 .cmeta{color:var(--muted);font-size:12px;margin-bottom:14px;font-variant-numeric:tabular-nums}
-.cbody{color:var(--fg);opacity:.82;font-size:13.5px;line-height:1.5;margin-bottom:14px}
+.cbody{color:var(--fg);opacity:.82;font-size:13.5px;line-height:1.5;margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card.expanded .cbody{display:block;-webkit-line-clamp:none;overflow:visible}
+.card.has-body{cursor:pointer}
+.cexpand{color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.04em;margin-top:-6px;margin-bottom:12px;display:none;user-select:none}
+.card.has-body .cexpand{display:inline-block}
+.card.expanded .cexpand .more{display:none}.cexpand .less{display:none}.card.expanded .cexpand .less{display:inline}
 .cacts{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto}
 .cacts button{cursor:pointer;background:var(--chip);border:1px solid var(--border);border-radius:8px;color:var(--chip-fg);font:12px __SANS__;padding:5px 12px;transition:border-color .15s,color .15s,background .15s}
 .cacts button:hover{border-color:var(--accent);color:var(--accent);background:var(--goldsoft)}
@@ -284,7 +308,7 @@ def render_card_html(c: dict) -> str:
         data.append(f'data-f-kind="{esc(c["kind"])}"')
     for sk, sv in (c.get("sort") or {}).items():
         data.append(f'data-sort-{esc(sk)}="{esc(sv)}"')
-    parts.append(f'<article class="card" {" ".join(data)}>')
+    parts.append(f'<article class="card{" has-body" if c.get("body") else ""}" {" ".join(data)}>')
     # eyebrow (+ optional icon) + badges. badge variant → colored pill (ok/warn/bad/neutral).
     eb = esc(c.get("eyebrow", "")) if c.get("eyebrow") else ""
     icon = f'<span class="cicon">{esc(c["icon"])}</span>' if c.get("icon") else ""
@@ -303,9 +327,10 @@ def render_card_html(c: dict) -> str:
         parts.append(f'<div class="ctitle">{esc(title)}</div>')
     if c.get("meta"):
         parts.append(f'<div class="cmeta">{esc(c["meta"])}</div>')
-    # body / summary line (optional)
+    # body / summary line (optional) + expand toggle
     if c.get("body"):
         parts.append(f'<div class="cbody">{esc(c["body"])}</div>')
+        parts.append('<span class="cexpand"><span class="more">Show more ▾</span><span class="less">Show less ▴</span></span>')
     # actions
     if c.get("actions"):
         btns = "".join(
@@ -390,6 +415,18 @@ def render_card_grid(spec: dict) -> str:
     # side tables a pure card-grid doesn't model. docs.ace sets neither → its render is unaffected.
     prebody = spec.get("prebody", "") or ""
     postbody = spec.get("postbody", "") or ""
+    # KPI band (logs.ace format): bordered top+bottom, even grid with vertical dividers, serif value,
+    # uppercase wide-tracked label, optional muted `sub` third line. Native so consumers don't hand-roll.
+    kpis = spec.get("kpis") or []
+    kpis_html = ""
+    if kpis:
+        cells = "".join(
+            f'<div class="kpi"><div class="kv">{esc(k.get("value",""))}</div>'
+            f'<div class="kl">{esc(k.get("label",""))}</div>'
+            + (f'<div class="ks">{esc(k["sub"])}</div>' if k.get("sub") else "")
+            + '</div>'
+            for k in kpis)
+        kpis_html = f'<div class="kpis" style="--kpin:{len(kpis)}">{cells}</div>'
     # progressive enhancement: controls hidden until html.js; a tiny inline sets it (its own hash if CSP)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -397,6 +434,7 @@ def render_card_grid(spec: dict) -> str:
 <style>{theme["font"]}{theme["vars"]}{css}{spec.get("extra_css","")}</style></head><body>
 <div class="wrap">
 {eyebrow}<h1>{hero}</h1>{sub}
+{kpis_html}
 {prebody}
 <div class="controls">{"".join(ctrls)}</div>
 <div id="grid" data-noun="{esc(noun)}">{cards_html}</div>
