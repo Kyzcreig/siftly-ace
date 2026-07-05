@@ -106,13 +106,13 @@ def render_portal() -> str:
         docs = docs_index.list_docs()
     except Exception:
         docs = []
-    # KPI band (logs.ace format): total docs, shared publicly, distinct kinds.
+    # KPI band (logs.ace format): total docs, shared publicly, distinct sections (type facet).
     shared = sum(1 for d in docs if d.get("herenow_slug"))
-    kinds = len({d.get("kind", "html") for d in docs})
+    sections = len({(d.get("type") or "doc") for d in docs})
     kpis = [
         {"value": len(docs), "label": "docs"},
         {"value": shared, "label": "shared publicly"},
-        {"value": kinds, "label": "types"},
+        {"value": sections, "label": "sections"},
     ]
     spec = {
         "title": "docs.ace", "theme": "noir", "eyebrow": "Local · here.now",
