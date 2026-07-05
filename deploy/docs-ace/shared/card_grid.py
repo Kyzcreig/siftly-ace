@@ -215,8 +215,8 @@ _CSS = """
 body{background:var(--bg);color:var(--fg);font:15px/1.6 __SANS__;margin:0;padding:40px 28px 60px;__BGGRAD__ background-repeat:no-repeat}
 .wrap{max-width:1140px;margin:0 auto}
 .eyebrow{color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px}
-h1{font-family:__SERIF__;font-weight:__HW__;font-size:__HEROSIZE__;line-height:1.12;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.3em;flex-wrap:wrap}
-h1 em{font-style:italic;color:var(--accent);font-weight:400}
+h1{font-family:__SERIF__;font-weight:__HW__;font-size:__HEROSIZE__;line-height:1.12;margin:0 0 6px;letter-spacing:-.01em}
+h1 em{font-style:italic;color:var(--accent);font-weight:400;margin-right:-.06em}
 .sub{color:var(--muted);font-size:14px;margin-bottom:22px}
 /* KPI band — logs.ace format: bordered top+bottom, even grid w/ vertical dividers, serif value */
 .kpis{display:grid;grid-template-columns:repeat(var(--kpin,3),1fr);gap:0;margin:0 0 30px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:20px 0}
