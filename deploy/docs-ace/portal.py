@@ -106,6 +106,14 @@ def render_portal() -> str:
         docs = docs_index.list_docs()
     except Exception:
         docs = []
+    # KPI band (logs.ace format): total docs, shared publicly, distinct kinds.
+    shared = sum(1 for d in docs if d.get("herenow_slug"))
+    kinds = len({d.get("kind", "html") for d in docs})
+    kpis = [
+        {"value": len(docs), "label": "docs"},
+        {"value": shared, "label": "shared publicly"},
+        {"value": kinds, "label": "types"},
+    ]
     spec = {
         "title": "docs.ace", "theme": "noir", "eyebrow": "Local · here.now",
         "hero": "Everything we <em>made</em>, in one place.",
@@ -113,6 +121,7 @@ def render_portal() -> str:
         "search_placeholder": "Search titles + body text…",
         "search_endpoint": "/api/search",
         "count_noun": "doc",
+        "kpis": kpis,
         "facets": [
             {"id": "kind", "label": "All types", "from_cards": True},
             {"id": "type", "label": "All sections", "from_cards": True},

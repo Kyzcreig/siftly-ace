@@ -226,6 +226,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:400}
 .kpi .kl{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.18em;margin-top:4px}
 .kpi .ks{color:var(--dim);font-size:11px;margin-top:3px}
 @media(max-width:560px){.kpis{grid-template-columns:repeat(var(--kpin,3),1fr)}.kpi{padding:0 12px}.kpi .kv{font-size:24px}}
+/* status strip — a row of variant-colored segment pills (reuses badge palette) */
+.statusstrip{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 26px}
+.seg{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:var(--panel);color:var(--muted)}
+.seg b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.seg.ok{background:rgba(63,185,80,.12);border-color:rgba(63,185,80,.3);color:#4ac26b}.seg.ok b{color:#4ac26b}
+.seg.warn{background:rgba(210,153,34,.12);border-color:rgba(210,153,34,.3);color:#d8a629}.seg.warn b{color:#d8a629}
+.seg.bad{background:rgba(248,81,73,.12);border-color:rgba(248,81,73,.3);color:#f0776f}.seg.bad b{color:#f0776f}
+.seg.neutral{background:var(--panel);border-color:var(--border);color:var(--muted)}
 .controls{gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .searchwrap{position:relative;flex:1;min-width:220px;max-width:520px}
 #q{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--fg);font:15px __SANS__;padding:11px 15px 11px 38px}
@@ -427,6 +435,16 @@ def render_card_grid(spec: dict) -> str:
             + '</div>'
             for k in kpis)
         kpis_html = f'<div class="kpis" style="--kpin:{len(kpis)}">{cells}</div>'
+    # status strip (native): a row of segment pills reusing the badge-variant palette
+    # (ok/warn/bad/neutral). spec["status_strip"]=[{"count":11,"label":"built","variant":"ok"}, …].
+    strip = spec.get("status_strip") or []
+    strip_html = ""
+    if strip:
+        segs = "".join(
+            f'<span class="seg {esc(s.get("variant","neutral"))}">'
+            f'<b>{esc(s.get("count",""))}</b> {esc(s.get("label",""))}</span>'
+            for s in strip)
+        strip_html = f'<div class="statusstrip">{segs}</div>'
     # progressive enhancement: controls hidden until html.js; a tiny inline sets it (its own hash if CSP)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -435,6 +453,7 @@ def render_card_grid(spec: dict) -> str:
 <div class="wrap">
 {eyebrow}<h1>{hero}</h1>{sub}
 {kpis_html}
+{strip_html}
 {prebody}
 <div class="controls">{"".join(ctrls)}</div>
 <div id="grid" data-noun="{esc(noun)}">{cards_html}</div>
