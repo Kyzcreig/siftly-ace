@@ -134,7 +134,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Content-Security-Policy", csp or CSP)
+        # csp semantics: None -> strict default CSP (back-compat for existing callers);
+        # "" (empty string) -> emit NO Content-Security-Policy header at all (Ace's
+        # 2026-07-05 "off by default" policy for first-party docs); any string -> that CSP.
+        if csp is None:
+            self.send_header("Content-Security-Policy", CSP)
+        elif csp != "":
+            self.send_header("Content-Security-Policy", csp)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         for k, v in (extra or {}).items():
@@ -335,10 +341,20 @@ class Handler(BaseHTTPRequestHandler):
         elif tr.suffix in (".jpg", ".jpeg"): ctype = "image/jpeg"
         elif tr.suffix in (".svg",): ctype = "image/svg+xml"
         elif tr.suffix in (".webp",): ctype = "image/webp"
-        # Opt-in interactive CSP: only when this doc dir is explicitly marked (.interactive,
-        # written by the publisher for first-party graph apps). Scoped to this slug's own
-        # responses; all other docs keep the strict default CSP.
-        doc_csp = INTERACTIVE_CSP if (d / ".interactive").is_file() else None
+        # CSP policy (2026-07-05, Ace's call): NO CSP by default — docs.ace hosts
+        # first-party generated docs (briefs/prd/report/docs), not the untrusted
+        # tweet/scrape content that lives on x.ace, so a dashboard/interactive doc
+        # just renders. Strict hardening is OPT-IN per doc dir:
+        #   .strict       -> strict default CSP (default-src 'none' + button-JS hash)
+        #   .interactive  -> INTERACTIVE_CSP (allows first-party inline JS + unpkg/jsdelivr)
+        #   neither        -> None (no CSP header)
+        # Both markers are publisher-written and scoped to this slug's own responses.
+        if (d / ".strict").is_file():
+            doc_csp = CSP
+        elif (d / ".interactive").is_file():
+            doc_csp = INTERACTIVE_CSP
+        else:
+            doc_csp = ""   # "" = emit NO CSP header (off-by-default)
         self._send(200, tr.read_bytes(), ctype, csp=doc_csp)
 
     def log_message(self, fmt, *args):
