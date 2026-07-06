@@ -24,7 +24,8 @@
     "gold": "python3 scripts/gold_set_eval.py",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e && npm run test:py && npm run gold",
-    "verify:live": "npm run typecheck && npm run lint && npm run test && npm run test:e2e:live"
+    "verify:live": "npm run typecheck && npm run lint && npm run test && npm run test:e2e:live",
+    "postinstall": "bash scripts/ensure-native-abi.sh || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

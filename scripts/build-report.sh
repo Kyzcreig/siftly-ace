@@ -20,6 +20,13 @@ err(){ echo "[build-report] $*" >&2; }
 TSX="$REPO/node_modules/.bin/tsx"
 [ -x "$TSX" ] || { err "tsx not found"; exit 1; }
 
+# 0a) SELF-HEAL native-module ABI drift (2026-07-06). If node was upgraded on the
+#     box, better-sqlite3's prebuilt .node is compiled for the old ABI and every
+#     DB lookup throws — which silently disabled translation for days. This probes
+#     + auto-rebuilds ONCE if broken. Cheap on the happy path, fail-safe (never
+#     blocks the brief). Replaces the old "remember to npm rebuild" manual step.
+bash "$REPO/scripts/ensure-native-abi.sh" || true
+
 # 0) OVERVIEW SAFETY-NET (2026-06-29): the overview is injected into _render_input.json
 #    by Step 6.9, but if the LLM ran Step 6.7 (select_digest, which REWRITES
 #    _render_input.json) AFTER 6.9, the injected overview is clobbered and the
