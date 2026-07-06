@@ -91,6 +91,28 @@ function enabled(): boolean {
   return process.env.SIFTLY_TRANSLATE !== '0'
 }
 
+// Per-provider default translation model, used when SIFTLY_TRANSLATE_MODEL isn't
+// set AND the DB model lookup can't be reached. Detection already proved the text
+// is foreign, so we must NOT let a DB hiccup silently drop the translation.
+const DEFAULT_MODEL: Record<'anthropic' | 'openai' | 'minimax', string> = {
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-haiku-latest',
+  minimax: 'MiniMax-M2.7',
+}
+
+// Resolve the active model for a provider, but NEVER throw. The report build path
+// runs under a node whose native better-sqlite3 ABI may not match (the DB lookup in
+// getActiveModelFor() then throws) — fall back to a known-good default so a broken
+// DB binding can't silently disable translation on the post path.
+async function getModelSafe(provider: 'anthropic' | 'openai' | 'minimax'): Promise<string> {
+  if (process.env.SIFTLY_TRANSLATE_MODEL) return process.env.SIFTLY_TRANSLATE_MODEL
+  try {
+    return await getActiveModelFor(provider)
+  } catch {
+    return DEFAULT_MODEL[provider]
+  }
+}
+
 // Resolve the configured provider, but never throw (the DB may be unreachable in the
 // build context). Default to 'anthropic' to match getProvider()'s own default.
 async function getProviderSafe(): Promise<'anthropic' | 'openai' | 'minimax'> {
@@ -122,7 +144,7 @@ export async function translateToEnglish(text: string): Promise<Translated> {
     // provider. Avoids a DB provider lookup the build context may not satisfy.
     const provider = process.env.OPENAI_API_KEY ? 'openai' as const : await getProviderSafe()
     const client = await resolveAIClientForProvider(provider)
-    const model = process.env.SIFTLY_TRANSLATE_MODEL || await getActiveModelFor(provider)
+    const model = await getModelSafe(provider)
     const res = await client.createMessage({
       model,
       max_tokens: 1024,

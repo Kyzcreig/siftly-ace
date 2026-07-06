@@ -47,6 +47,33 @@ describe('detectLatinForeign (stopword heuristic)', () => {
   })
 })
 
+describe('linkCard translation tag (story headline + summary, x.com parity)', () => {
+  it('renders a translated HEADLINE + "Translated from X · Show original" for a foreign story', async () => {
+    const { linkCard } = await import('../../scripts/html_report')
+    const item: any = { source: 'hn', title: '新しいAIモデル', url: 'https://ex.com/jp', score: 85 }
+    const html = linkCard(item, '', undefined, { text: 'A new AI model', srcLang: 'Japanese' })
+    expect(html).toContain('A new AI model')          // translated headline is rendered
+    expect(html).not.toContain('新しいAIモデル')          // original foreign title replaced
+    expect(html).toContain('Translated from Japanese')
+    expect(html).toContain('Show original')
+    expect(html).toContain('https://ex.com/jp')
+  })
+  it('renders a translated SUMMARY + tag when only the summary is foreign', async () => {
+    const { linkCard } = await import('../../scripts/html_report')
+    const item: any = { source: 'hn', title: 'English headline', summary: 'texte français', url: 'https://ex.com/fr', score: 85 }
+    const html = linkCard(item, '', { text: 'French text', srcLang: 'French' }, undefined)
+    expect(html).toContain('French text')
+    expect(html).toContain('Translated from French')
+  })
+  it('no tag when nothing was translated', async () => {
+    const { linkCard } = await import('../../scripts/html_report')
+    const item: any = { source: 'hn', title: 'Plain English headline', summary: 'Plain English summary', url: 'https://ex.com', score: 85 }
+    const html = linkCard(item, '')
+    expect(html).not.toContain('Translated from')
+    expect(html).not.toContain('Show original')
+  })
+})
+
 describe('tweetCard translation tag (x.com parity)', () => {
   it('renders "Translated from X · Show original" linking to x.com', async () => {
     const { tweetCard } = await import('../../scripts/html_report')

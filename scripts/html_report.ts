@@ -176,8 +176,9 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
 }
 
 // Fallback / non-tweet story link-card.
-function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: string }): string {
-  const title = esc(item.title || item.tweet_text || item.text || 'Untitled')
+// `tr` = translated SUMMARY override; `trTitle` = translated HEADLINE override.
+function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: string }, trTitle?: { text: string; srcLang: string }): string {
+  const title = esc(trTitle?.text ?? (item.title || item.tweet_text || item.text || 'Untitled'))
   const url = esc(item.url || '')
   const src = esc(item.source || '')
   const rawHandle = String(item.authorHandle || '').replace(/^@/, '')
@@ -189,9 +190,12 @@ function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: 
   // Story summary: translated if foreign (option B), capped at 300 chars for display.
   const rawSummary = tr?.text ?? (item.summary != null ? String(item.summary) : '')
   const cappedSummary = capText(rawSummary, 300)
-  const trTag = tr && tr.srcLang ? `<div class="tr-tag">Translated from ${esc(tr.srcLang)}${url ? ` · <a href="${url}" target="_blank" rel="noopener">Show original</a>` : ''}</div>` : ''
-  const summary = cappedSummary.trim() && cappedSummary.trim() !== String(item.title)
-    ? `<p class="ln-sum">${esc(cappedSummary)}</p>${trTag}` : ''
+  // A single translation tag covers the card — prefer the summary's source language,
+  // else the headline's. "Show original" links the story url.
+  const trSrc = tr?.srcLang || trTitle?.srcLang || ''
+  const trTag = trSrc ? `<div class="tr-tag">Translated from ${esc(trSrc)}${url ? ` · <a href="${url}" target="_blank" rel="noopener">Show original</a>` : ''}</div>` : ''
+  const summary = cappedSummary.trim() && cappedSummary.trim() !== String(trTitle?.text ?? item.title)
+    ? `<p class="ln-sum">${esc(cappedSummary)}</p>` : ''
   const srcLabel = ({ github: 'GitHub', reddit: 'Reddit', hn: 'HN', perplexity: 'Perplexity' } as Record<string, string>)[src.toLowerCase()] || src
   const who = isXProfile
     ? `<a href="https://x.com/${handle}" target="_blank" rel="noopener">@${handle}</a>`
@@ -201,7 +205,7 @@ function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: 
   const head = url ? `<a href="${url}" target="_blank" rel="noopener">${title}</a>` : title
   return `<article class="link-card">
   <h3 class="ln-title">${head}</h3>
-  ${summary}
+  ${summary}${trTag}
   <div class="ln-meta">${meta} ${scoreBadge}</div>
 </article>`
 }
@@ -252,9 +256,20 @@ async function renderItem(item: Item): Promise<string> {
       }
     } catch { /* fall through to link card */ }
   }
-  // non-tweet story: translate the summary if it's foreign
-  const tr = await translateToEnglish(item.summary != null ? String(item.summary) : '')
-  return linkCard(item, b, tr.translated ? { text: tr.text, srcLang: tr.srcLang } : undefined)
+  // non-tweet story: translate BOTH the headline and the summary if foreign. For
+  // story-heavy briefs (morning-digest: HN/Reddit/GitHub) the TITLE is the content,
+  // so translating only the summary left foreign headlines untranslated.
+  const rawTitle = String(item.title || item.tweet_text || item.text || '')
+  const [trTitle, trSum] = await Promise.all([
+    translateToEnglish(rawTitle),
+    translateToEnglish(item.summary != null ? String(item.summary) : ''),
+  ])
+  return linkCard(
+    item,
+    b,
+    trSum.translated ? { text: trSum.text, srcLang: trSum.srcLang } : undefined,
+    trTitle.translated ? { text: trTitle.text, srcLang: trTitle.srcLang } : undefined,
+  )
 }
 
 const FONT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,300;1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">`
@@ -409,4 +424,4 @@ if (_isMain) {
 }
 
 // Exported for unit tests (pure, side-effect-free render helpers).
-export { quotedCard, primaryLink, renderTweetText, tweetCard }
+export { quotedCard, primaryLink, renderTweetText, tweetCard, linkCard }
