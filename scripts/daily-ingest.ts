@@ -278,12 +278,18 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
     let heartbeatSent = false
     let heartbeatError: string | undefined
     if (isCronRun(config.env)) {
-      try {
-        await sendHeartbeat(formatHeartbeatMessage(successSummary), successSummary)
-        heartbeatSent = true
-      } catch (heartbeatErr) {
-        heartbeatError = errorMessage(heartbeatErr)
-        console.error(`daily-ingest heartbeat failed: ${heartbeatError}`)
+      // Routine-green gate (2026-07-07 house rule): a "+0 new, 0 refreshed" run is
+      // the job doing its expected nothing — silent. Post the heartbeat only when
+      // the run actually changed something; failures/soft-failures still alert.
+      const didWork = successSummary.created > 0 || successSummary.updated > 0
+      if (didWork) {
+        try {
+          await sendHeartbeat(formatHeartbeatMessage(successSummary), successSummary)
+          heartbeatSent = true
+        } catch (heartbeatErr) {
+          heartbeatError = errorMessage(heartbeatErr)
+          console.error(`daily-ingest heartbeat failed: ${heartbeatError}`)
+        }
       }
     }
 

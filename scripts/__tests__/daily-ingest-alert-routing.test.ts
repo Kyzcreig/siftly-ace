@@ -180,7 +180,8 @@ describe('daily ingest Discord routing', () => {
     const success = await runDailyIngest({
       checkCreditFloor: vi.fn().mockResolvedValue(okCredit()),
       runStage: vi.fn(async (nextStage: DailyIngestStageCommand) => {
-        if (nextStage.name === 'ingest') return { sourceRows: { bookmark: 1, like: 2 } }
+        // created>0 so the routine-green gate (silent on +0 new) doesn't skip the heartbeat
+        if (nextStage.name === 'ingest') return { sourceRows: { bookmark: 1, like: 2 }, created: 1 }
       }),
       sendAlert,
       sendHeartbeat,
@@ -210,5 +211,44 @@ describe('daily ingest Discord routing', () => {
     expect(failed.ok).toBe(false)
     expect(sendHeartbeat).not.toHaveBeenCalled()
     expect(sendAlert).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('daily ingest routine-green heartbeat gate (2026-07-07)', () => {
+  it('suppresses the heartbeat entirely on a +0-new/+0-refreshed run (silent green)', async () => {
+    const sendAlert = vi.fn()
+    const sendHeartbeat = vi.fn()
+    const result = await runDailyIngest({
+      checkCreditFloor: vi.fn().mockResolvedValue(okCredit()),
+      runStage: vi.fn(async (nextStage: DailyIngestStageCommand) => {
+        if (nextStage.name === 'ingest') return { sourceRows: { bookmark: 0, like: 0 }, created: 0 }
+      }),
+      sendAlert,
+      sendHeartbeat,
+      stages: [stage('ingest')],
+      wallBudgetMs: 10_000,
+      config: { env: testEnv({ SIFTLY_DAILY_CRON: '1' }) },
+    })
+    expect(result.ok).toBe(true)
+    expect(sendHeartbeat).not.toHaveBeenCalled()
+    expect(sendAlert).not.toHaveBeenCalled()
+  })
+
+  it('still sends the heartbeat when the run created rows', async () => {
+    const sendAlert = vi.fn()
+    const sendHeartbeat = vi.fn()
+    const result = await runDailyIngest({
+      checkCreditFloor: vi.fn().mockResolvedValue(okCredit()),
+      runStage: vi.fn(async (nextStage: DailyIngestStageCommand) => {
+        if (nextStage.name === 'ingest') return { sourceRows: { bookmark: 3, like: 1 }, created: 2 }
+      }),
+      sendAlert,
+      sendHeartbeat,
+      stages: [stage('ingest')],
+      wallBudgetMs: 10_000,
+      config: { env: testEnv({ SIFTLY_DAILY_CRON: '1' }) },
+    })
+    expect(result.ok).toBe(true)
+    expect(sendHeartbeat).toHaveBeenCalledTimes(1)
   })
 })
