@@ -341,6 +341,9 @@ class Handler(BaseHTTPRequestHandler):
         elif tr.suffix in (".jpg", ".jpeg"): ctype = "image/jpeg"
         elif tr.suffix in (".svg",): ctype = "image/svg+xml"
         elif tr.suffix in (".webp",): ctype = "image/webp"
+        elif tr.suffix in (".mp4", ".m4v"): ctype = "video/mp4"
+        elif tr.suffix in (".webm",): ctype = "video/webm"
+        elif tr.suffix in (".gif",): ctype = "image/gif"
         # CSP policy (2026-07-05, Ace's call): NO CSP by default — docs.ace hosts
         # first-party generated docs (briefs/prd/report/docs), not the untrusted
         # tweet/scrape content that lives on x.ace, so a dashboard/interactive doc
@@ -355,7 +358,36 @@ class Handler(BaseHTTPRequestHandler):
             doc_csp = INTERACTIVE_CSP
         else:
             doc_csp = ""   # "" = emit NO CSP header (off-by-default)
-        self._send(200, tr.read_bytes(), ctype, csp=doc_csp)
+        # HTTP Range support (2026-07-07): media elements (<video>/<audio>) in Safari &
+        # Chrome send a `Range:` probe and REFUSE to play if the server answers a plain
+        # 200 with the whole body — they need 206 Partial Content + Accept-Ranges. Serve
+        # a byte range when asked; else full 200. Applies to any asset, matters for video.
+        data = tr.read_bytes()
+        rng = (self.headers.get("Range") or "").strip()
+        m_rng = re.match(r"bytes=(\d*)-(\d*)$", rng) if rng else None
+        if m_rng:
+            total = len(data)
+            g1, g2 = m_rng.group(1), m_rng.group(2)
+            if g1 == "" and g2 == "":
+                start, end = 0, total - 1
+            elif g1 == "":                       # suffix range: last N bytes
+                start, end = max(0, total - int(g2)), total - 1
+            else:
+                start = int(g1)
+                end = int(g2) if g2 else total - 1
+            if start > end or start >= total:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{total}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            end = min(end, total - 1)
+            chunk = data[start:end + 1]
+            extra = {"Accept-Ranges": "bytes",
+                     "Content-Range": f"bytes {start}-{end}/{total}"}
+            self._send(206, chunk, ctype, extra=extra, csp=doc_csp)
+        else:
+            self._send(200, data, ctype, extra={"Accept-Ranges": "bytes"}, csp=doc_csp)
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[docs-host] %s - %s\n" % (self.address_string(), fmt % args))
