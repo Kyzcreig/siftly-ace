@@ -1,12 +1,21 @@
 #!/usr/bin/env npx tsx
 import { spawn, type StdioOptions } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkCreditFloor as defaultCheckCreditFloor, type CheckCreditFloorOptions, type CreditFloorResult } from '../lib/credit-guard'
 import { DEFAULT_SIFTLY_CREDIT_RESERVE } from '../lib/settings'
+import {
+  DEFAULT_INTERRUPT_ALERT_STREAK,
+  formatInterruptStreakAlert,
+  observationFromIngest,
+  parseInterruptFromStdout,
+  updateInterruptStreaks,
+  type InterruptSource,
+  type InterruptStreakState,
+} from '../lib/interrupt-streak'
 
 export const DEFAULT_CREDIT_RESERVE = DEFAULT_SIFTLY_CREDIT_RESERVE
 export const DEFAULT_WALL_BUDGET_MS = 20 * 60 * 1000
@@ -28,6 +37,13 @@ const NOTIFY_WRAPPER = resolve(homedir(), '.hermes/scripts/notify')
 const NOTIFY_SCRIPT = resolve(homedir(), '.hermes/scripts/notify.py')
 const ALERT_SOURCE = 'siftly-daily-ingest'
 const ALERT_TITLE = 'Siftly Daily Ingest'
+
+// Cross-run persistent-403 streak state (C, 2026-07-08). The ingest degrades a
+// mid-fetch 403 into a graceful resume (silent, correct for a transient blip); this
+// file lets the orchestrator notice a source that has been 403-deferred for N days
+// running and page #alerts — a persistent 403 is a revoked/degraded OAuth token, not
+// a blip. Lives beside the other siftly cross-run state.
+const INTERRUPT_STREAK_STATE_PATH = resolve(homedir(), '.hermes/state/x-bookmarks/interrupt-streak.json')
 const CRON_ENV_FLAG = 'SIFTLY_DAILY_CRON'
 
 export type DailyIngestSourceName = 'bookmark' | 'like'
@@ -93,6 +109,9 @@ export interface DailyIngestStageRunResult {
   // walk on purpose; `earlyStopped` is true when the cheap early-stop path engaged.
   fullWalkReason?: string
   earlyStopped?: boolean
+  // (C, 2026-07-08) The graceful interrupt marker parsed from the ingest stdout,
+  // if a source hit a mid-fetch failure (403/429/network) and deferred to next run.
+  interrupt?: { source: InterruptSource; status?: number }
 }
 
 export interface DailyIngestSuccessSummary {
@@ -104,6 +123,8 @@ export interface DailyIngestSuccessSummary {
   // were high (a legit safety-net day is fine; a full walk with no reason is the bug).
   fullWalkReason?: string
   earlyStopped?: boolean
+  // (C) Carried so the persistent-403 guard can update the cross-run streak.
+  interrupt?: { source: InterruptSource; status?: number }
 }
 
 export type DailyIngestStageRunner = (
@@ -331,6 +352,22 @@ export async function runDailyIngest(options: RunDailyIngestOptions = {}): Promi
       }
     }
 
+    // Persistent-403 guard (C, 2026-07-08): a single graceful interrupt is silent
+    // (the resume handles it, no data lost); a source 403-deferred N daily runs in a
+    // row is a real auth/permission break (revoked/degraded OAuth token) and pages
+    // #alerts. Best-effort — never fails the run. Only tracked on cron runs (the
+    // daily cadence is what "N consecutive runs" means).
+    if (isCronRun(config.env)) {
+      try {
+        await checkPersistentInterruptStreak(successSummary, sendAlert, {
+          statePath: config.env.SIFTLY_INTERRUPT_STREAK_PATH || undefined,
+          threshold: numberFromEnv(config.env.SIFTLY_INTERRUPT_ALERT_STREAK) || undefined,
+        })
+      } catch (streakErr) {
+        console.error(`daily-ingest persistent-interrupt guard failed: ${errorMessage(streakErr)}`)
+      }
+    }
+
     return {
       ok: true,
       exitCode: 0,
@@ -490,6 +527,7 @@ function mergeSourceRows(summary: DailyIngestSuccessSummary, stageResult: DailyI
   summary.updated += normalizeNonNegativeInt(stageResult.updated)
   if (stageResult.fullWalkReason !== undefined) summary.fullWalkReason = stageResult.fullWalkReason
   if (stageResult.earlyStopped !== undefined) summary.earlyStopped = stageResult.earlyStopped
+  if (stageResult.interrupt !== undefined) summary.interrupt = stageResult.interrupt
 }
 
 /**
@@ -535,6 +573,69 @@ export function detectReadAmplification(args: {
   return null
 }
 
+// -- persistent-403 streak (C, 2026-07-08) ---------------------------------------
+
+function loadInterruptStreakState(path: string = INTERRUPT_STREAK_STATE_PATH): InterruptStreakState {
+  try {
+    const raw = readFileSync(path, 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? (parsed as InterruptStreakState) : {}
+  } catch {
+    return {} // missing/corrupt → start fresh; never let state IO break the run
+  }
+}
+
+function saveInterruptStreakState(state: InterruptStreakState, path: string = INTERRUPT_STREAK_STATE_PATH): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify(state, null, 2), 'utf8')
+  } catch (err) {
+    console.error(`daily-ingest: failed to persist interrupt-streak state: ${errorMessage(err)}`)
+  }
+}
+
+/**
+ * (C) Persistent-403 guard. A single graceful interrupt is silent (the resume
+ * handles it); a source 403-deferred N daily runs in a row is a real auth/permission
+ * failure that must page. Pure transition lives in lib/interrupt-streak.ts; this thin
+ * wrapper does the state IO + alerting, and is best-effort — a failure here never
+ * fails the ingest run. Only called on a SUCCESSFUL run, so an absent interrupt = the
+ * source(s) fetched clean.
+ */
+export async function checkPersistentInterruptStreak(
+  summary: DailyIngestSuccessSummary,
+  sendAlert: DailyIngestAlertSender,
+  options: { today?: string; statePath?: string; threshold?: number } = {},
+): Promise<{ alerted: InterruptSource[] }> {
+  const today = options.today ?? new Date().toISOString().slice(0, 10)
+  const threshold = options.threshold ?? DEFAULT_INTERRUPT_ALERT_STREAK
+  const statePath = options.statePath ?? INTERRUPT_STREAK_STATE_PATH
+
+  const prev = loadInterruptStreakState(statePath)
+  const observation = observationFromIngest({
+    interruptedSource: summary.interrupt?.source,
+    interruptedStatus: summary.interrupt?.status,
+    creditsDepleted: false,
+  })
+  const { next, alerts } = updateInterruptStreaks(prev, observation, today, threshold)
+  saveInterruptStreakState(next, statePath)
+
+  const alerted: InterruptSource[] = []
+  for (const alert of alerts) {
+    try {
+      await sendAlert(formatInterruptStreakAlert(alert), {
+        kind: 'stage-failure',
+        stage: 'ingest',
+        reason: `persistent ${alert.source} 403 (${alert.consecutive403} consecutive runs)`,
+      })
+      alerted.push(alert.source)
+    } catch (alertErr) {
+      console.error(`daily-ingest persistent-interrupt alert failed: ${errorMessage(alertErr)}`)
+    }
+  }
+  return { alerted }
+}
+
 function parseIngestSourceRows(output: string): DailyIngestStageRunResult {
   const sourceRows: Partial<Record<DailyIngestSourceName, number>> = {}
   let created: number | undefined
@@ -559,7 +660,12 @@ function parseIngestSourceRows(output: string): DailyIngestStageRunResult {
       fullWalkReason = telem[2] === 'none' ? undefined : telem[2]
     }
   }
-  return { sourceRows, created, updated, fullWalkReason, earlyStopped }
+  // (C) Graceful interrupt marker ("INTERRUPTED on <source> (status=<n>): …").
+  const interruptParsed = parseInterruptFromStdout(output)
+  const interrupt = interruptParsed
+    ? { source: interruptParsed.source, status: interruptParsed.status }
+    : undefined
+  return { sourceRows, created, updated, fullWalkReason, earlyStopped, interrupt }
 }
 
 function formatHeartbeatMessage(summary: DailyIngestSuccessSummary): string {

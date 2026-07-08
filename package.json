@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint --max-warnings 14",
+    "pretest": "bash scripts/ensure-native-abi.sh || true",
     "test": "vitest run",
     "test:e2e": "vitest run --dir e2e",
     "siftly": "tsx cli/siftly.ts",
