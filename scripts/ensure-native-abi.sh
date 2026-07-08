@@ -36,17 +36,17 @@ fail(){ err "$1"; [ "$STRICT" = "1" ] && exit 1 || exit 0; }
 cd "$REPO" 2>/dev/null || fail "repo not found: $REPO"
 
 # Probe: does the native module load under the CURRENT node ABI?
-if "$NODE_BIN" -e "require('better-sqlite3')" >/dev/null 2>&1; then
+if "$NODE_BIN" -e "new (require('better-sqlite3'))(':memory:').close()" >/dev/null 2>&1; then
   exit 0   # healthy — the common case, fast
 fi
 
 # Broken. Confirm the ABI-mismatch signature before rebuilding (don't mask a
 # genuinely-missing module or a different failure with a pointless rebuild).
-PROBE_ERR="$("$NODE_BIN" -e "try{require('better-sqlite3')}catch(e){process.stderr.write(String(e.message||e))}" 2>&1 || true)"
+PROBE_ERR="$("$NODE_BIN" -e "try{new (require('better-sqlite3'))(':memory:').close()}catch(e){process.stderr.write(String(e.message||e))}" 2>&1 || true)"
 case "$PROBE_ERR" in
   *NODE_MODULE_VERSION*|*"different Node.js version"*|*"was compiled against"*)
     err "better-sqlite3 ABI mismatch detected (node $($NODE_BIN -v), ABI $($NODE_BIN -p 'process.versions.modules')); rebuilding once…"
-    if npm rebuild better-sqlite3 >&2 && "$NODE_BIN" -e "require('better-sqlite3')" >/dev/null 2>&1; then
+    if npm rebuild better-sqlite3 >&2 && "$NODE_BIN" -e "new (require('better-sqlite3'))(':memory:').close()" >/dev/null 2>&1; then
       err "better-sqlite3 rebuilt OK — native DB paths healthy again"
       exit 0
     else
