@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-export const DEFAULT_OBSIDIAN_EXPORT_DIR = '/Users/alexgierczyk/Obsidian/Ace Place/Content/X Bookmarks/'
+// Phase 3 gbrain cutover (2026-07-08): bookmark notes now land in the gbrain brain
+// repo (system of record for the x-bookmarks corpus), NOT the Obsidian vault. The
+// human-readable preference-profile markdown intentionally STAYS vault-side — see
+// DEFAULT_PROFILE_OBSIDIAN_DIR in scripts/profile.ts.
+export const DEFAULT_OBSIDIAN_EXPORT_DIR = '/Users/alexgierczyk/gbrain/brain/x-bookmarks/'
 
 export type SavedTweetSource = 'bookmark' | 'like'
 export type ObsidianSegment = 'brief-relevant' | 'everything-else'

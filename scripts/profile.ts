@@ -5,7 +5,6 @@ import { userInfo } from 'node:os'
 import path, { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { DEFAULT_OBSIDIAN_EXPORT_DIR } from '../src/lib/obsidian/export'
 import { resolveDatabasePath } from '../src/lib/vec'
 
 export type PreferenceSource = 'bookmark' | 'like'
@@ -120,7 +119,15 @@ const EMBEDDING_CLUSTER_ITERATIONS = 6
 const EMBEDDING_CLUSTER_DIMS = 32
 
 export const DEFAULT_PROFILE_JSON_PATH = path.join(userInfo().homedir, '.hermes', 'state', 'x-bookmarks', 'preference-profile.json')
-export const DEFAULT_PROFILE_OBSIDIAN_DIR = DEFAULT_OBSIDIAN_EXPORT_DIR
+// Phase 3 gbrain cutover (2026-07-08): the preference-profile MARKDOWN is the
+// human-readable taste doc Ace reads in Obsidian — it deliberately KEEPS its
+// vault home even though the bookmark-note exporter (DEFAULT_OBSIDIAN_EXPORT_DIR
+// in src/lib/obsidian/export.ts) moved to the gbrain brain repo. The constant is
+// therefore split from DEFAULT_OBSIDIAN_EXPORT_DIR: this doc is a derived
+// artifact rebuilt nightly (daily-ingest's soft `profile` stage), so it doesn't
+// belong in the rebuildable-source brain repo, and gbrain ingests the vault copy
+// anyway via brain/vault.
+export const DEFAULT_PROFILE_OBSIDIAN_DIR = '/Users/alexgierczyk/Obsidian/Ace Place/Content/'
 export const DEFAULT_PROFILE_MARKDOWN_FILENAME = 'Ace Bookmark Preference Profile.md'
 export const NOVELTY_DISABLED_NOTE = 'Novelty calibration disabled: X API bookmark/like payloads do not expose saved_at or liked_at; importedAt is ingestion time, so evergreen_ratio is fixed at 0.'
 
