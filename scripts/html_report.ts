@@ -32,6 +32,20 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
+// X's v2/syndication API returns tweet text with HTML entities ALREADY encoded
+// (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`). If we feed that straight into esc()
+// the `&` in `&amp;` gets re-encoded to `&amp;amp;` and renders as the literal
+// string "&amp;" (Ace caught this on @emollick's "AI &amp; how to use it"). Decode
+// X's encoding back to raw chars BEFORE esc() re-encodes cleanly. notify.py already
+// does the equivalent for the Discord path; this is the HTML-report twin. `&amp;`
+// is decoded LAST so a value like `&amp;lt;` can't collapse into a live `<`.
+function decodeXEntities(s: unknown): string {
+  return String(s ?? '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&#x27;/gi, "'")
+    .replace(/&amp;/g, '&')
+}
+
 function tweetIdFromUrl(url?: string): string | null {
   const m = /\/status\/(\d+)/.exec(url || '')
   return m ? m[1] : null
@@ -48,7 +62,9 @@ function fmtCount(n: unknown): string {
 // anchors; t.co media links are STRIPPED (the media renders inline below instead).
 // `overrideText` (a translation) replaces the body text while keeping entity linking.
 function renderTweetText(t: Tweet, overrideText?: string): string {
-  const text = overrideText ?? t.text ?? ''
+  // Decode X's pre-encoded entities first (raw API text has &amp;/&lt;/&gt;); esc()
+  // below re-encodes exactly once. An overrideText (translation) is already raw.
+  const text = overrideText ?? decodeXEntities(t.text ?? '')
   // also strip the trailing t.co that points at the tweet's own media/quoted
   const urls = (t.entities?.urls || []) as any[]
   let html = esc(text)
@@ -254,8 +270,8 @@ async function renderItem(item: Item): Promise<string> {
         // (note_tweet body isn't exposed there). Our authenticated gather DID capture
         // the full text into item.tweet_text — prefer it when it's genuinely longer so
         // long tweets render in full. Strip trailing media t.co the renderer drops anyway.
-        const hydrated = t.text || ''
-        const stored = String(item.tweet_text || '')
+        const hydrated = decodeXEntities(t.text || '')
+        const stored = decodeXEntities(String(item.tweet_text || ''))
         const fuller = stored.replace(/\s+https?:\/\/t\.co\/\w+\s*$/g, '').trim()
         const base = fuller.length > hydrated.length ? fuller : hydrated
         // Translate foreign tweet body to English (option B: replace + tag). Fail-safe.
