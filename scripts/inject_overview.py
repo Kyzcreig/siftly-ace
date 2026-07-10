@@ -16,16 +16,35 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 
 MAX_CHARS = 1900  # ~300-word ceiling (Ace 2026-06-25 — the overview is a tight read, not a wall). A theme with nothing real to say is dropped, never padded to length.
 
+# A trailing "…"/"..." at the very END of the overview is never wanted: it's either
+# model junk or truncation crud, and it renders as a stray dangling ellipsis on the page.
+_TRAILING_ELLIPSIS = re.compile(r"\s*(?:…|\.\.\.)\.?\s*$")
+
+
+def _visible_len(text: str) -> int:
+    """Length of the overview as it actually RENDERS, ignoring the invisible URLs that
+    resolve_overview_refs.py injects. That step expands every bare `[N]` citation into a
+    masked link `[[N]](https://x.com/.../status/<id>)` and every `@handle` into
+    `[@handle](https://x.com/handle)` — hundreds of chars of URL that DON'T display. The
+    budget must be measured on the visible text, otherwise a perfectly-short overview trips
+    the cap purely because of link URLs and gets chopped mid-content (the dangling-"…" bug)."""
+    v = re.sub(r"\[\[(\d{1,3})\]\]\([^)]+\)", r"[\1]", text)  # masked cite → bare [N]
+    v = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", v)            # any [label](url) → label
+    return len(v)
+
 
 def _truncate(text: str, limit: int) -> str:
     text = text.strip()
-    if len(text) <= limit:
-        return text
+    # Budget on VISIBLE length, not raw — see _visible_len. When the overview fits, return
+    # it untouched EXCEPT for a stray trailing ellipsis (model junk we didn't create).
+    if _visible_len(text) <= limit:
+        return _TRAILING_ELLIPSIS.sub("", text).rstrip()
     cut = text[:limit]
     for sep in ("\n\n", ". ", "\n", " "):
         i = cut.rfind(sep)
@@ -34,12 +53,58 @@ def _truncate(text: str, limit: int) -> str:
     return cut.rstrip() + " …"
 
 
+def _selftest() -> int:
+    fails = []
+
+    def check(cond, msg):
+        if not cond:
+            fails.append(msg)
+
+    ell = re.compile(r"(?:…|\.\.\.)\.?\s*$")
+
+    # 1. A short overview whose RAW length only exceeds the cap because of injected link
+    #    URLs must NOT be truncated (visible text is well under budget) and must NOT gain a
+    #    trailing ellipsis. This is the live double-budget bug (2026-07-10).
+    url = "https://x.com/pmarca/status/2075515835410706796"
+    linked = ("📡 **Your Timeline**\nThe day skewed toward shipping over think-pieces, with "
+              "builders wiring agents into real tools rather than arguing benchmarks "
+              + "".join(f"[[{n}]]({url})" for n in range(1, 40)) + ".")
+    out = _truncate(linked, MAX_CHARS)
+    check(_visible_len(linked) <= MAX_CHARS, "test fixture should be visibly short")
+    check(len(linked) > MAX_CHARS, "test fixture raw length should exceed cap (URLs)")
+    check(not ell.search(out), f"short-but-URL-inflated overview gained a dangling ellipsis: {out[-40:]!r}")
+    check(out.rstrip().endswith(")."), f"content chopped when it shouldn't be: {out[-40:]!r}")
+
+    # 2. A dangling model ellipsis on an otherwise-short overview is stripped.
+    junk = "🗞️ **The Landscape**\nA clean short read about the day's momentum. …"
+    check(not ell.search(_truncate(junk, MAX_CHARS)), "trailing model ellipsis not stripped")
+
+    # 3. A genuinely-too-long overview (by VISIBLE length) still truncates with ' …'.
+    long = "🗞️ **The Landscape**\n" + ("word " * 500)
+    lt = _truncate(long, 200)
+    check(lt.endswith("…"), "genuinely-long overview should still truncate with an ellipsis")
+    check(_visible_len(lt) <= 200 + 5, f"truncated overview over budget: {_visible_len(lt)}")
+
+    if fails:
+        print("inject_overview SELFTEST FAILED:")
+        for f in fails:
+            print("  -", f)
+        return 1
+    print("inject_overview selftest OK (4 checks)")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--render-input", required=True)
-    ap.add_argument("--overview-file", required=True)
+    ap.add_argument("--render-input")
+    ap.add_argument("--overview-file")
     ap.add_argument("--max-chars", type=int, default=MAX_CHARS)
+    ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args(argv)
+    if args.selftest:
+        return _selftest()
+    if not args.render_input or not args.overview_file:
+        ap.error("--render-input and --overview-file are required (or use --selftest)")
     try:
         if not os.path.exists(args.overview_file):
             return 0  # no overview produced → leave render input untouched

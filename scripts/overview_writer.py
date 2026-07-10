@@ -108,6 +108,13 @@ def lint(prose: str, agg: dict, brief: str) -> list[str]:
             if re.search(r"(…|\.\.\.)\.?\s*$", body):
                 errors.append(f"theme bullet '{m.group(1)}' ends with a truncation ellipsis — that's a pasted fragment, not writing")
 
+    # 3b. The overview as a WHOLE must not end on a dangling ellipsis. Rule 3 only guards
+    #     bullet lines; a trailing "…"/"..." on the LEAD PARAGRAPH (or wherever the prose
+    #     ends) is equally a pasted/truncated fragment and reads as broken on the page.
+    if re.search(r"(…|\.\.\.)\.?\s*$", p):
+        errors.append("overview ends with a dangling ellipsis (…) — finish the thought; "
+                      "an ellipsis at the end reads as a truncated/pasted fragment")
+
     # 4. Ref validity: every [N] must exist in the aggregate; each used at most once.
     valid = {s.get("ref") for s in (agg.get("top_stories") or []) if isinstance(s.get("ref"), int)}
     used = [int(n) for n in re.findall(r"(?<!\[)\[(\d{1,3})\](?![\(\]])", p)]
@@ -229,6 +236,10 @@ def selftest() -> int:
         ("bad: paste", any("paste" in e for e in lint(bad, agg, "morning-digest"))),
         ("bad: thin bullet", any("too thin" in e for e in lint(bad, agg, "morning-digest"))),
         ("bad: ellipsis bullet", any("ellipsis" in e for e in lint(bad, agg, "morning-digest"))),
+        ("bad: dangling para ellipsis", any("dangling ellipsis" in e for e in lint(
+            "🗞️ **The Landscape**\nGLM-5.2 is now free to run through Cloudflare Workers AI, "
+            "per a widely-shared setup guide [1], and the day skewed toward shipping over think-pieces. …",
+            agg, "morning-digest"))),
         ("good passes", lint(good, agg, "morning-digest") == []),
         ("bogus ref", any("don't exist" in e for e in lint(good.replace("[2]", "[9]"), agg, "morning-digest"))),
         ("dup ref", any("more than once" in e for e in lint(good.replace("[2]", "[1]"), agg, "morning-digest"))),
