@@ -87,7 +87,17 @@ function mediaHtml(t: Tweet): string {
       const poster = m.media_url_https ? ` poster="${esc(m.media_url_https)}"` : ''
       const variants = (m.video_info?.variants || []).filter((v: any) => v.content_type === 'video/mp4')
         .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0))
-      const src = variants[0]?.url
+      // Cap at ~1080p: Twitter exposes rungs up to 4K (a single 4K clip is ~200MB+ — far
+      // too heavy for a "2-minute coffee read" report). Parse the WxH from the variant URL
+      // (…/vid/avc1/<W>x<H>/…) and prefer the highest variant whose height is <=1080; fall
+      // back to the smallest available if every rung is >1080 (never leaves us with no src).
+      const MAX_H = 1080
+      const heightOf = (u: string): number => {
+        const mm = /\/(\d+)x(\d+)\//.exec(u || '')
+        return mm ? Number(mm[2]) : 0
+      }
+      const capped = variants.filter((v: any) => { const h = heightOf(v.url); return h > 0 && h <= MAX_H })
+      const src = (capped[0]?.url) || (variants[variants.length - 1]?.url) || variants[0]?.url
       if (src) parts.push(`<video class="media video" controls preload="none"${poster}><source src="${esc(src)}" type="video/mp4"></video>`)
       else if (m.media_url_https) parts.push(`<img class="media" src="${esc(m.media_url_https)}" loading="lazy" alt="">`)
     }

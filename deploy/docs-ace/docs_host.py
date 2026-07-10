@@ -72,6 +72,7 @@ CSP = ("default-src 'none'; "
        f"script-src 'sha256-{BUTTON_JS_SHA256}'; "
        "style-src 'self' 'unsafe-inline'; "
        "img-src 'self' https://pbs.twimg.com https://*.twimg.com data:; "
+       "media-src https://video.twimg.com https://*.twimg.com; "
        "font-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
 
 # INTERACTIVE CSP (opt-in, per-doc): a doc dir may carry a `.interactive` marker file,
