@@ -349,7 +349,7 @@ a{color:var(--gold);text-decoration:none}
 .bird{margin-left:auto;color:var(--gold);font-size:17px;flex:0 0 auto}
 .tw-text{font-size:16.5px;color:#d6d1c8;line-height:1.6;white-space:normal;word-wrap:break-word}
 .tw-text a{color:var(--gold);border-bottom:1px solid var(--goldsoft)}
-.media-wrap{margin:14px 0 2px;border-radius:10px;overflow:hidden;border:1px solid var(--line);max-height:300px}
+.media-wrap{position:relative;margin:14px 0 2px;border-radius:10px;overflow:hidden;border:1px solid var(--line);max-height:300px}
 .media-wrap.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:320px}
 .media{width:100%;height:300px;object-fit:cover;object-position:top;display:block}
 .media-wrap.grid .media{height:165px}
