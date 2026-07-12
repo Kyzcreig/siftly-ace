@@ -114,7 +114,7 @@ function mediaHtml(t: Tweet): string {
       }
       const capped = variants.filter((v: any) => { const h = heightOf(v.url); return h > 0 && h <= MAX_H })
       const src = (capped[0]?.url) || (variants[variants.length - 1]?.url) || variants[0]?.url
-      if (src) parts.push(`<video class="media video" controls preload="none"${poster}><source src="${esc(src)}" type="video/mp4"></video>`)
+      if (src) parts.push(`<video class="media video" controls preload="metadata" playsinline${poster}><source src="${esc(src)}" type="video/mp4"></video>`)
       else if (m.media_url_https) parts.push(`<img class="media" src="${esc(m.media_url_https)}" loading="lazy" alt="">`)
     }
   }
@@ -182,10 +182,17 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   // link opens the original-language post on x.com (Ace's ask, 2026-07-05).
   const trTag = tr && tr.srcLang ? `<div class="tr-tag">Translated from ${esc(tr.srcLang)} · <a href="${url}" target="_blank" rel="noopener">Show original</a></div>` : ''
   const quoted = quotedCard((t as any).quoted_tweet)
+  // Render the body once so we can tell whether the primary link already appears
+  // inline (a non-media t.co that renderTweetText resolved to an anchor).
+  const bodyHtml = renderTweetText(t, tr?.text)
   // Parent's own outbound link (not its media/quoted t.co) — surfaced only when
-  // there's no quoted card already carrying a link, to avoid duplicate rows.
+  // there's no quoted card already carrying a link, AND only when that link is
+  // NOT already rendered inline in the body. Otherwise the CTA row duplicates the
+  // in-text anchor (the @sama "GPT-5.6 preferred model" case: the openai.com link
+  // showed both in-body and as a separate CTA row). 2026-07-12.
   const pLink = quoted ? null : primaryLink(t)
-  const parentLinkRow = pLink ? `<a class="q-link" href="${esc(pLink.href)}" target="_blank" rel="noopener">${esc(pLink.label)}</a>` : ''
+  const linkAlreadyInline = !!(pLink && bodyHtml.includes(`href="${esc(pLink.href)}"`))
+  const parentLinkRow = pLink && !linkAlreadyInline ? `<a class="q-link" href="${esc(pLink.href)}" target="_blank" rel="noopener">${esc(pLink.label)}</a>` : ''
   return `<article class="tweet">
   <header class="tw-head">
     ${avatar ? `<img class="avatar" src="${avatar}" alt="" loading="lazy">` : ''}
@@ -195,7 +202,7 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
     </div>
     <a class="bird" href="${url}" target="_blank" rel="noopener" title="Open on X">𝕏</a>
   </header>
-  <div class="tw-text">${renderTweetText(t, tr?.text)}</div>${trTag}
+  <div class="tw-text">${bodyHtml}</div>${trTag}
   ${mediaHtml(t)}${parentLinkRow}${quoted}
   <footer class="tw-foot"><span class="eng">${meta}</span>${scoreBadge}<a class="readon" href="${url}" target="_blank" rel="noopener">View on X →</a></footer>
 </article>`

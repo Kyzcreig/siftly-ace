@@ -94,7 +94,10 @@ describe('tweetCard with quoted_tweet', () => {
     expect(html).toContain('Read the article on X →')
   })
 
-  it('surfaces a non-quote parent tweet\'s own outbound link', () => {
+  it('renders a parent tweet\'s in-body link inline exactly once (no duplicate CTA)', () => {
+    // The @sama "GPT-5.6 preferred model" case: the outbound link's t.co IS in the
+    // body text, so renderTweetText resolves it inline. The parent-link CTA row must
+    // NOT also render it — that was the duplicate-link bug Ace caught (2026-07-12).
     const t: any = {
       id_str: '1',
       user: { name: 'Someone', screen_name: 'someone' },
@@ -102,7 +105,26 @@ describe('tweetCard with quoted_tweet', () => {
       entities: { urls: [{ expanded_url: 'https://example.com/post', display_url: 'example.com/post', url: 'https://t.co/abc' }] },
     }
     const html = tweetCard(t, '')
+    // inline anchor present…
+    expect(html).toContain('href="https://example.com/post"')
+    // …but exactly once (no duplicate CTA row), and no q-link CTA for it.
+    expect((html.match(/href="https:\/\/example\.com\/post"/g) || []).length).toBe(1)
+    expect(html).not.toContain('example.com/post →')
+    expect(html).not.toContain('class="q-link"')
+  })
+
+  it('surfaces a parent link as a CTA when it is NOT already inline in the body', () => {
+    // Link card / no t.co token in the visible text → renderTweetText won't render
+    // it, so the parent-link CTA row is the only place it appears. Keep that path.
+    const t: any = {
+      id_str: '1',
+      user: { name: 'Someone', screen_name: 'someone' },
+      text: 'a thread with no link token in the body',
+      entities: { urls: [{ expanded_url: 'https://example.com/post', display_url: 'example.com/post', url: 'https://t.co/abc' }] },
+    }
+    const html = tweetCard(t, '')
     expect(html).toContain('href="https://example.com/post"')
     expect(html).toContain('example.com/post →')
+    expect(html).toContain('class="q-link"')
   })
 })
