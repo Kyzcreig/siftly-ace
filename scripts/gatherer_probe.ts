@@ -237,7 +237,17 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('[gatherer_probe] fatal: ' + (err as Error).message)
-  process.exit(1)
-})
+main()
+  .then(() => {
+    // Force a clean exit. The live HTTP gatherers (reddit/github) can leave a
+    // keep-alive socket / lingering handle on the event loop, so a node that
+    // otherwise finished all work + wrote its artifact will HANG on natural exit
+    // and get killed by the 90s watchdog wall -> spurious "TIMEOUT, no fresh
+    // artifact" alert even though the artifact was already written. Observed
+    // after the cron node was bumped 24->26. The work is done here; exit 0.
+    process.exit(0)
+  })
+  .catch((err) => {
+    console.error('[gatherer_probe] fatal: ' + (err as Error).message)
+    process.exit(1)
+  })
