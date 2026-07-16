@@ -69,6 +69,54 @@ def check_preflight():
         alert(f"preflight canary errored: {str(e)[:80]}")
 
 
+def _latest_strict_brief_slug():
+    """Newest live briefs slug that carries the .strict marker (X buttons force strict CSP).
+    Returns None if none found — the check then no-ops (green) rather than false-alarms."""
+    sys.path.insert(0, os.path.expanduser("~/.hermes/var/docs-portal"))
+    docroot = os.path.expanduser("~/.hermes/var/docs-portal/docroot")
+    try:
+        import docs_index
+        con = __import__("sqlite3").connect(docs_index.DB, timeout=8)
+        rows = con.execute(
+            "SELECT slug FROM docs WHERE type='briefs' AND (deleted IS NULL OR deleted=0) "
+            "ORDER BY rowid DESC LIMIT 20").fetchall()
+        con.close()
+        for (slug,) in rows:
+            if os.path.exists(os.path.join(docroot, "briefs", slug, ".strict")):
+                return slug
+    except Exception:
+        return None
+    return None
+
+
+def check_brief_media_csp():
+    """A live strict brief page MUST serve a CSP that allows video.twimg.com via media-src.
+    Without it, embedded X videos silently fail to play (strict default-src 'none' block).
+    This guards against LIVE DRIFT: the fix lives in docs_host.py but a revert / skipped
+    deploy / stale process would drop it, and only the SERVED header proves it's actually up.
+    Regressed & re-fixed 2026-07-15; see skill local-here-now-clone-docs-ace refs/csp-media-src-video.md."""
+    slug = _latest_strict_brief_slug()
+    if not slug:
+        return  # no strict brief to probe -> nothing to assert (green)
+    host = f"{slug}.docs.ace"
+    cmd = ["curl", "-s", "-o", "/dev/null", "-D", "-", "--max-time", "8",
+           "--cacert", CA, "--resolve", f"{host}:443:{HOST_IP}", f"https://{host}/"]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=12).stdout
+        csp = ""
+        for line in out.splitlines():
+            if line.lower().startswith("content-security-policy:"):
+                csp = line.split(":", 1)[1].strip().lower()
+                break
+        if not csp:
+            return  # no CSP header (non-strict page served) -> not this check's concern
+        if "media-src" not in csp or "video.twimg.com" not in csp:
+            alert(f"🔴 CSP REGRESSION: strict brief {host} serves NO media-src for video.twimg.com "
+                  f"→ embedded X videos will NOT play. Live docs_host.py CSP drifted; redeploy the fix.")
+    except Exception as e:
+        alert(f"brief media-CSP canary errored: {str(e)[:80]}")
+
+
 def check_cert():
     try:
         end = subprocess.run(["openssl", "x509", "-enddate", "-noout", "-in", CERT],
@@ -87,6 +135,7 @@ def main():
     check_host()
     check_token()
     check_preflight()
+    check_brief_media_csp()
     check_cert()
     if problems:
         msg = "⚠️ **docs.ace canary**\n" + "\n".join(f"• {p}" for p in problems)

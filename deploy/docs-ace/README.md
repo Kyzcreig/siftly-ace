@@ -26,5 +26,17 @@ Deployed on Mac Studio `.18`. These are the version-controlled copies; the LIVE 
 - `ai.hermes.docs-ace-cert-renew` — weekly wildcard leaf renewal
 - `ai.hermes.docs-ace-canary` — 30-min health canary
 
+## CSP media-src regression guard (added 2026-07-15)
+Brief pages carry the `.strict` marker (X buttons force strict CSP), so their embedded X
+videos (`video.twimg.com`) play ONLY if the strict CSP grants a `media-src` for that host.
+This fix regressed on 2026-07-15 via LIVE DRIFT (committed docs_host.py had it, the live file
+didn't). Two guards now defend it:
+- **Pre-deploy / source gate:** `python3 deploy/docs-ace/check-csp-invariant.py` — asserts the
+  committed strict CSP has `media-src ... video.twimg.com` AND that the live docs_host.py strict
+  CSP hasn't drifted from committed. Exit 1 on either failure. Run before every docs_host.py deploy.
+- **Runtime gate:** `docs-ace-canary.py::check_brief_media_csp` — every 30m curls the newest live
+  strict brief page and alerts `#alerts` if the SERVED CSP lacks `media-src video.twimg.com`.
+Both are proven to fire RED when the fix is absent (source-revert + live-drift simulations).
+
 ## VERIFIED (all live)
 Security: cross-origin forgery 403 (incl. evil-docs.ace.attacker.com endswith bypass), missing-CSRF 403, disallowed-action 404, bad-tweet-id 400, preflight ACAO withheld for evil / present for legit, CSP blocks injected script (browser `csp_blocked:true`). Effect: real like/bookmark on Ace's account verified by read-back, net-zero. Portal: FTS body search finds "Cloudflare Workers" by body. Share: stripped copy 0 /api/x refs. Revoke: here.now 404. Delete: local 404, adjacent serves. Fallback: docs-host down → brief posts via here.now (I3).
