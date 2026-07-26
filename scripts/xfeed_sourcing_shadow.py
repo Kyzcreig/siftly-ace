@@ -179,5 +179,35 @@ def main():
     return 0
 
 
+# =============================================================================
+# CHUNK BUDGET — measured 2026-07-25, the rule that governs gather planning
+# =============================================================================
+# A chunk returns ~10 rows TOTAL, allocated across the whole chunk by
+# relevance/recency — it is NOT ~10 rows per handle. Whichever handle has the
+# most qualifying posts consumes the budget and the rest return NOTHING.
+#
+# Measured, same tool, same day:
+#   8 handles @ min_faves:5000  -> 10 rows, ALL from @elonmusk, other 7 got ZERO
+#   8 handles @ min_faves:20000 ->  8 rows spread across 4 handles, none starved
+#
+# So the governing condition is:
+#
+#     chunk_is_safe  <=>  expected_qualifying_posts(whole_chunk, floor) < 10
+#
+# Three ways to satisfy it:
+#   1. Give any handle that alone clears the floor 10+ times its OWN call.
+#   2. Batch only handles that are individually sparse at that floor.
+#   3. RAISE THE FLOOR until the chunk is sparse — cheapest, and why a tiered
+#      sweep works:
+#         tier 1  min_faves:20000, wide chunks  -> the day's genuine top posts
+#         tier 2  min_faves:1000,  small chunks -> the strong middle
+#         tier 3  min_faves:100,   solo (heavy) -> the long tail, if wanted
+#      ~15-30 calls for a 143-handle feed, not the 100+ a flat floor implies.
+#
+# The truncation tripwire (a handle returning exactly the cap) is what makes any
+# of this SAFE: it converts silent loss into a loud "re-query this one".
+# =============================================================================
+
+
 if __name__ == "__main__":
     sys.exit(main())
