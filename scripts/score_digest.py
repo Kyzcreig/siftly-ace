@@ -199,7 +199,15 @@ MEDIA_IMAGE = 2
 # Low-reach cap (§4.3): permanent floor-guard, COMPUTED below the gate (not the
 # blind-inherited 70). Always strictly < ALSO_GATE by construction.
 LOW_REACH_SCORE_CAP = ALSO_GATE - 5
-LOW_REACH_ENGAGEMENT_FLOOR = 5
+# PHASE 3 (2026-07-25): 5 -> 100, kept in lockstep with select_digest.py's copy.
+# The x_search gather applies min_faves:100 at source; this is the in-pipeline safety
+# net for any path that bypasses it. Still a DOWN-RANK, never a discard.
+#
+# ENV-OVERRIDABLE so a fixture corpus can pin its own calibration. The gold set
+# (docs/eval/digest-gold-set.json) was hand-labeled against the historical floor of 5
+# and 8 of its 17 items sit below 100 engagement; certifying it at 100 would measure
+# the floor, not the scorer. gold_set_eval.py therefore pins LOW_REACH_FLOOR=5.
+LOW_REACH_ENGAGEMENT_FLOOR = int(os.environ.get("LOW_REACH_FLOOR", "100"))
 
 # Fresh-content floor (§4.2a): ships DARK for v1 (current ingest is ~daily, so
 # tweets have engagement by scoring time). Only arms under near-real-time ingest.

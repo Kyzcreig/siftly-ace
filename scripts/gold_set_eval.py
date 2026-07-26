@@ -125,6 +125,12 @@ def _mutation_probe(kind, min_good):
 def evaluate(data, mutate=None):
     """Score the gold set through the real pipeline; return (result dict, exit_code)."""
     os.environ["RECENCY_AS_TIEBREAK"] = "1"
+    # The gold set was hand-labeled against the historical low-reach floor of 5, and 8
+    # of its 17 items sit below 100 engagement. Phase 3 (2026-07-25) raised the live
+    # floor to 100 to match the x_search `min_faves:100` gather. Certifying the gold
+    # set at 100 would measure the FLOOR rather than the SCORER, so pin the corpus to
+    # the calibration it was labeled under. Re-label the corpus to lift this pin.
+    os.environ.setdefault("LOW_REACH_FLOOR", "5")
     import importlib
     import score_digest as S
     importlib.reload(S)

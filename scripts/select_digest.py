@@ -106,7 +106,19 @@ OFF_TOPIC_LABELS = {"news", "news-and-politics", "politics"}
 # near-real-time ingest (scoring a tweet seconds after it posts, before
 # engagement accrues), a genuinely good fresh post from an unknown handle could
 # read as zero-reach and be capped — revisit the floor/exemption then.
-LOW_REACH_ENGAGEMENT_FLOOR = 5     # likes+retweets strictly below this = "low reach"
+#
+# PHASE 3 (2026-07-25, Ace's call): floor raised 5 -> 100. Rationale: the x_search
+# gather path now applies `min_faves:100` at SOURCE, so in normal operation nothing
+# below 100 likes even reaches scoring. This value is therefore a SAFETY NET for any
+# path that bypasses the gather filter (legacy cache, a future non-x_search source, a
+# hand-fed pool). Raising it aligns the in-pipeline floor with the sourcing floor so
+# the two can't silently disagree. Semantics are UNCHANGED — still a DOWN-RANK, never
+# a discard, and still exempt for known/thought-leader handles.
+# Measured on a real 1,842-post day: 711 posts (39%) clear 100 likes — ~100x the ~7
+# slots a brief fills, so the pool is nowhere near starved.
+# ENV-OVERRIDABLE (LOW_REACH_FLOOR) so a hand-labeled fixture corpus can pin its own
+# calibration — see the note in score_digest.py.
+LOW_REACH_ENGAGEMENT_FLOOR = int(os.environ.get("LOW_REACH_FLOOR", "100"))
 LOW_REACH_SCORE_CAP = 70           # hard ceiling < ALSO_GATE(77); robust to pf size
 
 
