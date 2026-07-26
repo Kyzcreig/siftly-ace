@@ -3,6 +3,37 @@
 Fork of viperrcrypto/Siftly → Kyzcreig/siftly-ace. PRD: docs/plans/PRD-ace-x-knowledge-base.md (v5, approved).
 Swarm plan: docs/plans/SWARM-PLAN-phase1plus.md. Coding worker = Daedalus profile (openai-codex/gpt-5.5 xhigh).
 
+## 🔴 X SOURCING — morning-digest runs on grok `x_search`, NOT the paid X API (2026-07-26)
+The morning-digest X gather migrated off `api.twitter.com` to xAI's server-side `x_search`
+($0 marginal on the SuperGrok sub; replaced ~$285/mo). **Production-proven**: 16 x_search calls,
+51 candidates, `credential_sources: ['xai-oauth']`, exit 0. x-feed-brief is **NOT** migrated.
+
+Adapter `scripts/xsearch_gather.py` owns every guard — the prompt calls `x_search` and pipes raw
+responses through it; **never reshape rows by hand.** Five things that fail SILENTLY if changed:
+- **Operator syntax, never prose** — `from:<h> min_faves:N since:<d> until:<d>`. Prose caps ~10
+  rows/handle over ~3h and misses the day's top post. Handles go in BOTH `allowed_x_handles` AND
+  the query text.
+- **Emit `tweet_text`, not `text`** — `select_digest._item_text()` reads only
+  `tweet_text|title|summary|line|text_snippet`; a `text` key → `is_bare_fragment()` → **100% of X
+  candidates silently discarded.**
+- **Emit flat `likes`/`retweets` ALONGSIDE `public_metrics`** — `overview_digest`/`render_digest`
+  read only the flat keys (`select_digest` reads `public_metrics`). Omit either and the brief posts
+  with no like counts and ranks all authors 0.
+- **Union `citations` + `inline_citations`** — top-level `citations` is EMPTY on live calls;
+  reading it alone rejects 100% of real rows.
+- **Chunk budget is ~10 rows PER CALL, not per handle** — the densest handle eats it and neighbours
+  return nothing. The truncation tripwire (handle returned exactly the cap → re-query solo, tighter
+  window) is the real backstop; it fired 5× on the production run.
+
+`LOW_REACH_ENGAGEMENT_FLOOR` is now **100** (was 5) in both `select_digest.py` and
+`score_digest.py`, env-overridable via `LOW_REACH_FLOOR`; `gold_set_eval.py` pins it to 5 because
+the gold corpus was labeled at the old floor. Still a down-rank, never a discard.
+
+**Test-running a brief:** `~/.hermes/scripts/brief-testrun.sh morning-digest [--background|--dry-run]`
+— it handles the `--wait` requirement (without it `hermes cron run` forks and orphans), the PT day
+lock, and seen-list restore. Full doctrine: Obsidian [[Morning Digest System — System Overview]] +
+[[X Data Sourcing — Paid API vs Grok x_search]].
+
 ## ⭐ RANKING — CURRENT LIVE STATE (2026-06-21) — read this first
 Both briefs (`morning-digest`, `x-feed-brief`) run the SAME deterministic engine: model emits 4 enum labels → `pf-score.py` adds a personal-fit delta → `score_digest.py` scores → `select_digest.py --engine deterministic` gates/selects → renderer posts. The model NEVER picks what posts.
 - **Personal-fit is LIVE in `PF_AFFINITY_MODE=fused`** (shipped 2026-06-20, Ace-accepted 2026-06-21). `fused_delta = (keyword_delta + (embed_delta − pool_mean_embed))/2` — equal-weight blend of the keyword overlap scorer and the sqlite-vec embed scorer; centering cancels embed's ~+10.6 miscalibration. Code: `pf-score.py` `apply_fused_affinity()` + `affinity_mode="fused"`; `pf-audit.py` provisions the embed env for fused. Clamped to ±12 by `pf_points`/`PF_CAP`.
