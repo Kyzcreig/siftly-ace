@@ -541,6 +541,43 @@ class TestSourcingContract:
         _, ok = xg.adapt_chunk(resp, ["elonmusk"], *WINDOW, truncation_cap=50)
         assert ok["truncated_handles"] == []
 
+    def test_MEASURED_default_tripwire_is_10_not_the_specs_50(self):
+        """🔴 SPEC CORRECTION, measured live 2026-07-25.
+
+        The spec asserts operator syntax returns up to 50 rows and implies a cap of
+        50. Live on @emollick with min_faves:100 a single 48h call returned EXACTLY
+        10 rows, while splitting the same window into two 24h calls returned 10 + 4
+        = 14. Ten is a real, silently-reached cap. A tripwire defaulted to 50 would
+        never fire on it, so the default is 10.
+        """
+        assert xg.DEFAULT_TRUNCATION_CAP == 10
+
+        ten = [{"handle": "emollick", "tweet_id": str(2000 + i),
+                "tweet_text": f"a substantive post body number {i}",
+                "likes": 300, "created_at": "2026-07-24T12:00:00Z"} for i in range(10)]
+        resp = {"success": True, "credential_source": "xai-oauth", "degraded": False,
+                "answer": json.dumps(ten),
+                "inline_citations": [{"url": f"https://x.com/i/status/{2000+i}"} for i in range(10)]}
+
+        _, stats = xg.adapt_chunk(resp, ["emollick"], *WINDOW)   # default cap
+        assert "emollick" in stats["truncated_handles"], (
+            "a handle returning exactly 10 must trip the wire under the default")
+
+        # and the spec's 50 would have stayed silent on the same data
+        _, spec_default = xg.adapt_chunk(resp, ["emollick"], *WINDOW, truncation_cap=50)
+        assert spec_default["truncated_handles"] == [], (
+            "RED-PROOF: with the spec's cap of 50 this real truncation is invisible")
+
+    def test_tripwire_surfaces_in_the_run_alerts(self):
+        ten = [{"handle": "emollick", "tweet_id": str(3000 + i),
+                "tweet_text": f"another real post body number {i}",
+                "likes": 300, "created_at": "2026-07-24T12:00:00Z"} for i in range(10)]
+        resp = {"success": True, "credential_source": "xai-oauth", "degraded": False,
+                "answer": json.dumps(ten),
+                "inline_citations": [{"url": f"https://x.com/i/status/{3000+i}"} for i in range(10)]}
+        _, rep = xg.gather(["emollick"], *WINDOW, responses=[resp])
+        assert any("TRUNCATION TRIPWIRE" in a for a in rep["alerts"])
+
     def test_likes_floor_applied_with_thought_leader_bypass(self):
         rows = [{"handle": "nobody", "tweet_id": "1", "tweet_text": "under floor body text",
                  "likes": 5, "created_at": "2026-07-24T12:00:00Z"},

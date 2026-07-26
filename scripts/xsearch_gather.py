@@ -104,7 +104,20 @@ import sys
 DEFAULT_MIN_FAVES = 100
 DEFAULT_CHUNK_SIZE = 10          # allowed_x_handles hard cap at the tool
 MAX_HANDLES_PER_CALL = 10        # tools/x_search_tool.py MAX_HANDLES
-DEFAULT_TRUNCATION_CAP = 50      # observed operator-syntax ceiling; == cap ⇒ truncated
+
+# TRUNCATION TRIPWIRE THRESHOLD.
+#
+# 🔴 SPEC CORRECTION (measured live 2026-07-25 — the spec says 50; that is NOT the
+# universal ceiling). Operator syntax DID return 50 rows for @elonmusk with
+# min_faves:5000, but on @emollick with min_faves:100:
+#     2026-07-24 → 2026-07-26 (48h, one call)  => EXACTLY 10 rows
+#     2026-07-24 → 2026-07-25 (24h, one call)  => EXACTLY 10 rows
+#     2026-07-25 → 2026-07-26 (24h, one call)  => 4 rows
+# i.e. splitting the same window in two yielded 14 rows where one call yielded 10.
+# Ten is a REAL cap here, reached silently. Defaulting the tripwire to 50 would have
+# let a 29% content loss pass unnoticed, so the default is 10: a handle returning a
+# suspiciously round 10 (or more) is flagged for a solo re-query on a tighter window.
+DEFAULT_TRUNCATION_CAP = 10
 REQUIRED_CREDENTIAL_SOURCE = "xai-oauth"
 
 HERMES_VENV_PY = os.path.expanduser("~/.hermes/runtime/hermes-agent/venv/bin/python")

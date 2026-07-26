@@ -193,6 +193,22 @@ overlap with the paid top-10). Operator syntax matched **4 of the paid API's top
 **Goal shape:** *every post from every watched account that clears 100 likes* — a completeness sweep
 above a quality floor, **not** a per-handle top-N.
 
+> **🔴 CHUNK DILUTION — measured live 2026-07-25, and it contradicts the spec's chunking advice.**
+> Row counts do **not** scale with chunk size; a chunk shares one result budget:
+>
+> | call | rows |
+> |---|---|
+> | 5 handles in ONE chunk (simonw, karpathy, ollama, emollick, swyx), 48h | **1** |
+> | the SAME 5 handles as 5 SOLO calls, same window | **14** |
+> | @emollick solo, 48h in one call | **10** (a suspiciously round cap) |
+> | @emollick solo, the same 48h split into two 24h calls | **10 + 4 = 14** |
+>
+> So: **prefer solo/small chunks, and prefer a narrower window over a wider one.** A 10-handle chunk
+> is legal but returns roughly what a 1-handle chunk does — it does not multiply. Batch only the
+> genuinely quiet accounts, and treat any handle returning exactly 10 rows as **truncated**, not
+> exhausted: re-query it solo with a tighter `since:`/`until:`. The adapter's tripwire flags this
+> automatically in `.report.truncated_handles` (default threshold **10**, not the spec's 50).
+
 **Retweets:** excluded by construction. Every retweet row carries `likes: 0` (X attributes engagement
 to the original post), so any `min_faves:` floor removes them — exactly what the paid pipeline
 already did. Zero of the 711 posts ≥100 likes in a real 1,842-post day were retweets. Quote-tweets
@@ -204,15 +220,21 @@ You have the **`x_search` tool natively** — call it directly (do NOT shell out
 path), then pipe each raw tool response through the adapter, which owns every guard.
 
 **Step A — handle chunks.** Build the chunks from `thought-leaders.txt` (X handles = entries with no
-spaces). Max **10 handles per call**. Print the exact operator queries with:
+spaces). Max **10 handles per call** — but see CHUNK DILUTION above: **default to solo calls for the
+loud accounts** and only batch the quiet ones. Print the exact operator queries with:
 ```bash
 SINCE=$(date -u -v-48H +'%Y-%m-%dT%H:%M:%SZ'); UNTIL=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 python3 ~/Projects/siftly-ace/scripts/xsearch_gather.py \
   --handles-file ~/.hermes/digest/thought-leaders.txt \
-  --since "$SINCE" --until "$UNTIL" --min-faves 100 --print-query
+  --since "$SINCE" --until "$UNTIL" --min-faves 100 \
+  --solo-handle elonmusk --solo-handle emollick --solo-handle simonwillison \
+  --solo-handle karpathy --solo-handle sama --solo-handle swyx \
+  --chunk-size 5 --print-query
 ```
-Then issue **one `x_search` tool call per printed query**, passing that chunk's handles in
-`allowed_x_handles` and the printed text as `query`, with `from_date`/`to_date` set to the
+(`--solo-handle` is repeatable and isolates a heavy account into its own call; `--chunk-size 5`
+keeps the remaining batches small. Tune both from `.report.per_handle` + `.report.truncated_handles`
+after a few runs.) Then issue **one `x_search` tool call per printed query**, passing that chunk's
+handles in `allowed_x_handles` and the printed text as `query`, with `from_date`/`to_date` set to the
 `since:`/`until:` dates. Save each raw tool response verbatim to
 `/tmp/morning-digest-xsearch-<n>.json`.
 
