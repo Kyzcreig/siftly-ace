@@ -150,7 +150,165 @@ curl -sL 'https://www.latent.space/feed' --max-time 15
 ```
 For smol.ai, keep items from the last 36 hours. Extract title, link, and the first ~2 cleaned description sentences. For Latent Space, skip `/issues/` links and keep non-issue items from the last 48 hours.
 
-X/Twitter source:
+X/Twitter source — **grok `x_search` (xAI server-side, $0 marginal on the grok subscription)**:
+
+> **CUTOVER 2026-07-25 (Phase 2 of the X-API→x_search migration).** X gathering moved OFF the
+> paid `api.twitter.com` recent-search endpoint (~19 reads/day ≈ $9.50/day ≈ **$285/mo**) and onto
+> Hermes' **`x_search` TOOL** — xAI's server-side X search, billed to the grok subscription, **$0
+> marginal**. The paid helper `x_api_search()` is kept below, **commented out and dated**, so
+> rollback is one flip. Spec: `~/.hermes/plans/2026-07-25_x-api-to-grok-xsearch-migration-SPEC.md`.
+> Capability reference: Obsidian → Engineering → Cost & Cron → *X Data Sourcing — Paid API vs Grok x_search*.
+
+### ⭐ THE SOURCING CONTRACT — query in OPERATOR SYNTAX, never prose
+
+This is the whole unlock and it is **not optional**. Same tool, same day, only the phrasing changed:
+
+| query phrasing | rows returned | window reached |
+|---|---|---|
+| "the 30 most recent posts from @elonmusk" | 10 | ~3 hours |
+| **`from:elonmusk min_faves:100 since:2026-07-24 until:2026-07-26`** | **50** | **full 2-day window** |
+
+Prose phrasing caps at ~10 rows/handle over a ~3h window and **misses the day's top post** (1/10
+overlap with the paid top-10). Operator syntax matched **4 of the paid API's top 5, including #1**.
+
+**Rules — all four are load-bearing:**
+1. **Operator syntax**, not English: `from:<handle> min_faves:100 since:<YYYY-MM-DD> until:<YYYY-MM-DD>`.
+2. **Handles go in BOTH** the `allowed_x_handles` parameter **AND the query text**. The parameter
+   does not reach the prompt — a query that doesn't name them returns *"the query does not list any
+   handles"* and you get nothing.
+3. **Always send `since:`/`until:` AND re-filter timestamps locally.** grok's own date arithmetic is
+   unreliable (a 48h query once returned "0 posts" while citing posts from inside the window; a
+   quiet account's "10 most recent" reached back 26 days). The adapter does the local cut — that is
+   the hard boundary; the operators are only a hint.
+4. **`min_faves:100`** is both the engagement floor **and** the lever that widens the reachable
+   window (a cheaper result set lets the search reach further back). It is the primary gather control.
+
+> **🔴 `min_faves:` NAME/TIER NOTE — read this before "fixing" it.** The old warning here said
+> *"do NOT use `min_faves:` — it is a Premium-tier X API feature and returns HTTP 400 on the standard
+> tier."* **That is true ONLY of the PAID `api.twitter.com` endpoint** (the commented `x_api_search`
+> below). **grok/`x_search` supports `min_faves:` fine** — verified live many times on 2026-07-25.
+> Do not delete `min_faves:` from the x_search queries on the strength of the old paid-API warning;
+> it is the single most important operator in the contract.
+
+**Goal shape:** *every post from every watched account that clears 100 likes* — a completeness sweep
+above a quality floor, **not** a per-handle top-N.
+
+**Retweets:** excluded by construction. Every retweet row carries `likes: 0` (X attributes engagement
+to the original post), so any `min_faves:` floor removes them — exactly what the paid pipeline
+already did. Zero of the 711 posts ≥100 likes in a real 1,842-post day were retweets. Quote-tweets
+are unaffected: they are first-class authored posts with their own engagement and come back normally.
+
+### How to run the X gather
+
+You have the **`x_search` tool natively** — call it directly (do NOT shell out to a second billed
+path), then pipe each raw tool response through the adapter, which owns every guard.
+
+**Step A — handle chunks.** Build the chunks from `thought-leaders.txt` (X handles = entries with no
+spaces). Max **10 handles per call**. Print the exact operator queries with:
+```bash
+SINCE=$(date -u -v-48H +'%Y-%m-%dT%H:%M:%SZ'); UNTIL=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+python3 ~/Projects/siftly-ace/scripts/xsearch_gather.py \
+  --handles-file ~/.hermes/digest/thought-leaders.txt \
+  --since "$SINCE" --until "$UNTIL" --min-faves 100 --print-query
+```
+Then issue **one `x_search` tool call per printed query**, passing that chunk's handles in
+`allowed_x_handles` and the printed text as `query`, with `from_date`/`to_date` set to the
+`since:`/`until:` dates. Save each raw tool response verbatim to
+`/tmp/morning-digest-xsearch-<n>.json`.
+
+**Step B — topical searches** (morning-digest is keyword-driven, which is `x_search`'s native
+strength). Run these three as `x_search` calls with **no** `allowed_x_handles`, same date range, and
+save the responses the same way:
+```text
+(AI coding agent OR agent framework) (launch OR release) min_faves:100 since:$SINCE_DATE until:$UNTIL_DATE -filter:replies
+(open source model OR open weights) (release OR released) min_faves:100 since:$SINCE_DATE until:$UNTIL_DATE -filter:replies
+(OpenAI OR Anthropic OR xAI OR Grok OR "Chatbot Arena") (model OR API OR leaderboard OR agent) min_faves:100 since:$SINCE_DATE until:$UNTIL_DATE -filter:replies
+```
+Append to each the same JSON-shape instruction the adapter's `--print-query` emits (keys exactly
+`handle, tweet_id, tweet_text, url, likes, retweets, replies, views, created_at`; `tweet_id` as a
+**STRING**; `created_at` as exact ISO8601 UTC).
+
+**Step C — adapt.** One call, all responses. The adapter is the ONLY thing that turns tool output
+into candidates:
+```bash
+python3 ~/Projects/siftly-ace/scripts/xsearch_gather.py \
+  --handles-file ~/.hermes/digest/thought-leaders.txt \
+  --since "$SINCE" --until "$UNTIL" --min-faves 100 \
+  --from-response /tmp/morning-digest-xsearch-1.json \
+  --from-response /tmp/morning-digest-xsearch-2.json \
+  --from-response /tmp/morning-digest-xsearch-3.json \
+  --out /tmp/morning-digest-x-candidates.json \
+  --report /tmp/morning-digest-x-report.json
+XSEARCH_RC=$?
+```
+Read `.candidates[]` from the output. Each row already arrives in the **exact pipeline candidate
+shape** — `tweet_text`, flat `likes`/`retweets`, `public_metrics`, string `tweet_id`, normalized
+`created_at`, `source: "x"`. **Do NOT reshape, rename, or "simplify" these fields.** In particular
+never rename `tweet_text` to `text`: `select_digest._item_text()` reads only
+`tweet_text|title|summary|line|text_snippet`, so a `text` key is read as empty and **100% of X
+candidates are silently discarded as bare fragments** before scoring. Carry the rows into the
+Step-6.5 dump as-is.
+
+Set `XCT` from `.report.candidates_emitted`. Tag source `x`.
+
+### What the adapter guarantees (so you don't have to re-implement it)
+- **String tweet ids.** Snowflake ids exceed 2^53 and arrive as bare JSON numbers in some responses,
+  flipping int/string between calls. Coerced to string at ingest; dedupe is on the string.
+- **Timestamp normalization.** ISO8601 *and* RFC-1123 (`Sat, 25 Jul 2026 16:07:51 GMT`) both appear;
+  both are normalized to UTC ISO8601, and rows outside the window are cut locally.
+- **Citation / hallucination guard (free).** Every returned `tweet_id` must appear in the response's
+  `citations` **or** `inline_citations`; uncited rows are dropped and counted. A `degraded: true`
+  chunk is rejected (its answer came from model knowledge, not the X index).
+- **Likes floor with thought-leader bypass** — a 0-like Karpathy post still gets in.
+- **Truncation tripwire** — a handle returning exactly the row cap was cut off, not exhausted; the
+  report names it so it can be re-queried solo with a tighter window.
+- **Positive-proof counters** — `x_search_calls`, `chunks_ok/failed`, `rows_parsed`, `rows_malformed`,
+  `rows_uncited`, `rows_after_window_filter`, `rows_after_likes_filter`, `candidates_emitted`,
+  `credential_source`.
+
+### 🔴 X gather failure handling (LOUD — and the day lock is the point)
+
+The adapter exits **non-zero** on the two conditions that must never pass silently. Check `XSEARCH_RC`:
+
+```bash
+if [ "$XSEARCH_RC" -ne 0 ]; then
+  ALERTS=$(jq -r '.alerts[]?' /tmp/morning-digest-x-report.json 2>/dev/null | tr '\n' ' ')
+  CRED=$(jq -r '.credential_sources | join(",")' /tmp/morning-digest-x-report.json 2>/dev/null)
+  CALLS=$(jq -r '.x_search_calls // 0' /tmp/morning-digest-x-report.json 2>/dev/null)
+  python3 ~/.hermes/scripts/notify.py --send "⚠️ morning-digest: x_search gather FAILED — calls=${CALLS} cred=${CRED:-none} — ${ALERTS:-no detail}" --channel discord --target 1480525090331561984
+fi
+```
+
+**EMPTY POOL — the trap this guard exists for.** A successful `x_search` that returns zero rows is an
+HTTP **200** with `success: true`, so a status-code check cannot see it. If the run then continued, the
+digest would post thin **and Step 6.5/7 would touch the PT-day lock
+(`/tmp/morning-digest-posted-$(TZ=America/Los_Angeles date +%F).lock`), blocking any retry for the
+rest of the day.** Therefore:
+
+> **If `.report.empty_pool` is true, alert #logs LOUDLY and DO NOT create the PT-day post marker.**
+> Continue the digest with `0 X` if other sources have content — but leave the lock untouched so a
+> retry is still possible. A thin brief that also burns the day lock is the worst outcome; a loud
+> failure that stays retryable is the correct one.
+
+**CREDENTIAL FALLBACK — silent metered billing.** `resolve_xai_http_credentials` prefers Grok OAuth
+but falls back **last** to a **metered `XAI_API_KEY`**. That fallback is invisible to the X
+developer-portal read counter, so spend could resume without any of the usual signals. The adapter
+alerts and exits non-zero whenever `credential_source` is anything other than `xai-oauth`. Treat that
+as a real page, not noise.
+
+**`x_search_calls: 0` in a posted brief is a FAILURE, not a success** — it means the X gather silently
+fell back to something else. Record `x_search_calls` in the perf log every run.
+
+<!-- ══════════════════════════════════════════════════════════════════════════════
+     PAID X API PATH — DISABLED 2026-07-25 (Phase 2 cutover). KEEP FOR ROLLBACK.
+     ══════════════════════════════════════════════════════════════════════════════
+     ROLLBACK = uncomment this block and re-point Step 2's X gather at
+     `x_api_search`, or simply restore the dated backup:
+       cp ~/.hermes/state/cron/morning-digest/prompt.md.bak.<TS>-pre-xsearch \
+          ~/.hermes/state/cron/morning-digest/prompt.md
+     Cost when live: ~19 reads/day @ $0.005/read ≈ $9.50/day ≈ $285/mo.
+     Do NOT delete this block until the x_search path has run clean for ≥2 weeks.
+
 Use the direct bearer-token API path. The `xurl timeline/search` app-auth path can return 401; do not rely on it.
 
 Compute the 48-hour-ago timestamp in ISO 8601 UTC format (Z suffix) for the `start_time` API param:
@@ -164,14 +322,17 @@ OP_TOKEN_FILE=$([ -f "$HOME/.hermes/.op-service-token" ] && echo "$HOME/.hermes/
 export OP_SERVICE_ACCOUNT_TOKEN=$(cat "$OP_TOKEN_FILE")
 export X_BEARER_TOKEN=$(op item get "X.com — API Keys (@angalexg)" --vault Engineering --fields "Bearer Token" --reveal 2>/dev/null)
 
-x_search() {
+x_api_search() {
+  # NAME NOTE (renamed 2026-07-25): this is the PAID api.twitter.com path.
+  # Do NOT confuse it with Hermes' `x_search` TOOL, which is xAI/grok
+  # server-side and billed to the grok subscription. Opposite billing.
   # Returns the JSON body on stdout; sets global X_LAST_STATUS to the HTTP code.
   # max_results MUST be between 10 and 100 — X returns HTTP 400 "not between 10
   # and 100" for anything smaller (e.g. 5). Never lower this below 10.
   local query="$1"
   local body; body=$(mktemp)
   X_LAST_STATUS=$(curl -sS -o "$body" -w '%{http_code}' --get 'https://api.twitter.com/2/tweets/search/recent' \
-    -H "Authorization: Bearer ${X_BEARER_TOKEN}" \
+    -H "Authorization: Bearer ***" \
     --data-urlencode "query=${query}" \
     --data-urlencode 'max_results=20' \
     --data-urlencode "start_time=${START_TIME}" \
@@ -191,24 +352,23 @@ self-inflicted failure that looks like an outage. Always 20.
 **Build X search queries dynamically from `thought-leaders.txt`:**
 - Take all X handles (entries without spaces), chunk into groups of ~6-8 handles each
 - For each chunk, build a `from:` query: `(from:handle1 OR from:handle2 OR ...) -is:retweet`
-- Run x_search for each chunk
+- Run x_api_search for each chunk
 
-NOTE: do NOT use `min_faves:` operator. It is a Premium-tier X API feature and returns HTTP 400 on the standard tier. The 48h `start_time` filter already constrains the search to fresh content.
+NOTE (PAID PATH ONLY): do NOT use `min_faves:` operator here. It is a Premium-tier X API feature and
+returns HTTP 400 on the standard tier. The 48h `start_time` filter already constrains the search to
+fresh content. **This restriction does NOT apply to grok/`x_search`**, which supports `min_faves:`
+fine — see the `min_faves:` NAME/TIER NOTE above.
 
 Also run these topical searches (max 3-4 to stay under rate limits):
 ```bash
-x_search 'AI coding agent launch -is:retweet'
-x_search 'open source model release -is:retweet'
-x_search '(OpenAI OR Anthropic OR xAI OR Grok OR Chatbot Arena OR arena.ai) (model OR API OR leaderboard OR agent) -is:retweet'
+x_api_search 'AI coding agent launch -is:retweet'
+x_api_search 'open source model release -is:retweet'
+x_api_search '(OpenAI OR Anthropic OR xAI OR Grok OR Chatbot Arena OR arena.ai) (model OR API OR leaderboard OR agent) -is:retweet'
 ```
 
 For each X response, parse `data[]` and `includes.users[]`. Match tweet `author_id` to the user by id, preserve full tweet text for scoring, and build `https://x.com/<username>/status/<tweet_id>`. Skip retweets, quote-only posts, generic motivation, dunking, politics, aggregator reposts, and posts without a durable builder insight.
 
-**Dedupe X candidates against `x-brief-seen.json` (loaded in Step 1):** if a tweet ID appears in the X brief seen list, skip it. The morning digest should only surface X content the 7:30am X brief didn't already cover.
-
-(No hard X cap — keep all deduped X candidates and let scoring + selection cut them down.)
-
-If the direct bearer-token X API returns ANY non-200 status (401/403 auth, **402 CreditsDepleted**, 429 rate-limit, 5xx) OR the JSON body contains an error document (`type` pointing at `.../problems/...`, plus `title`/`detail`) instead of a `data[]` array, treat X as failed. Do NOT silently continue. Capture each `x_search` response's HTTP status via `X_LAST_STATUS` (the helper sets it) AND inspect the body for a `problems/` `type` field — never assume a 200-shaped body means success (a 402 returns a problem doc, not tweets).
+If the direct bearer-token X API returns ANY non-200 status (401/403 auth, **402 CreditsDepleted**, 429 rate-limit, 5xx) OR the JSON body contains an error document (`type` pointing at `.../problems/...`, plus `title`/`detail`) instead of a `data[]` array, treat X as failed. Do NOT silently continue. Capture each `x_api_search` response's HTTP status via `X_LAST_STATUS` (the helper sets it) AND inspect the body for a `problems/` `type` field — never assume a 200-shaped body means success (a 402 returns a problem doc, not tweets).
 
 **Before alerting, check whether the 400 is self-inflicted.** A `400 Invalid Request` whose body message mentions `max_results` … `not between 10 and 100`, or any other malformed-parameter error, is a BUG in this run's query — fix the parameter and retry the call ONCE. Do not alert and do not report `0 X` for a self-inflicted 400 you can correct.
 
@@ -222,6 +382,11 @@ python3 ~/.hermes/scripts/notify.py --send "⚠️ morning-digest: X direct bear
 ```
 When the body is a `CreditsDepleted` (HTTP 402) document, the X API project is out of read credits — surface that exact wording so Ace knows it's a billing/quota issue, not auth. Then continue with `0 X`. Do not call `xurl` after direct bearer fails.
 
+     ══════════ END DISABLED PAID X API PATH (2026-07-25) ══════════ -->
+
+**Dedupe X candidates against `x-brief-seen.json` (loaded in Step 1):** if a tweet ID appears in the X brief seen list, skip it. The morning digest should only surface X content the 7:30am X brief didn't already cover. **Compare tweet IDs as STRINGS** — the adapter emits string ids by design (snowflake ids exceed 2^53), so a numeric comparison silently fails to match.
+
+(No hard X cap — keep all deduped X candidates and let scoring + selection cut them down.)
 Reddit (AI discovery via RSS, day-seeded rotating subset, dual-lane):
 ```bash
 # Day-seeded rotation of the curated 9-sub AI set (~5/run), spread across Spectrum
@@ -256,11 +421,13 @@ Tag each candidate with one source: `perplexity`, `hn`, `smol.ai`, `latent.space
 - Perplexity = curated web
 - HN = front-page discussion
 - swyx (smol.ai + Latent Space) = builder-curated newsletters (low volume — often 0-2 items, NORMAL)
-- X = real-time builder/thought-leader posts (often highest-signal)
+- X = real-time builder/thought-leader posts (often highest-signal) — via grok `x_search`, NOT the paid API
 - Reddit = AI-subreddit discovery via RSS (day-seeded ~5-of-9 subs/run; honest-zero engagement, NORMAL)
 - github = daily trending repos (general trending, not AI-filtered; scorer rejects off-topic)
 
-If perf log shows `gather_x duration_s=0`, you skipped X — that's a bug. Always invoke the x_search bash calls.
+If perf log shows `gather_x duration_s=0`, you skipped X — that's a bug. Always issue the `x_search`
+TOOL calls and run the adapter. **`x_search_calls: 0` on a posted brief is a silent fallback = FAILURE**,
+not a success — log `x_search_calls` and `credential_source` from `.report` every run.
 Likewise `gather_reddit`/`gather_github` must run every time (they degrade to 0 gracefully, but must be invoked).
 
 
