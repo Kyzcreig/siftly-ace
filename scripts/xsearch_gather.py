@@ -411,7 +411,18 @@ def to_candidate(row: dict) -> dict:
         "tweet_id": tid,                 # B2: string, always
         "source": "x",                   # select_digest._is_x is source-driven
         "authorHandle": handle,
+        "authorName": handle,            # x-feed's timeline shape carries authorName;
+                                         # the paid path got it from users[].name. We only
+                                         # have the handle, and every consumer renders
+                                         # @authorHandle — so mirror it rather than emit
+                                         # None and have a renderer print "undefined".
         "tweet_text": text,              # B1: the ONLY key _item_text will read
+        "text": text,                    # x-feed COMPAT: its prompt tells the model that
+                                         # timeline candidates carry `text` (the paid
+                                         # x-feed-fetch.ts shape). morning-digest never
+                                         # reads it. Emitting BOTH keeps one adapter
+                                         # serving both briefs; emitting only `text` is
+                                         # the documented 100%-silent-discard bug.
         "title": "",                     # never set for tweets (would route as a story)
         "url": url,
         "likes": likes,                  # B1: flat — overview/render read only these
@@ -559,7 +570,26 @@ def adapt_chunk(response: dict, handles, since, until, min_faves=DEFAULT_MIN_FAV
         out.append(cand)
 
     # TRUNCATION TRIPWIRE: a handle returning EXACTLY the cap was cut off, not
-    # exhausted. Re-query it solo with a tighter since:/until:.
+    # exhausted.
+    #
+    # 🔴 THE DOCUMENTED REMEDIATION DOES NOT WORK (measured 2026-07-27, Phase 4).
+    # The advice used to read "re-query it solo with a tighter since:/until:".
+    # That is a NO-OP: build_query() puts both bounds through _date_only(), which
+    # truncates to YYYY-MM-DD, so a sub-day split collapses to an EMPTY range
+    # (10:50Z->14:50Z becomes `since:2026-07-25 until:2026-07-25`). Measured: 12
+    # truncated handles x 6 four-hour sub-windows = 72 calls -> 20 rows, with 5 of
+    # 6 buckets returning ZERO for that reason alone.
+    #
+    # Raising the floor does not work either: each floor returns the SAME top ~10
+    # rows rather than the next slice (@elonmusk, floors 200/350/600/1200/2500 ->
+    # identical 10-row set). 12 handles x 6 floors = 72 calls -> 8 net-new rows.
+    #
+    # So this flag is a DETECTOR of unrecoverable loss, not a fixable condition:
+    # the ~10 rows/call budget is a hard ceiling on the top of the relevance
+    # ranking. Treat a flagged handle as "this handle is under-collected and
+    # cannot be topped up" — for a per-author completeness sweep that is a
+    # correctness limit (x-feed measured 62.3% recall @100, vs the >=90% bar).
+    # Full evidence: docs/handoffs/2026-07-27-phase4-xfeed-sourcing-shadow-result.md
     for h, n in stats["per_handle"].items():
         if truncation_cap and n >= int(truncation_cap):
             stats["truncated_handles"].append(h)
@@ -849,6 +879,19 @@ def _selftest():
           "single handle needs no parens")
     check("(" not in solo_q.split("\n")[0], "single-handle query is unparenthesized")
     check("simonw" in q and "karpathy" in q, "G1 handles in query text")
+
+    # DUAL-BRIEF CANDIDATE SHAPE. morning-digest reads tweet_text; x-feed's prompt
+    # documents timeline candidates as carrying `text`. Emitting only one of them
+    # silently discards 100% of that brief's candidates (is_bare_fragment), which
+    # is invisible in any log — so gate BOTH keys plus the flat metrics.
+    _c = to_candidate({"handle": "simonw", "tweet_id": "123", "tweet_text": "hello world",
+                       "url": "https://x.com/simonw/status/123", "likes": 5, "retweets": 2,
+                       "created_at": "2026-07-26T12:00:00Z"})
+    check(_c["tweet_text"] == "hello world", "emits tweet_text (morning-digest reads this)")
+    check(_c["text"] == "hello world", "emits text (x-feed prompt reads this)")
+    check(_c["authorHandle"] == "simonw" and _c["authorName"], "emits authorHandle AND authorName")
+    check(_c["likes"] == 5 and _c["public_metrics"]["like_count"] == 5,
+          "emits FLAT likes AND public_metrics (different consumers read each)")
     check(len(chunk_handles(["a"] * 1 + [f"h{i}" for i in range(12)], 10, solo=["h0"])) == 3,
           "chunking")
     c = to_candidate({"handle": "simonw", "tweet_id": 123, "tweet_text": "hello world body",
