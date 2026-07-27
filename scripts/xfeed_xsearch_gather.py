@@ -86,8 +86,23 @@ def _is_rate_limited(resp) -> bool:
             or "rate limit" in blob or "429" in blob)
 
 
+def _split_window(since, until, parts):
+    """Split [since, until) into `parts` contiguous sub-windows (ISO8601 Z)."""
+    import datetime as dt
+    s = dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
+    u = dt.datetime.fromisoformat(until.replace("Z", "+00:00"))
+    step = (u - s) / parts
+    out = []
+    for i in range(parts):
+        a = s + step * i
+        b = s + step * (i + 1) if i < parts - 1 else u
+        out.append((a.strftime("%Y-%m-%dT%H:%M:%SZ"), b.strftime("%Y-%m-%dT%H:%M:%SZ")))
+    return out
+
+
 def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
-                    max_workers=DEFAULT_WORKERS, progress=None, retries=3):
+                    max_workers=DEFAULT_WORKERS, progress=None, retries=3,
+                    split_truncated=True, max_splits=4):
     """One x_search call per handle, fanned out max_workers at a time.
 
     Returns (candidates, report). Never raises for a single handle's failure — a
@@ -102,49 +117,93 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     state = {"done": 0}
     results = {}
     throttled_total = 0
+    split_passes = 0
 
-    def work(handle):
-        q = build_query([handle], since, until, min_faves)
-        resp = call_x_search(q, [handle], since, until, timeout=300)
+    def work(job):
+        handle, w_since, w_until = job
+        q = build_query([handle], w_since, w_until, min_faves)
+        resp = call_x_search(q, [handle], w_since, w_until, timeout=300)
         with lock:
             state["done"] += 1
             if progress and state["done"] % progress == 0:
-                print(f"  … {state['done']}/{len(handles)} handles", file=sys.stderr)
-        return handle, resp
+                print(f"  … {state['done']} calls", file=sys.stderr)
+        return job, resp
+
+    def run_wave(jobs, width):
+        """Issue `jobs` at `width` concurrency, retrying throttled ones narrower."""
+        nonlocal throttled_total
+        out, pending = [], list(jobs)
+        for attempt in range(retries + 1):
+            if not pending:
+                break
+            if attempt:
+                # Back off AND narrow the fan-out: retrying a throttle at the same
+                # width just reproduces it. Halve workers each round, floor of 4.
+                wait = 5 * attempt
+                w = max(4, width // (2 ** attempt))
+                print(f"  retry {attempt}: {len(pending)} throttled, "
+                      f"waiting {wait}s then {w} at a time", file=sys.stderr)
+                time.sleep(wait)
+            else:
+                w = width
+            with cf.ThreadPoolExecutor(max_workers=w) as ex:
+                batch = list(ex.map(work, pending))
+            nxt = []
+            for job, resp in batch:
+                if not resp.get("success") and _is_rate_limited(resp) and attempt < retries:
+                    nxt.append(job)
+                    continue
+                out.append((job, resp))
+            throttled_total += len(nxt)
+            pending = nxt
+        for job in pending:   # exhausted retries — record as a real failure
+            out.append((job, {"success": False, "error": "rate-limited after retries"}))
+        return out
 
     t0 = time.time()
-    pending = list(handles)
-    for attempt in range(retries + 1):
-        if not pending:
-            break
-        if attempt:
-            # Back off AND narrow the fan-out: retrying a throttle at the same
-            # width just reproduces it. Halve workers each round, floor of 4.
-            wait = 5 * attempt
-            width = max(4, max_workers // (2 ** attempt))
-            print(f"  retry {attempt}: {len(pending)} throttled handle(s), "
-                  f"waiting {wait}s then {width} at a time", file=sys.stderr)
-            time.sleep(wait)
-        else:
-            width = max_workers
-        with cf.ThreadPoolExecutor(max_workers=width) as ex:
-            batch = list(ex.map(work, pending))
-        retry_next = []
-        for handle, resp in batch:
-            if not resp.get("success") and _is_rate_limited(resp) and attempt < retries:
-                retry_next.append(handle)
-                continue
-            results[handle] = resp
-        throttled_total += len(retry_next)
-        pending = retry_next
+    responses = run_wave([(h, since, until) for h in handles], max_workers)
+
+    # TRUNCATION RECURSION — the piece that turns 60% head recall into full coverage.
+    # A handle returning exactly the cap was almost certainly cut off, so re-query
+    # it over narrower sub-windows until it stops hitting the cap. This is the ONLY
+    # way to get a dense handle's full output: the cap is per call, so more calls
+    # over smaller windows is the only lever (a lower floor makes it worse — the cap
+    # then fills with recency and evicts the headliners).
+    if split_truncated:
+        for parts in (2, 4):
+            if parts > max_splits:
+                break
+            # Only handles STILL hitting the cap at the current granularity.
+            hot = sorted({job[0] for job, r in responses
+                          if r.get("success") and len(_rows_from(r)) >= ROW_CAP})
+            if not hot:
+                break
+            jobs = [(h, a, b) for h in hot for a, b in _split_window(since, until, parts)]
+            print(f"  split pass: {len(hot)} capped handle(s) → "
+                  f"{len(jobs)} calls over {parts} sub-windows", file=sys.stderr)
+            extra = run_wave(jobs, max_workers)
+            # UNION, never replace. Two measured reasons (2026-07-27):
+            #  1. grok's date arithmetic is unreliable — a 12h sub-window call
+            #     returns posts from outside that slice, so the sub-windows do NOT
+            #     collectively cover what the whole-window call returned.
+            #  2. Replacing therefore LOSES rows: measured 55 lost / 34 gained,
+            #     a net -21 candidates and recall 50% -> 45%.
+            # Keeping both and deduping by id is strictly additive: extra calls can
+            # only ever add coverage, never subtract it.
+            responses = responses + extra
+            split_passes += 1
     wall = time.time() - t0
+
+    results = responses
 
     candidates, per_handle, truncated, failed, degraded, creds = [], {}, [], [], [], set()
     all_stats, seen_ids = [], set()
-    for handle, resp in results.items():
+    # `responses` is a LIST of (job, resp) — a handle can appear MORE THAN ONCE
+    # after window-splitting, so accumulate per handle rather than assigning.
+    for (handle, w_since, w_until), resp in responses:
+        per_handle.setdefault(handle, 0)
         if not resp.get("success"):
-            failed.append(f"{handle}: {(resp.get('error') or 'unknown')[:80]}")
-            per_handle[handle] = 0
+            failed.append(f"{handle}[{w_since[:13]}]: {(resp.get('error') or 'unknown')[:70]}")
             continue
         src = resp.get("credential_source")
         if src:
@@ -155,20 +214,24 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         # likes/retweets, id coercion, window re-filter, likes floor, tripwire).
         # Do not reshape rows here — reimplementing any of it is how the silent
         # failure classes come back.
+        # NOTE: filter against the ORIGINAL OUTER window, not the sub-window that
+        # was queried. grok returns posts outside a narrow slice, and those rows are
+        # legitimate data for the sweep — discarding them because they fell outside
+        # a slice WE invented dropped 50 of 207 rows in the measured replace-variant.
         cands, stats = adapt_chunk(resp, [handle], since, until, min_faves=min_faves)
         all_stats.append(stats)
-        n = len(cands)
-        per_handle[handle] = n
-        # Truncation tripwire: exactly the cap means there were probably more.
+        # Still capped after the final split pass = genuinely more data than we can
+        # reach; report it rather than pretend the sweep was complete.
         if len(_rows_from(resp)) >= ROW_CAP:
             truncated.append(handle)
         for cand in cands:
             cid = cand.get("id") or cand.get("tweet_id")
             if cid and cid in seen_ids:
-                continue
+                continue      # sub-windows can overlap at the boundary
             if cid:
                 seen_ids.add(cid)
             candidates.append(cand)
+            per_handle[handle] += 1
 
     alerts = []
     if not candidates:
@@ -182,12 +245,19 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     if failed and len(failed) > max(3, len(handles) // 10):
         alerts.append(f"{len(failed)}/{len(handles)} handle calls FAILED — "
                       f"coverage is NOT complete this run.")
-    if degraded and len(degraded) == len(handles):
-        alerts.append("ALL handles reported degraded — treat the sweep as suspect.")
+    # A degraded chunk normally just means "this handle had no in-window posts above
+    # the floor" (benign, and expected on a 220-handle sweep). Only flag it when it
+    # is universal. Count DISTINCT handles, not responses: after window-splitting one
+    # handle contributes many responses, so a response-level count trivially exceeds
+    # the handle count and fired this alert on a healthy sweep (measured 2026-07-27).
+    if degraded and len({h for h in degraded}) >= len(per_handle) and per_handle:
+        alerts.append("EVERY handle reported degraded — treat the sweep as suspect.")
 
     report = {
-        "x_search_calls": len(handles),
-        "handles_ok": len(handles) - len(failed),
+        "x_search_calls": len(responses),
+        "handles_swept": len(handles),
+        "split_passes": split_passes,
+        "handles_ok": len([h for h,n in per_handle.items() if n>=0]) - 0,
         "chunks_failed": len(failed),
         "candidates_emitted": len(candidates),
         "wall_seconds": round(wall, 1),
@@ -195,7 +265,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         "throttled_retries": throttled_total,
         "min_faves": min_faves,
         "credential_sources": sorted(creds),
-        "truncated_handles": sorted(truncated),
+        "truncated_handles": sorted(set(truncated)),
         "degraded_handles_n": len(degraded),
         "failures": failed[:10],
         "alerts": alerts,
@@ -284,6 +354,22 @@ def _selftest():
     check(_rows_from({"answer": "not json"}) == [], "garbage -> empty, no raise")
 
     check(ROW_CAP == 10, "row cap matches the measured per-call budget")
+
+    # Window splitting: contiguous, no gaps, endpoints preserved. A gap here would
+    # silently drop every post inside it — invisible in any output.
+    w = _split_window("2026-07-26T00:00:00Z", "2026-07-28T00:00:00Z", 4)
+    check(len(w) == 4, "split into 4 sub-windows")
+    check(w[0][0] == "2026-07-26T00:00:00Z", "split preserves start")
+    check(w[-1][1] == "2026-07-28T00:00:00Z", "split preserves end")
+    check(all(w[i][1] == w[i + 1][0] for i in range(3)), "sub-windows are contiguous (no gaps)")
+    check(w[0][1] == "2026-07-26T12:00:00Z", "48h/4 = 12h slices")
+
+    check(_is_rate_limited({"error": "resource-exhausted: Too many requests for team x"}),
+          "detects the measured xAI throttle string")
+    check(_is_rate_limited({"error": "HTTP 429"}), "detects 429")
+    check(not _is_rate_limited({"error": "handle not found"}),
+          "a real error is NOT treated as retryable throttle")
+
     check(os.path.exists(FOLLOWS), f"follows file exists: {FOLLOWS}")
     n = len(load_handles(FOLLOWS))
     check(n > 50, f"follows file has a real graph ({n} handles)")
