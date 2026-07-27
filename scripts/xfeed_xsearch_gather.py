@@ -87,7 +87,16 @@ def _is_rate_limited(resp) -> bool:
 
 
 def _split_window(since, until, parts):
-    """Split [since, until) into `parts` contiguous sub-windows (ISO8601 Z)."""
+    """Split [since, until) into `parts` contiguous sub-windows (ISO8601 Z).
+
+    ⚠️ ONLY USEFUL AT DAY GRANULARITY. Measured 2026-07-27: grok IGNORES
+    intra-day since:/until: times — a `since:2026-07-26T12:00:00Z
+    until:2026-07-26T18:00:00Z` query for @RoyalSerf returned [] + degraded,
+    while the paid corpus proves he posted at 16:07 and 17:05 inside it. So
+    splitting a 48h window into 4x12h slices produces empty calls, not finer
+    coverage. Splitting into whole DAYS works because the date operators are
+    honoured. The escalation ladder below is the real lever for dense handles.
+    """
     import datetime as dt
     s = dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
     u = dt.datetime.fromisoformat(until.replace("Z", "+00:00"))
@@ -100,9 +109,22 @@ def _split_window(since, until, parts):
     return out
 
 
+# Escalation ladder for handles that come back capped. MEASURED on @RoyalSerf
+# (29 real posts >=100 likes, pinned at exactly 10 through two window-split
+# passes):
+#     min_faves:100  -> 10 rows, MISSED his #1 (12,838 likes) and #2 (9,355)
+#     min_faves:1000 -> 10 rows, BOTH recovered
+#     min_faves:5000 ->  3 rows, both present
+# Each floor surfaces a DIFFERENT slice of the same handle: a low floor buys
+# breadth (recent, smaller posts) while a high floor guarantees the headliners
+# cannot be evicted by the recency-weighted cap. Union is strictly additive, so
+# escalating can only add coverage.
+FLOOR_LADDER = (1000, 5000, 20000)
+
+
 def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                     max_workers=DEFAULT_WORKERS, progress=None, retries=3,
-                    split_truncated=True, max_splits=4):
+                    split_truncated=True, split_days=True, max_splits=4):
     """One x_search call per handle, fanned out max_workers at a time.
 
     Returns (candidates, report). Never raises for a single handle's failure — a
@@ -120,8 +142,8 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     split_passes = 0
 
     def work(job):
-        handle, w_since, w_until = job
-        q = build_query([handle], w_since, w_until, min_faves)
+        handle, w_since, w_until, floor = job
+        q = build_query([handle], w_since, w_until, floor)
         resp = call_x_search(q, [handle], w_since, w_until, timeout=300)
         with lock:
             state["done"] += 1
@@ -161,37 +183,51 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         return out
 
     t0 = time.time()
-    responses = run_wave([(h, since, until) for h in handles], max_workers)
+    responses = run_wave([(h, since, until, min_faves) for h in handles], max_workers)
 
-    # TRUNCATION RECURSION — the piece that turns 60% head recall into full coverage.
-    # A handle returning exactly the cap was almost certainly cut off, so re-query
-    # it over narrower sub-windows until it stops hitting the cap. This is the ONLY
-    # way to get a dense handle's full output: the cap is per call, so more calls
-    # over smaller windows is the only lever (a lower floor makes it worse — the cap
-    # then fills with recency and evicts the headliners).
+    # ESCALATION LADDER — the fix for dense handles, replacing time-slicing.
+    # A handle returning exactly the cap was truncated. Re-query it at a HIGHER
+    # floor: that surfaces a different slice (the headliners the recency-weighted
+    # cap evicted at the low floor) instead of the same top-10 over and over.
+    # Measured on @RoyalSerf: floor 100 -> 10 rows missing his #1 (12,838 likes)
+    # and #2 (9,355); floor 1000 -> both recovered. Window-splitting could NOT fix
+    # him because grok ignores intra-day times (see _split_window).
+    # Union + id-dedupe keeps every pass strictly additive.
     if split_truncated:
-        for parts in (2, 4):
-            if parts > max_splits:
-                break
-            # Only handles STILL hitting the cap at the current granularity.
+        for floor in FLOOR_LADDER:
+            if floor <= min_faves:
+                continue
             hot = sorted({job[0] for job, r in responses
                           if r.get("success") and len(_rows_from(r)) >= ROW_CAP})
             if not hot:
                 break
-            jobs = [(h, a, b) for h in hot for a, b in _split_window(since, until, parts)]
-            print(f"  split pass: {len(hot)} capped handle(s) → "
-                  f"{len(jobs)} calls over {parts} sub-windows", file=sys.stderr)
-            extra = run_wave(jobs, max_workers)
-            # UNION, never replace. Two measured reasons (2026-07-27):
-            #  1. grok's date arithmetic is unreliable — a 12h sub-window call
-            #     returns posts from outside that slice, so the sub-windows do NOT
-            #     collectively cover what the whole-window call returned.
-            #  2. Replacing therefore LOSES rows: measured 55 lost / 34 gained,
-            #     a net -21 candidates and recall 50% -> 45%.
-            # Keeping both and deduping by id is strictly additive: extra calls can
-            # only ever add coverage, never subtract it.
-            responses = responses + extra
+            jobs = [(h, since, until, floor) for h in hot]
+            print(f"  escalate: {len(hot)} capped handle(s) → re-query at "
+                  f"min_faves:{floor}", file=sys.stderr)
+            responses = responses + run_wave(jobs, max_workers)
             split_passes += 1
+
+        # DAY-SPLIT PASS — complements the ladder rather than replacing it.
+        # The two levers recover DIFFERENT posts and neither alone is enough
+        # (measured on 30 handles vs the paid corpus, paid top-30):
+        #     day-split only  -> 24/30      ladder only -> 29/30
+        #     BOTH (union)    -> 30/30, and head-15 goes 14/15 -> 15/15
+        # The last ladder-only miss was an @elonmusk post that only a per-day
+        # query surfaces. Day granularity ONLY — grok ignores intra-day times.
+        if split_days:
+            import datetime as _dt
+            s = _dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
+            u = _dt.datetime.fromisoformat(until.replace("Z", "+00:00"))
+            n_days = max(1, round((u - s).total_seconds() / 86400))
+            hot = sorted({job[0] for job, r in responses
+                          if r.get("success") and len(_rows_from(r)) >= ROW_CAP})
+            if hot and n_days > 1:
+                jobs = [(h, a, b, min_faves) for h in hot
+                        for a, b in _split_window(since, until, n_days)]
+                print(f"  day-split: {len(hot)} capped handle(s) → {len(jobs)} calls "
+                      f"over {n_days} day(s)", file=sys.stderr)
+                responses = responses + run_wave(jobs, max_workers)
+                split_passes += 1
     wall = time.time() - t0
 
     results = responses
@@ -200,7 +236,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     all_stats, seen_ids = [], set()
     # `responses` is a LIST of (job, resp) — a handle can appear MORE THAN ONCE
     # after window-splitting, so accumulate per handle rather than assigning.
-    for (handle, w_since, w_until), resp in responses:
+    for (handle, w_since, w_until, _floor), resp in responses:
         per_handle.setdefault(handle, 0)
         if not resp.get("success"):
             failed.append(f"{handle}[{w_since[:13]}]: {(resp.get('error') or 'unknown')[:70]}")
@@ -355,14 +391,18 @@ def _selftest():
 
     check(ROW_CAP == 10, "row cap matches the measured per-call budget")
 
-    # Window splitting: contiguous, no gaps, endpoints preserved. A gap here would
-    # silently drop every post inside it — invisible in any output.
-    w = _split_window("2026-07-26T00:00:00Z", "2026-07-28T00:00:00Z", 4)
-    check(len(w) == 4, "split into 4 sub-windows")
-    check(w[0][0] == "2026-07-26T00:00:00Z", "split preserves start")
-    check(w[-1][1] == "2026-07-28T00:00:00Z", "split preserves end")
-    check(all(w[i][1] == w[i + 1][0] for i in range(3)), "sub-windows are contiguous (no gaps)")
-    check(w[0][1] == "2026-07-26T12:00:00Z", "48h/4 = 12h slices")
+    # The escalation ladder must ASCEND — each rung has to surface a slice the
+    # previous one couldn't, and a descending/flat rung would just re-fetch the
+    # same evicted top-10 (the exact failure that pinned @RoyalSerf at 10 rows).
+    check(list(FLOOR_LADDER) == sorted(FLOOR_LADDER), "floor ladder ascends")
+    check(FLOOR_LADDER[0] > DEFAULT_MIN_FAVES, "ladder starts above the base floor")
+    check(len(FLOOR_LADDER) >= 3, "ladder has enough rungs for a very dense handle")
+
+    # Window splitting is retained but must NOT be used intra-day (grok ignores
+    # times); this asserts the helper is still correct where it IS valid.
+    w = _split_window("2026-07-26T00:00:00Z", "2026-07-28T00:00:00Z", 2)
+    check(len(w) == 2 and w[0][1] == "2026-07-27T00:00:00Z", "day-granular split is clean")
+    check(all(w[i][1] == w[i + 1][0] for i in range(len(w) - 1)), "no gaps between days")
 
     check(_is_rate_limited({"error": "resource-exhausted: Too many requests for team x"}),
           "detects the measured xAI throttle string")
