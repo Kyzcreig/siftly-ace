@@ -86,6 +86,34 @@ def _is_rate_limited(resp) -> bool:
             or "rate limit" in blob or "429" in blob)
 
 
+def widen_to_day_bounds(since, until):
+    """Widen a precise window to the CALENDAR-DAY span that actually covers it.
+
+    ⚠️ NON-OBVIOUS AND LOAD-BEARING (measured 2026-07-27). grok's since:/until:
+    operators are DAY-GRANULAR and the upper bound behaves EXCLUSIVELY, so you
+    cannot express a rolling 24h window directly:
+
+        want 2026-07-26T11:00Z .. 2026-07-27T11:00Z
+        query until:2026-07-27  -> silently returns NOTHING from 07-27
+                                   (measured: lost @elonmusk 17,099 + 10,335,
+                                    @TRHLofficial 8,562 — head recall 15/15 -> 11/15)
+        query until:2026-07-28  -> covers both days, correct
+
+    So the ONLY correct way to get a 24h window out of this API is: query the
+    widened calendar-day span, then let the adapter's local timestamp filter trim
+    to the true window. Querying "48h" is therefore not sloppiness — it is what a
+    24h brief actually requires. The extra rows cost nothing; they are filtered
+    locally (report.adapter_stats.rows_after_window_filter shows the trim).
+    """
+    import datetime as dt
+    s = dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
+    u = dt.datetime.fromisoformat(until.replace("Z", "+00:00"))
+    s_day = s.replace(hour=0, minute=0, second=0, microsecond=0)
+    # +1 day because the upper bound excludes its own date.
+    u_day = u.replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(days=1)
+    return s_day.strftime("%Y-%m-%dT%H:%M:%SZ"), u_day.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _split_window(since, until, parts):
     """Split [since, until) into `parts` contiguous sub-windows (ISO8601 Z).
 
@@ -135,6 +163,10 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     handle that exhausts its retries is recorded as failed.
     """
     handles = [str(h).strip().lstrip("@") for h in handles if str(h).strip()]
+    # QUERY wide (calendar-day bounds — the API is day-granular), FILTER narrow
+    # (the adapter trims to the caller's true window). Doing this here means a
+    # caller can always pass the precise window it actually wants.
+    q_since, q_until = widen_to_day_bounds(since, until)
     lock = threading.Lock()
     state = {"done": 0}
     results = {}
@@ -183,7 +215,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         return out
 
     t0 = time.time()
-    responses = run_wave([(h, since, until, min_faves) for h in handles], max_workers)
+    responses = run_wave([(h, q_since, q_until, min_faves) for h in handles], max_workers)
 
     # ESCALATION LADDER — the fix for dense handles, replacing time-slicing.
     # A handle returning exactly the cap was truncated. Re-query it at a HIGHER
@@ -201,7 +233,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                           if r.get("success") and len(_rows_from(r)) >= ROW_CAP})
             if not hot:
                 break
-            jobs = [(h, since, until, floor) for h in hot]
+            jobs = [(h, q_since, q_until, floor) for h in hot]
             print(f"  escalate: {len(hot)} capped handle(s) → re-query at "
                   f"min_faves:{floor}", file=sys.stderr)
             responses = responses + run_wave(jobs, max_workers)
@@ -216,14 +248,14 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         # query surfaces. Day granularity ONLY — grok ignores intra-day times.
         if split_days:
             import datetime as _dt
-            s = _dt.datetime.fromisoformat(since.replace("Z", "+00:00"))
-            u = _dt.datetime.fromisoformat(until.replace("Z", "+00:00"))
+            s = _dt.datetime.fromisoformat(q_since.replace("Z", "+00:00"))
+            u = _dt.datetime.fromisoformat(q_until.replace("Z", "+00:00"))
             n_days = max(1, round((u - s).total_seconds() / 86400))
             hot = sorted({job[0] for job, r in responses
                           if r.get("success") and len(_rows_from(r)) >= ROW_CAP})
             if hot and n_days > 1:
                 jobs = [(h, a, b, min_faves) for h in hot
-                        for a, b in _split_window(since, until, n_days)]
+                        for a, b in _split_window(q_since, q_until, n_days)]
                 print(f"  day-split: {len(hot)} capped handle(s) → {len(jobs)} calls "
                       f"over {n_days} day(s)", file=sys.stderr)
                 responses = responses + run_wave(jobs, max_workers)
@@ -403,6 +435,17 @@ def _selftest():
     w = _split_window("2026-07-26T00:00:00Z", "2026-07-28T00:00:00Z", 2)
     check(len(w) == 2 and w[0][1] == "2026-07-27T00:00:00Z", "day-granular split is clean")
     check(all(w[i][1] == w[i + 1][0] for i in range(len(w) - 1)), "no gaps between days")
+
+    # DAY-GRANULAR BOUNDS — the trap that cost head recall 15/15 -> 11/15.
+    # A rolling 24h window MUST be widened to calendar days before querying, or
+    # the exclusive day-granular upper bound silently drops the newest day.
+    qs, qu = widen_to_day_bounds("2026-07-26T11:00:00Z", "2026-07-27T11:00:00Z")
+    check(qs == "2026-07-26T00:00:00Z", "widen: start floors to its day")
+    check(qu == "2026-07-28T00:00:00Z", "widen: end goes to day AFTER (exclusive bound)")
+    check(qu > "2026-07-27T00:00:00Z", "widen: the newest day is INSIDE the query span")
+    qs2, qu2 = widen_to_day_bounds("2026-07-26T00:00:00Z", "2026-07-28T00:00:00Z")
+    check((qs2, qu2) == ("2026-07-26T00:00:00Z", "2026-07-29T00:00:00Z"),
+          "widen is safe (never narrows) on an already-day-aligned window")
 
     check(_is_rate_limited({"error": "resource-exhausted: Too many requests for team x"}),
           "detects the measured xAI throttle string")
