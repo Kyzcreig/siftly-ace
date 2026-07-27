@@ -13,6 +13,14 @@ responses through it; **never reshape rows by hand.** Five things that fail SILE
 - **Operator syntax, never prose** — `from:<h> min_faves:N since:<d> until:<d>`. Prose caps ~10
   rows/handle over ~3h and misses the day's top post. Handles go in BOTH `allowed_x_handles` AND
   the query text.
+- **GROUP the handles; state each filter ONCE** (fixed 2026-07-27, was a live 6x recall loss).
+  Correct: `(from:A OR from:B OR … OR from:J) min_faves:N since:S until:U`.
+  WRONG: repeating the filters per handle (`from:A min_faves:N since:S until:U OR from:B …`) —
+  measured on 10 handles @20000 that form returned **1 row and missed a 132,744-like post**, vs
+  **6 rows including it** for the grouped form. The long repetition is truncated/mis-parsed
+  upstream and fails SILENTLY (a short result looks like "nobody posted"). `build_query()` owns
+  this; its selftest gates the form — and note the ORIGINAL selftest asserted the broken form,
+  which is precisely how the bug shipped green.
 - **Emit `tweet_text`, not `text`** — `select_digest._item_text()` reads only
   `tweet_text|title|summary|line|text_snippet`; a `text` key → `is_bare_fragment()` → **100% of X
   candidates silently discarded.**
