@@ -226,8 +226,25 @@ def build_query(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     until_d = _date_only(until)
     faves = f" min_faves:{int(min_faves)}" if int(min_faves) > 0 else ""
     rts = " include:nativeretweets" if include_retweets else ""
-    clauses = [f"from:{h}{faves} since:{since_d} until:{until_d}{rts}" for h in hs]
-    operators = " OR ".join(clauses)
+
+    # QUERY FORM IS LOAD-BEARING (measured 2026-07-27, 6x recall difference).
+    # This used to repeat the full filter set per handle:
+    #     from:A min_faves:N since:S until:U OR from:B min_faves:N since:S until:U OR ...
+    # On 10 handles @ min_faves:20000 that form returned ONE row and MISSED the
+    # day's #1 post (@RepThomasMassie, 132,744 likes) — while the grouped form
+    # below, same handles/floor/window, returned SIX including it. The long
+    # per-handle repetition appears to be truncated or mis-parsed upstream, and
+    # it fails SILENTLY: a short result looks like "nobody posted", not a bug.
+    #
+    # Group the handles into ONE disjunction and apply each filter ONCE:
+    #     (from:A OR from:B OR … OR from:J) min_faves:N since:S until:U
+    # Shorter, unambiguous, and it is how X's own search syntax is documented.
+    # A single handle needs no parentheses.
+    if len(hs) == 1:
+        operators = f"from:{hs[0]}{faves} since:{since_d} until:{until_d}{rts}"
+    else:
+        group = " OR ".join(f"from:{h}" for h in hs)
+        operators = f"({group}){faves} since:{since_d} until:{until_d}{rts}"
 
     return (
         f"{operators}\n\n"
@@ -818,7 +835,19 @@ def _selftest():
     check(normalize_ts("2026-07-24T20:04:54Z") == "2026-07-24T20:04:54Z", "iso8601")
     check(normalize_ts("garbage") == "", "bad ts")
     q = build_query(["simonw", "karpathy"], "2026-07-24T00:00:00Z", "2026-07-26T00:00:00Z", 100)
-    check("from:simonw min_faves:100 since:2026-07-24 until:2026-07-26" in q, "operator syntax")
+    # QUERY FORM GATE (2026-07-27). The old assertion demanded the per-handle
+    # repeated form — it encoded the BUG as the contract, which is why the 6x
+    # recall loss shipped green. Multi-handle queries MUST group the handles into
+    # one disjunction and state each filter ONCE; the repeated form silently
+    # under-returns (10 handles @20000 -> 1 row vs 6, missing a 132k-like post).
+    check("(from:simonw OR from:karpathy)" in q, "grouped disjunction form")
+    check("min_faves:100 since:2026-07-24 until:2026-07-26" in q, "filters stated once")
+    check(q.count("min_faves:") == 1, "min_faves NOT repeated per handle")
+    check(q.count("since:") == 1 and q.count("until:") == 1, "window NOT repeated per handle")
+    solo_q = build_query(["simonw"], "2026-07-24T00:00:00Z", "2026-07-26T00:00:00Z", 100)
+    check("from:simonw min_faves:100 since:2026-07-24 until:2026-07-26" in solo_q,
+          "single handle needs no parens")
+    check("(" not in solo_q.split("\n")[0], "single-handle query is unparenthesized")
     check("simonw" in q and "karpathy" in q, "G1 handles in query text")
     check(len(chunk_handles(["a"] * 1 + [f"h{i}" for i in range(12)], 10, solo=["h0"])) == 3,
           "chunking")
