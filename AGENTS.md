@@ -3,13 +3,31 @@
 Fork of viperrcrypto/Siftly → Kyzcreig/siftly-ace. PRD: docs/plans/PRD-ace-x-knowledge-base.md (v5, approved).
 Swarm plan: docs/plans/SWARM-PLAN-phase1plus.md. Coding worker = Daedalus profile (openai-codex/gpt-5.5 xhigh).
 
-## 🔴 X SOURCING — morning-digest runs on grok `x_search`, NOT the paid X API (2026-07-26)
-The morning-digest X gather migrated off `api.twitter.com` to xAI's server-side `x_search`
-($0 marginal on the SuperGrok sub; replaced ~$285/mo). **Production-proven**: 16 x_search calls,
-51 candidates, `credential_sources: ['xai-oauth']`, exit 0. x-feed-brief is **NOT** migrated.
+## 🔴 X SOURCING — BOTH briefs run on grok `x_search`, NOT the paid X API (2026-07-28)
+Both the morning-digest AND x-feed-brief X gathers are migrated off `api.twitter.com` to xAI's
+server-side `x_search` ($0 marginal on the SuperGrok sub; replaced ~$285/mo).
+**morning-digest** production-proven 2026-07-26 (16 calls, 51 candidates, exit 0).
+**x-feed-brief** production-proven 2026-07-28 on its first scheduled run: **462 calls, 362/362
+handles, 0 failed, 528 candidates, 332s, `credential_sources: ['xai-oauth']`**, posted 5 top /
+5 quick hits with real like counts. Head-15 recall vs a same-day paid corpus: **15/15**.
 
-Adapter `scripts/xsearch_gather.py` owns every guard — the prompt calls `x_search` and pipes raw
-responses through it; **never reshape rows by hand.** Five things that fail SILENTLY if changed:
+x-feed uses `scripts/xfeed_xsearch_gather.py` (ONE CALL PER HANDLE, 16-wide parallel, floor
+escalation + day-split); morning-digest calls `xsearch_gather.py` directly at `--chunk-size 1`.
+Both pipe every raw response through the SAME `xsearch_gather` adapter, which owns every guard —
+**never reshape rows by hand.** Things that fail SILENTLY if changed:
+- **ONE CALL PER HANDLE — never batch.** Measured vs a same-day paid corpus: 10 handles/call
+  @min_faves:15000 → **56%** recall; @min_faves:5000 → **22%** (WORSE); 1 handle/call → **100%
+  head recall**. The ~10-row budget is a relevance/**recency** mix, so a low floor fills it with
+  recent chatter and EVICTS the headliners. Calls parallelize (xAI ceiling ~20 concurrent/team),
+  so narrow calls are cheap; batching is not.
+- **Escalate the FLOOR for a capped handle, don't slice the window.** A handle returning exactly
+  the cap gets re-queried at 1000 → 5000 → 20000 (`FLOOR_LADDER`); a higher floor shrinks the
+  candidate set until nothing can be evicted. Proven on @RoyalSerf (29 posts, pinned at 10): his
+  #1 at 12,838 likes was invisible at floor 100, returned at 1000. **Sub-day window slicing does
+  NOT work** — grok ignores intra-day `since:`/`until:` times entirely.
+- **`until:` is day-granular AND EXCLUSIVE** → a rolling 24h window silently loses its newest day.
+  QUERY WIDE (whole calendar days, +1 on the upper bound), FILTER NARROW locally. This is why a
+  24h brief legitimately queries a 48h span.
 - **Operator syntax, never prose** — `from:<h> min_faves:N since:<d> until:<d>`. Prose caps ~10
   rows/handle over ~3h and misses the day's top post. Handles go in BOTH `allowed_x_handles` AND
   the query text.
@@ -21,17 +39,21 @@ responses through it; **never reshape rows by hand.** Five things that fail SILE
   upstream and fails SILENTLY (a short result looks like "nobody posted"). `build_query()` owns
   this; its selftest gates the form — and note the ORIGINAL selftest asserted the broken form,
   which is precisely how the bug shipped green.
-- **Emit `tweet_text`, not `text`** — `select_digest._item_text()` reads only
-  `tweet_text|title|summary|line|text_snippet`; a `text` key → `is_bare_fragment()` → **100% of X
-  candidates silently discarded.**
+- **Emit BOTH `tweet_text` AND `text`, BOTH `authorHandle` AND `authorName`** —
+  `select_digest._item_text()` reads only `tweet_text|title|summary|line|text_snippet`, but
+  x-feed's prompt documents timeline candidates as carrying `text`. Emitting only one → 100% of
+  that brief's candidates SILENTLY discarded via `is_bare_fragment()`. One adapter, both briefs.
 - **Emit flat `likes`/`retweets` ALONGSIDE `public_metrics`** — `overview_digest`/`render_digest`
   read only the flat keys (`select_digest` reads `public_metrics`). Omit either and the brief posts
   with no like counts and ranks all authors 0.
 - **Union `citations` + `inline_citations`** — top-level `citations` is EMPTY on live calls;
   reading it alone rejects 100% of real rows.
-- **Chunk budget is ~10 rows PER CALL, not per handle** — the densest handle eats it and neighbours
-  return nothing. The truncation tripwire (handle returned exactly the cap → re-query solo, tighter
-  window) is the real backstop; it fired 5× on the production run.
+
+The x-feed follow list (`~/.hermes/digest/xfeed-follows.txt`, 362 handles) is refreshed weekly
+from X's own `/2/users/:id/following` by `~/.hermes/scripts/refresh_xfeed_follows.py` (cron
+`7d67c85b3b74`, Mon 05:40). It was previously DERIVED from paid corpora and was missing **142
+followed accounts** that simply hadn't posted in the sample window. Full doctrine: skill
+**`xsearch-percall-row-ceiling`**.
 
 `LOW_REACH_ENGAGEMENT_FLOOR` is now **100** (was 5) in both `select_digest.py` and
 `score_digest.py`, env-overridable via `LOW_REACH_FLOOR`; `gold_set_eval.py` pins it to 5 because
