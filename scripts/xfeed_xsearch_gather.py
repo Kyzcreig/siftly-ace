@@ -260,6 +260,47 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                       f"over {n_days} day(s)", file=sys.stderr)
                 responses = responses + run_wave(jobs, max_workers)
                 split_passes += 1
+
+            # PER-DAY LADDER — the cross-product the two passes above never reach.
+            # The ladder ran at WHOLE-WINDOW granularity and the day-split ran at the
+            # BASE floor, so a handle dense enough to cap *within a single day* was
+            # never re-queried at a higher floor inside that day. Those handles are
+            # not a trivial tail: on the 2026-07-28 production run the 20 capped
+            # handles produced 254 of 528 candidates (48% of the brief's whole input).
+            #
+            # Time is the ONLY axis that partitions (measured on @elonmusk 2026-07-28):
+            #   -filter:replies  -> IDENTICAL rows (operator ignored)
+            #   filter:links     -> IDENTICAL rows (operator ignored)
+            #   max_faves:N      -> [] + degraded  (unsupported)
+            #   1-day vs 2-day   -> 8 of 10 rows NEW, incl. 884- and 1,392-like posts
+            #                       the wider call had evicted
+            # …so once we are at 1-day granularity the floor is the only lever left,
+            # and there is no sub-day fallback (grok ignores intra-day times).
+            for floor in FLOOR_LADDER:
+                if floor <= min_faves:
+                    continue
+                # A (handle, day) is still hot only if its HIGHEST floor tried so far
+                # came back capped. Keying on (handle, day) alone would be wrong: the
+                # original base-floor response stays in `responses` forever and stays
+                # capped forever, so a pair already RESOLVED by an earlier rung would
+                # be re-queried at every remaining rung for nothing.
+                best = {}
+                for j, r in responses:
+                    if not r.get("success"):
+                        continue
+                    if (j[1], j[2]) == (q_since, q_until):
+                        continue          # whole-window jobs: the first ladder owns those
+                    key = (j[0], j[1], j[2])
+                    if key not in best or j[3] > best[key][0]:
+                        best[key] = (j[3], len(_rows_from(r)) >= ROW_CAP)
+                hot_days = sorted(k for k, (_f, capped) in best.items() if capped)
+                if not hot_days:
+                    break
+                jobs = [(h, a, b, floor) for h, a, b in hot_days]
+                print(f"  per-day escalate: {len(jobs)} capped (handle,day) pair(s) → "
+                      f"min_faves:{floor}", file=sys.stderr)
+                responses = responses + run_wave(jobs, max_workers)
+                split_passes += 1
     wall = time.time() - t0
 
     results = responses
@@ -452,6 +493,32 @@ def _selftest():
     check(_is_rate_limited({"error": "HTTP 429"}), "detects 429")
     check(not _is_rate_limited({"error": "handle not found"}),
           "a real error is NOT treated as retryable throttle")
+
+    # PER-DAY LADDER selection: a (handle,day) is hot only if its HIGHEST floor
+    # tried is still capped. The base-floor response stays in `responses` forever
+    # and stays capped forever, so keying on (handle,day) alone would re-query a
+    # pair an earlier rung already RESOLVED — burning a call per remaining rung.
+    def _hot(rows, qs, qu):
+        """Mirror of the in-loop selection, for testing."""
+        best = {}
+        for j, r in rows:
+            if not r.get("success") or (j[1], j[2]) == (qs, qu):
+                continue
+            k = (j[0], j[1], j[2])
+            if k not in best or j[3] > best[k][0]:
+                best[k] = (j[3], len(_rows_from(r)) >= ROW_CAP)
+        return sorted(k for k, (_f, c) in best.items() if c)
+
+    capped = {"success": True, "answer": json.dumps([{"i": i} for i in range(ROW_CAP)])}
+    light = {"success": True, "answer": json.dumps([{"i": 1}])}
+    D1, D2 = ("2026-07-26T00:00:00Z", "2026-07-27T00:00:00Z")
+    QS, QU = ("2026-07-26T00:00:00Z", "2026-07-28T00:00:00Z")
+    rows = [(("elon", D1, D2, 100), capped), (("elon", D1, D2, 1000), light)]
+    check(_hot(rows, QS, QU) == [], "pair RESOLVED at a higher floor is no longer hot")
+    rows2 = [(("elon", D1, D2, 100), capped), (("elon", D1, D2, 1000), capped)]
+    check(_hot(rows2, QS, QU) == [("elon", D1, D2)], "pair still capped at its top floor stays hot")
+    rows3 = [(("elon", QS, QU, 100), capped)]
+    check(_hot(rows3, QS, QU) == [], "whole-window jobs are excluded (first ladder owns them)")
 
     check(os.path.exists(FOLLOWS), f"follows file exists: {FOLLOWS}")
     n = len(load_handles(FOLLOWS))
