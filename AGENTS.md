@@ -13,7 +13,8 @@ handles, 0 failed, 528 candidates, 332s, `credential_sources: ['xai-oauth']`**, 
 
 x-feed uses `scripts/xfeed_xsearch_gather.py` (ONE CALL PER HANDLE, 16-wide parallel, then a
 FIVE-PASS recovery stack for capped handles: whole-window floor ladder → day-split →
-per-day floor ladder → oldest-first ordering sweep → middle-band NL time hint); morning-digest calls
+per-day floor ladder → oldest-first ordering sweep → RECURSIVE middle-band NL time hints — a capped band splits
+in half down to 45-min width, depth ≤2, worst case 7 band calls/pair); morning-digest calls
 `xsearch_gather.py` directly at `--chunk-size 1`. x-feed's base floor is **150** (raised
 from 100 on 2026-07-30: 98 sub-150 items in the scored pool, zero ever selected; NOTE the
 margin is real — 3 of 10 posted items on 07-30 sat in the 150-249 band, so if a brief posts
