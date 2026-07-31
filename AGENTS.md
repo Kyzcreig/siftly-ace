@@ -12,8 +12,8 @@ handles, 0 failed, 528 candidates, 332s, `credential_sources: ['xai-oauth']`**, 
 5 quick hits with real like counts. Head-15 recall vs a same-day paid corpus: **15/15**.
 
 x-feed uses `scripts/xfeed_xsearch_gather.py` (ONE CALL PER HANDLE, 16-wide parallel, then a
-FOUR-PASS recovery stack for capped handles: whole-window floor ladder → day-split →
-per-day floor ladder → oldest-first ordering sweep); morning-digest calls
+FIVE-PASS recovery stack for capped handles: whole-window floor ladder → day-split →
+per-day floor ladder → oldest-first ordering sweep → middle-band NL time hint); morning-digest calls
 `xsearch_gather.py` directly at `--chunk-size 1`. x-feed's base floor is **150** (raised
 from 100 on 2026-07-30: 98 sub-150 items in the scored pool, zero ever selected; NOTE the
 margin is real — 3 of 10 posted items on 07-30 sat in the 150-249 band, so if a brief posts
@@ -32,7 +32,10 @@ Both pipe every raw response through the SAME `xsearch_gather` adapter, which ow
   his #1 at 12,838 likes was invisible at floor 100, returned at 1000. **Sub-day `since:`/
   `until:` times are ignored** — but there IS one sub-day lever: an **oldest-first ordering
   directive** pages the cap into the opposite end of the day (measured: zero overlap with the
-  default recency slice). PLACEMENT + PHRASING are load-bearing — the directive must ride
+  default recency slice), and a **middle-band NL time hint** ("posted between roughly HH:MM UTC
+  and HH:MM UTC") reaches between the two frontiers — the NL layer honors intra-day bands the
+  operators ignore (recovered 33k/32k-like posts invisible to both frontiers). Engagement-ordering
+  directives are UNRELIABLE — tested, missed the real top posts. PLACEMENT + PHRASING are load-bearing — the directive must ride
   INLINE on the operator line and use the verbatim pinned string in
   `build_query(order="oldest")`; a paraphrase or separate paragraph is SILENTLY ignored.
   A (handle,day) pair is still-hot only if its HIGHEST-floor-tried response is capped —
