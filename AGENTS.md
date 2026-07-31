@@ -11,8 +11,13 @@ server-side `x_search` ($0 marginal on the SuperGrok sub; replaced ~$285/mo).
 handles, 0 failed, 528 candidates, 332s, `credential_sources: ['xai-oauth']`**, posted 5 top /
 5 quick hits with real like counts. Head-15 recall vs a same-day paid corpus: **15/15**.
 
-x-feed uses `scripts/xfeed_xsearch_gather.py` (ONE CALL PER HANDLE, 16-wide parallel, floor
-escalation + day-split); morning-digest calls `xsearch_gather.py` directly at `--chunk-size 1`.
+x-feed uses `scripts/xfeed_xsearch_gather.py` (ONE CALL PER HANDLE, 16-wide parallel, then a
+FOUR-PASS recovery stack for capped handles: whole-window floor ladder → day-split →
+per-day floor ladder → oldest-first ordering sweep); morning-digest calls
+`xsearch_gather.py` directly at `--chunk-size 1`. x-feed's base floor is **150** (raised
+from 100 on 2026-07-30: 98 sub-150 items in the scored pool, zero ever selected; NOTE the
+margin is real — 3 of 10 posted items on 07-30 sat in the 150-249 band, so if a brief posts
+thin, this floor is the first suspect and a one-character revert).
 Both pipe every raw response through the SAME `xsearch_gather` adapter, which owns every guard —
 **never reshape rows by hand.** Things that fail SILENTLY if changed:
 - **ONE CALL PER HANDLE — never batch.** Measured vs a same-day paid corpus: 10 handles/call
@@ -20,11 +25,18 @@ Both pipe every raw response through the SAME `xsearch_gather` adapter, which ow
   head recall**. The ~10-row budget is a relevance/**recency** mix, so a low floor fills it with
   recent chatter and EVICTS the headliners. Calls parallelize (xAI ceiling ~20 concurrent/team),
   so narrow calls are cheap; batching is not.
-- **Escalate the FLOOR for a capped handle, don't slice the window.** A handle returning exactly
-  the cap gets re-queried at 1000 → 5000 → 20000 (`FLOOR_LADDER`); a higher floor shrinks the
-  candidate set until nothing can be evicted. Proven on @RoyalSerf (29 posts, pinned at 10): his
-  #1 at 12,838 likes was invisible at floor 100, returned at 1000. **Sub-day window slicing does
-  NOT work** — grok ignores intra-day `since:`/`until:` times entirely.
+- **Escalate the FLOOR for a capped handle, don't slice the window below a day.** A handle
+  returning exactly the cap gets re-queried at 1000 → 5000 → 20000 (`FLOOR_LADDER`), first
+  whole-window, then PER (handle,day) pair after day-splitting; a higher floor shrinks the
+  candidate set until nothing can be evicted. Proven on @RoyalSerf (29 posts, pinned at 10):
+  his #1 at 12,838 likes was invisible at floor 100, returned at 1000. **Sub-day `since:`/
+  `until:` times are ignored** — but there IS one sub-day lever: an **oldest-first ordering
+  directive** pages the cap into the opposite end of the day (measured: zero overlap with the
+  default recency slice). PLACEMENT + PHRASING are load-bearing — the directive must ride
+  INLINE on the operator line and use the verbatim pinned string in
+  `build_query(order="oldest")`; a paraphrase or separate paragraph is SILENTLY ignored.
+  A (handle,day) pair is still-hot only if its HIGHEST-floor-tried response is capped —
+  naive keying re-queries resolved pairs at every rung.
 - **`until:` is day-granular AND EXCLUSIVE** → a rolling 24h window silently loses its newest day.
   QUERY WIDE (whole calendar days, +1 on the upper bound), FILTER NARROW locally. This is why a
   24h brief legitimately queries a 48h span.
