@@ -333,6 +333,46 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                 with _TPE(max_workers=min(max_workers, len(jobs))) as ex:
                     responses = responses + list(ex.map(work_oldest, jobs))
                 split_passes += 1
+
+            # MIDDLE-BAND PASS (5th) — measured 2026-07-30: operators ignore
+            # intra-day times but the NL layer honors an explicit UTC band
+            # (asked 14:00-16:30 → got 14:44-16:17, incl. 33k/32k-like posts
+            # invisible to BOTH frontiers). Fires only for pairs where the
+            # oldest-first sweep ALSO came back capped — i.e. both frontiers
+            # are saturated and a middle gap provably exists. The band is aimed
+            # at the observed gap: latest row of the oldest slice → earliest
+            # row of the recency slice for that (handle,day).
+            oldest_capped = {}
+            for j, r in responses:
+                if not r.get("success"):
+                    continue
+                key = (j[0], j[1], j[2])
+                rows = _rows_from(r)
+                oldest_capped.setdefault(key, []).extend(
+                    str(x.get("created_at") or "") for x in rows)
+            band_jobs = []
+            for (h, a, b) in (still_hot if still_hot else []):
+                ts = sorted(t for t in oldest_capped.get((h, a, b), []) if t)
+                if len(ts) < 12:      # both slices returned near-cap volume
+                    continue
+                # gap between the two frontiers: middle third of observed span
+                lo, hi = ts[len(ts)//3][11:16], ts[2*len(ts)//3][11:16]
+                if lo >= hi:
+                    continue
+                band_jobs.append((h, a, b, min_faves, lo, hi))
+            if band_jobs:
+                print(f"  middle-band sweep: {len(band_jobs)} double-capped "
+                      f"(handle,day) pair(s)", file=sys.stderr)
+                from concurrent.futures import ThreadPoolExecutor as _TPE2
+                def work_band(job):
+                    handle, w_since, w_until, floor, lo, hi = job
+                    q = build_query([handle], w_since, w_until, floor,
+                                    order=("band", lo, hi))
+                    return ((handle, w_since, w_until, floor),
+                            call_x_search(q, [handle], w_since, w_until, timeout=300))
+                with _TPE2(max_workers=min(max_workers, len(band_jobs))) as ex:
+                    responses = responses + list(ex.map(work_band, band_jobs))
+                split_passes += 1
     wall = time.time() - t0
 
     results = responses
@@ -565,6 +605,12 @@ def _selftest():
     op_line = q_oldest.split("\n\n")[0]
     check("OLDEST 10 matching posts" in op_line, "directive is INLINE on the operator line")
     check("oldest posts of the day LAST" in op_line, "verbatim proven phrasing, not a paraphrase")
+    # MIDDLE-BAND directive: order=("band", lo, hi) targets the gap between frontiers
+    q_band = build_query(["a"], "2026-07-26T00:00:00Z", "2026-07-27T00:00:00Z", 100,
+                         order=("band", "14:00", "16:30"))
+    band_op = q_band.split("\n\n")[0]
+    check("MIDDLE of that day" in band_op, "band directive INLINE on the operator line")
+    check("14:00 UTC and 16:30 UTC" in band_op, "band carries the explicit UTC bounds")
 
     check(os.path.exists(FOLLOWS), f"follows file exists: {FOLLOWS}")
     n = len(load_handles(FOLLOWS))

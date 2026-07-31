@@ -266,6 +266,17 @@ def build_query(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         operators += (" sorted by most recent first, oldest posts of the day LAST"
                       " — return the OLDEST 10 matching posts of that day, not the"
                       " most recent")
+    elif isinstance(order, tuple) and order and order[0] == "band":
+        # MIDDLE-BAND time hint (measured 2026-07-30, same handle/day): operators
+        # ignore intra-day since:/until: times, but the NATURAL-LANGUAGE layer
+        # honors an explicit UTC band — asked 14:00-16:30, got 14:44-16:17,
+        # including 33,071- and 31,993-like posts INVISIBLE to both the recency
+        # and oldest-first frontiers. (An engagement-ordering directive was also
+        # tested and is UNRELIABLE — its "top" missed both 30k+ posts.)
+        lo, hi = order[1], order[2]
+        operators += (f" posted in the MIDDLE of that day only, between roughly "
+                      f"{lo} UTC and {hi} UTC — return matching posts from that "
+                      f"middle-of-day stretch, not the morning and not the evening")
 
     return (
         f"{operators}\n\n"
