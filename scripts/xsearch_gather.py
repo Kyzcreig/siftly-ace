@@ -202,7 +202,7 @@ def _parse_dt(raw):
 
 # ── Query construction (the operator-syntax contract) ────────────────────────
 def build_query(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
-                include_retweets=False) -> str:
+                include_retweets=False, order=None) -> str:
     """Raw X search-operator syntax + a strict JSON-shape instruction.
 
     Handles are written into the QUERY TEXT as well as `allowed_x_handles` — the
@@ -214,6 +214,14 @@ def build_query(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     Retweets are excluded by construction — every retweet row carries likes:0, so
     any `min_faves:` floor removes them anyway; pass include_retweets=True (with
     min_faves=0) only if you want raw amplification signal as a separate lane.
+
+    order="oldest" appends a natural-language ordering directive. MEASURED
+    2026-07-30 on @Rainmaker1973 (1 day, floor 150): the default call returned
+    10 rows spanning 16:16-23:45; the oldest-first call returned 10 rows
+    spanning 13:27-14:34 — ZERO overlap, union 20 unique posts. The ~10-row cap
+    is applied AFTER ordering, so the directive pages into a different slice of
+    the same corpus. This is the only known sub-day lever (since:/until: times
+    are ignored; content filters are ignored; max_faves: unsupported).
     """
     hs = [str(h or "").strip().lstrip("@") for h in (handles or [])]
     hs = [h for h in hs if h]
@@ -245,6 +253,19 @@ def build_query(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     else:
         group = " OR ".join(f"from:{h}" for h in hs)
         operators = f"({group}){faves} since:{since_d} until:{until_d}{rts}"
+
+    # PLACEMENT AND EXACT PHRASING ARE LOAD-BEARING (measured 2026-07-30,
+    # @Rainmaker1973 1-day/150, three variants):
+    #   verbatim string below, inline  -> 12:22-13:51 (early posts, WORKS)
+    #   paraphrase "sorted oldest first — return the OLDEST matching posts of
+    #     the window, not the most recent", inline -> 16:16-23:45 (IGNORED)
+    #   directive as a separate paragraph          -> 16:16-23:45 (IGNORED)
+    # The upstream model treats this as soft prose; only the proven phrasing
+    # reliably flips the slice. Do not "clean up" this string without re-measuring.
+    if order == "oldest":
+        operators += (" sorted by most recent first, oldest posts of the day LAST"
+                      " — return the OLDEST 10 matching posts of that day, not the"
+                      " most recent")
 
     return (
         f"{operators}\n\n"

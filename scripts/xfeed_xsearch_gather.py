@@ -301,6 +301,38 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                       f"min_faves:{floor}", file=sys.stderr)
                 responses = responses + run_wave(jobs, max_workers)
                 split_passes += 1
+
+            # OLDEST-FIRST PASS — the only sub-day lever that exists (2026-07-30).
+            # For (handle, day) pairs STILL capped at the TOP ladder rung, one more
+            # call with an oldest-first ordering directive pages into the opposite
+            # end of the day. Measured on @Rainmaker1973 (1 day, floor 150):
+            # default call = 10 rows 16:16-23:45; oldest-first = 10 rows
+            # 13:27-14:34 — ZERO overlap, union 20 unique posts. The ~10-row cap
+            # applies AFTER ordering, so the directive selects a different slice
+            # of the same corpus. Union + id-dedupe as always; strictly additive.
+            # Base floor (not the top rung) on these calls: the goal is coverage
+            # of the day's EARLY posts, which the recency bias structurally hides.
+            exhausted = {}
+            for j, r in responses:
+                if not r.get("success") or (j[1], j[2]) == (q_since, q_until):
+                    continue
+                key = (j[0], j[1], j[2])
+                if key not in exhausted or j[3] > exhausted[key][0]:
+                    exhausted[key] = (j[3], len(_rows_from(r)) >= ROW_CAP)
+            still_hot = sorted(k for k, (f, capped) in exhausted.items()
+                               if capped and f >= FLOOR_LADDER[-1])
+            if still_hot:
+                jobs = [(h, a, b, min_faves) for h, a, b in still_hot]
+                print(f"  oldest-first sweep: {len(jobs)} ladder-exhausted "
+                      f"(handle,day) pair(s)", file=sys.stderr)
+                def work_oldest(job):
+                    handle, w_since, w_until, floor = job
+                    q = build_query([handle], w_since, w_until, floor, order="oldest")
+                    return job, call_x_search(q, [handle], w_since, w_until, timeout=300)
+                from concurrent.futures import ThreadPoolExecutor as _TPE
+                with _TPE(max_workers=min(max_workers, len(jobs))) as ex:
+                    responses = responses + list(ex.map(work_oldest, jobs))
+                split_passes += 1
     wall = time.time() - t0
 
     results = responses
@@ -519,6 +551,20 @@ def _selftest():
     check(_hot(rows2, QS, QU) == [("elon", D1, D2)], "pair still capped at its top floor stays hot")
     rows3 = [(("elon", QS, QU, 100), capped)]
     check(_hot(rows3, QS, QU) == [], "whole-window jobs are excluded (first ladder owns them)")
+
+    # OLDEST-FIRST directive: order="oldest" adds the paging line; default omits it
+    q_default = build_query(["a"], "2026-07-26T00:00:00Z", "2026-07-27T00:00:00Z", 100)
+    q_oldest = build_query(["a"], "2026-07-26T00:00:00Z", "2026-07-27T00:00:00Z", 100,
+                           order="oldest")
+    check("OLDEST" not in q_default, "default query has no ordering directive")
+    check("OLDEST 10 matching posts" in q_oldest, "order='oldest' adds the PROVEN paging phrasing")
+    check(q_oldest.startswith("from:a "), "operator prefix intact with ordering directive")
+    # PLACEMENT + PHRASING gate (measured 2026-07-30): only the verbatim proven
+    # string, INLINE on the operator line, flips the slice — a paraphrase or a
+    # separate-paragraph placement is silently ignored (returns the recency slice).
+    op_line = q_oldest.split("\n\n")[0]
+    check("OLDEST 10 matching posts" in op_line, "directive is INLINE on the operator line")
+    check("oldest posts of the day LAST" in op_line, "verbatim proven phrasing, not a paraphrase")
 
     check(os.path.exists(FOLLOWS), f"follows file exists: {FOLLOWS}")
     n = len(load_handles(FOLLOWS))
