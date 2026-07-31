@@ -149,6 +149,15 @@ def _split_window(since, until, parts):
 # escalating can only add coverage.
 FLOOR_LADDER = (1000, 5000, 20000)
 
+# Recursive middle-band limits (2026-07-30). A band that returns the cap is
+# saturated — split in half and re-query each half. MIN_BAND_MINUTES stops the
+# split when a band gets so narrow that grok's soft NL time targeting (observed
+# slop ~30-45 min vs the asked bounds) would make halves indistinguishable.
+# MAX_BAND_DEPTH bounds worst-case cost: depth 2 = at most 1+2+4 = 7 calls per
+# double-capped (handle, day) — and only the day's densest handles ever get here.
+MIN_BAND_MINUTES = 45
+MAX_BAND_DEPTH = 2
+
 
 def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                     max_workers=DEFAULT_WORKERS, progress=None, retries=3,
@@ -340,8 +349,14 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
             # invisible to BOTH frontiers). Fires only for pairs where the
             # oldest-first sweep ALSO came back capped — i.e. both frontiers
             # are saturated and a middle gap provably exists. The band is aimed
-            # at the observed gap: latest row of the oldest slice → earliest
-            # row of the recency slice for that (handle,day).
+            # at the observed gap: middle third of the pair's seen-timestamp span.
+            #
+            # RECURSIVE (2026-07-30, Ace's call): a band that ITSELF returns the
+            # cap is saturated too — split it in half and re-query each half,
+            # until a band comes back under the cap or hits MIN_BAND_MINUTES /
+            # MAX_BAND_DEPTH. Iterative queue, not call-stack recursion, so one
+            # pathological handle can't blow the wave structure. Union+dedupe
+            # downstream makes every extra call strictly additive.
             oldest_capped = {}
             for j, r in responses:
                 if not r.get("success"):
@@ -350,7 +365,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                 rows = _rows_from(r)
                 oldest_capped.setdefault(key, []).extend(
                     str(x.get("created_at") or "") for x in rows)
-            band_jobs = []
+            band_queue = []
             for (h, a, b) in (still_hot if still_hot else []):
                 ts = sorted(t for t in oldest_capped.get((h, a, b), []) if t)
                 if len(ts) < 12:      # both slices returned near-cap volume
@@ -359,20 +374,47 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                 lo, hi = ts[len(ts)//3][11:16], ts[2*len(ts)//3][11:16]
                 if lo >= hi:
                     continue
-                band_jobs.append((h, a, b, min_faves, lo, hi))
-            if band_jobs:
-                print(f"  middle-band sweep: {len(band_jobs)} double-capped "
-                      f"(handle,day) pair(s)", file=sys.stderr)
+                band_queue.append((h, a, b, min_faves, lo, hi, 0))
+            if band_queue:
                 from concurrent.futures import ThreadPoolExecutor as _TPE2
+
+                def _mins(hhmm):
+                    return int(hhmm[:2]) * 60 + int(hhmm[3:5])
+
+                def _hhmm(mins):
+                    return f"{mins // 60:02d}:{mins % 60:02d}"
+
                 def work_band(job):
-                    handle, w_since, w_until, floor, lo, hi = job
+                    handle, w_since, w_until, floor, lo, hi, depth = job
                     q = build_query([handle], w_since, w_until, floor,
                                     order=("band", lo, hi))
-                    return ((handle, w_since, w_until, floor),
-                            call_x_search(q, [handle], w_since, w_until, timeout=300))
-                with _TPE2(max_workers=min(max_workers, len(band_jobs))) as ex:
-                    responses = responses + list(ex.map(work_band, band_jobs))
-                split_passes += 1
+                    return (job, call_x_search(q, [handle], w_since, w_until,
+                                               timeout=300))
+
+                depth_round = 0
+                while band_queue and depth_round <= MAX_BAND_DEPTH:
+                    label = ("middle-band sweep" if depth_round == 0
+                             else f"recursive band split (depth {depth_round})")
+                    print(f"  {label}: {len(band_queue)} band(s)", file=sys.stderr)
+                    with _TPE2(max_workers=min(max_workers, len(band_queue))) as ex:
+                        band_results = list(ex.map(work_band, band_queue))
+                    split_passes += 1
+                    next_queue = []
+                    for job, r in band_results:
+                        handle, w_since, w_until, floor, lo, hi, depth = job
+                        responses = responses + [((handle, w_since, w_until, floor), r)]
+                        if not r.get("success") or len(_rows_from(r)) < ROW_CAP:
+                            continue      # band resolved (or errored) — stop here
+                        width = _mins(hi) - _mins(lo)
+                        if width < 2 * MIN_BAND_MINUTES or depth >= MAX_BAND_DEPTH:
+                            continue      # can't split further — accept residual
+                        mid = _hhmm(_mins(lo) + width // 2)
+                        next_queue.append((handle, w_since, w_until, floor,
+                                           lo, mid, depth + 1))
+                        next_queue.append((handle, w_since, w_until, floor,
+                                           mid, hi, depth + 1))
+                    band_queue = next_queue
+                    depth_round += 1
     wall = time.time() - t0
 
     results = responses
@@ -611,6 +653,21 @@ def _selftest():
     band_op = q_band.split("\n\n")[0]
     check("MIDDLE of that day" in band_op, "band directive INLINE on the operator line")
     check("14:00 UTC and 16:30 UTC" in band_op, "band carries the explicit UTC bounds")
+
+    # RECURSIVE BAND SPLIT math — a capped band halves cleanly and respects limits
+    def _mins(hhmm): return int(hhmm[:2])*60 + int(hhmm[3:5])
+    def _hhmm(m): return f"{m//60:02d}:{m%60:02d}"
+    lo, hi = "14:00", "16:30"   # 150-min band
+    mid = _hhmm(_mins(lo) + (_mins(hi)-_mins(lo))//2)
+    check(mid == "15:15", f"halving 14:00-16:30 gives 15:15 (got {mid})")
+    check((_mins(hi)-_mins(lo)) >= 2*MIN_BAND_MINUTES,
+          "a 150-min band IS wide enough to split (2x MIN_BAND_MINUTES=90)")
+    check((_mins("15:15")-_mins("14:00")) < 2*MIN_BAND_MINUTES,
+          "a 75-min half is NOT re-split — recursion terminates on width")
+    check(MAX_BAND_DEPTH >= 1, "depth cap allows at least one split round")
+    # worst case call count per pair: 1 + 2 + ... + 2^MAX_BAND_DEPTH
+    worst = sum(2**d for d in range(MAX_BAND_DEPTH+1))
+    check(worst <= 7, f"worst-case {worst} band calls per pair stays bounded")
 
     check(os.path.exists(FOLLOWS), f"follows file exists: {FOLLOWS}")
     n = len(load_handles(FOLLOWS))
