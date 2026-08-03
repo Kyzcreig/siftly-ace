@@ -58,6 +58,23 @@ function fmtCount(n: unknown): string {
   return String(v)
 }
 
+function videoIdeasHtml(items: unknown): string {
+  if (!Array.isArray(items)) return ''
+  const cards = items.flatMap((raw: any) => {
+    const title = String(raw?.title || '').trim()
+    const angle = String(raw?.angle || '').trim()
+    const candidateUrl = String(raw?.url || '').trim()
+    const url = /^https?:\/\//i.test(candidateUrl) ? candidateUrl : ''
+    if (!title || !angle) return []
+    const titleHtml = url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(title)}</a>`
+      : esc(title)
+    const source = url ? `<a class="idea-src" href="${esc(url)}" target="_blank" rel="noopener">Source →</a>` : ''
+    return [`<article class="idea"><h3>${titleHtml}</h3><p>${esc(angle)}</p>${source}</article>`]
+  })
+  return cards.length ? `<div class="ideas">${cards.join('')}</div>` : ''
+}
+
 // Turn a tweet's entity-rich text into HTML: @mentions + #hashtags + links become
 // anchors; t.co media links are STRIPPED (the media renders inline below instead).
 // `overrideText` (a translation) replaces the body text while keeping entity linking.
@@ -377,6 +394,13 @@ a{color:var(--gold);text-decoration:none}
 .ln-sum{font-size:16px;color:#bdb8af;line-height:1.62;margin:0 0 10px}
 .ln-meta{color:var(--dim);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;letter-spacing:.02em}
 .ln-meta .src{color:var(--gold);text-transform:uppercase;font-size:10px;letter-spacing:.15em}
+/* video ideas — compact actionable cards sourced from the selected X pool */
+.ideas{display:grid;grid-template-columns:1fr;gap:14px;margin:0 0 42px}
+.idea{padding:18px 20px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+.idea h3{font-family:"Fraunces",Georgia,serif;font-weight:400;font-size:20px;line-height:1.25;margin:0 0 7px}
+.idea h3 a{color:var(--fg)}.idea h3 a:hover{color:var(--gold)}
+.idea p{font-size:14.5px;color:#bdb8af;line-height:1.55;margin:0}
+.idea-src{display:inline-block;margin-top:10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.13em;color:var(--gold)}
 .tr-tag{display:block;margin-top:6px;font-size:11px;color:var(--dim);font-style:italic;opacity:.85}
 .tr-tag a{color:var(--dim);text-decoration:underline;text-underline-offset:2px}
 .tr-tag a:hover{color:var(--gold)}
@@ -393,6 +417,8 @@ async function main() {
   const also: Item[] = data.also || []
   const overview: string = (data.overview || '').trim()
   const footer: string = (data.footer || '').trim()
+  const videoIdeas = Array.isArray(data.video_ideas) ? data.video_ideas : []
+  const videosHtml = videoIdeasHtml(videoIdeas)
 
   // overview is markdown-ish (bold + [text](url) + • bullets) — convert lightly
   function ovHtml(md: string): string {
@@ -440,11 +466,12 @@ async function main() {
 ${overview ? `<div class="overview">${ovHtml(overview)}</div>` : ''}
 ${topHtml ? `<div class="sec">Top Stories</div>${topHtml}` : ''}
 ${alsoHtml ? `<div class="sec">Also Noted</div>${alsoHtml}` : ''}
+${videosHtml ? `<div class="sec">Video Ideas</div>${videosHtml}` : ''}
 ${footer ? `<p class="foot">${footer.split('\n').map((l) => esc(l)).join('<br>')}</p>` : ''}
 </div></body></html>`
 
   writeFileSync(outFile, body, 'utf8')
-  process.stderr.write(`html_report: wrote ${outFile} (${selected.length} top + ${also.length} also)\n`)
+  process.stderr.write(`html_report: wrote ${outFile} (${selected.length} top + ${also.length} also + ${videoIdeas.length} video ideas)\n`)
 }
 
 // Entry point: only auto-run when invoked as a script, not when imported by a test.
@@ -457,4 +484,4 @@ if (_isMain) {
 }
 
 // Exported for unit tests (pure, side-effect-free render helpers).
-export { quotedCard, primaryLink, renderTweetText, tweetCard, linkCard }
+export { quotedCard, primaryLink, renderTweetText, tweetCard, linkCard, videoIdeasHtml }
