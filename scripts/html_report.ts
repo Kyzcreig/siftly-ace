@@ -20,6 +20,8 @@ import type { Tweet } from 'react-tweet/api'
 import { translateToEnglish } from '../lib/translate'
 
 type Item = Record<string, any>
+type DeltaStatus = 'new' | 'moved' | 'resolved' | 'unchanged'
+type DeltaMeta = { status?: DeltaStatus; from?: string; to?: string; detail?: string }
 
 function arg(name: string, def = ''): string {
   const i = process.argv.indexOf(`--${name}`)
@@ -30,6 +32,39 @@ function esc(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+function deltaLabel(raw: unknown): string {
+  const candidate = raw && typeof raw === 'object' ? raw as Record<string, any> : {}
+  const delta: DeltaMeta = candidate._delta && typeof candidate._delta === 'object'
+    ? candidate._delta : candidate
+  const status = delta.status
+  if (status !== 'new' && status !== 'moved' && status !== 'resolved') return ''
+  const label = status[0].toUpperCase() + status.slice(1)
+  let detail = ''
+  if (status === 'moved') {
+    if (delta.from && delta.to) detail = `${delta.from} → ${delta.to}`
+    else detail = delta.detail || delta.from || ''
+  } else if (status === 'resolved' && delta.from) {
+    detail = delta.from
+  }
+  return `<div class="delta-tag delta-${status}"><strong>${label}</strong>${detail ? ` <span>· ${esc(detail)}</span>` : ''}</div>`
+}
+
+function deltaSummaryHtml(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return ''
+  const delta = raw as Record<string, any>
+  const counts = delta.counts && typeof delta.counts === 'object' ? delta.counts : null
+  if (!counts) return ''
+  const n = (key: string): number => {
+    const value = Number(counts[key])
+    return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0
+  }
+  const unchanged = n('unchanged')
+  const noun = unchanged === 1 ? 'item' : 'items'
+  const lead = delta.previous_date ? 'Since yesterday'
+    : delta.gap ? 'No consecutive baseline' : 'Baseline started'
+  return `<div class="delta-summary"><strong>${lead}</strong><span>${n('new')} new · ${n('moved')} moved · ${n('resolved')} resolved · ${unchanged} unchanged ${noun} collapsed</span></div>`
 }
 
 // X's v2/syndication API returns tweet text with HTML entities ALREADY encoded
@@ -185,7 +220,7 @@ function quotedCard(q: any): string {
   return `<div class="quoted">${head}${bodyHtml}${mediaPart}${linkRow}</div>`
 }
 
-function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: string }): string {
+function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: string }, delta?: DeltaMeta): string {
   const u = t.user
   const handle = esc(u?.screen_name || '')
   const name = esc(u?.name || handle)
@@ -211,6 +246,7 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   const linkAlreadyInline = !!(pLink && bodyHtml.includes(`href="${esc(pLink.href)}"`))
   const parentLinkRow = pLink && !linkAlreadyInline ? `<a class="q-link" href="${esc(pLink.href)}" target="_blank" rel="noopener">${esc(pLink.label)}</a>` : ''
   return `<article class="tweet">
+  ${deltaLabel(delta)}
   <header class="tw-head">
     ${avatar ? `<img class="avatar" src="${avatar}" alt="" loading="lazy">` : ''}
     <div class="who">
@@ -254,6 +290,7 @@ function linkCard(item: Item, scoreBadge: string, tr?: { text: string; srcLang: 
   const meta = [who, starsToday, item.hn_points != null ? `${item.hn_points} pts` : ''].filter(Boolean).join(' · ')
   const head = url ? `<a href="${url}" target="_blank" rel="noopener">${title}</a>` : title
   return `<article class="link-card">
+  ${deltaLabel(item)}
   <h3 class="ln-title">${head}</h3>
   ${summary}${trTag}
   <div class="ln-meta">${meta} ${scoreBadge}</div>
@@ -302,7 +339,7 @@ async function renderItem(item: Item): Promise<string> {
         const tr = await translateToEnglish(base)
         const override = tr.translated ? { text: tr.text, srcLang: tr.srcLang }
           : (base !== hydrated ? { text: base, srcLang: '' } : undefined)
-        return tweetCard(t, b, override)
+        return tweetCard(t, b, override, item._delta)
       }
     } catch { /* fall through to link card */ }
   }
@@ -349,6 +386,12 @@ a{color:var(--gold);text-decoration:none}
 .overview li{font-size:14.5px;color:var(--dim);padding-left:18px;position:relative;line-height:1.5}
 .overview li::before{content:"—";position:absolute;left:0;color:var(--gold)}
 .overview li strong{color:var(--fg);font-weight:600}
+/* deterministic delta layer */
+.delta-summary{display:flex;flex-direction:column;gap:4px;margin:-18px 0 38px;padding:15px 17px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);font-size:13px;color:var(--dim)}
+.delta-summary strong{color:var(--gold);font-size:10.5px;letter-spacing:.17em;text-transform:uppercase}
+.delta-tag{margin:0 0 10px;color:var(--dim);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase}
+.delta-tag strong{color:var(--gold);font-weight:600}
+.delta-tag span{letter-spacing:.04em;text-transform:none}
 /* section labels */
 .sec{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--dim);margin:0 0 22px;display:flex;align-items:center;gap:14px}
 .sec::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -413,8 +456,10 @@ async function main() {
   const outFile = arg('out')
   const title = arg('title') || 'Brief'
   const data: any = JSON.parse(readFileSync(inFile, 'utf8'))
-  const selected: Item[] = data.selected || []
-  const also: Item[] = data.also || []
+  const selected: Item[] = (data.selected || []).filter((item: Item) => item?._delta?.status !== 'unchanged')
+  const also: Item[] = (data.also || []).filter((item: Item) => item?._delta?.status !== 'unchanged')
+  const resolved: Item[] = Array.isArray(data.delta?.resolved) ? data.delta.resolved : []
+  const deltaHtml = deltaSummaryHtml(data.delta)
   const overview: string = (data.overview || '').trim()
   const footer: string = (data.footer || '').trim()
   const videoIdeas = Array.isArray(data.video_ideas) ? data.video_ideas : []
@@ -442,6 +487,7 @@ async function main() {
 
   const topHtml = (await Promise.all(selected.map(renderItem))).join('\n')
   const alsoHtml = (await Promise.all(also.map(renderItem))).join('\n')
+  const resolvedHtml = (await Promise.all(resolved.map(renderItem))).join('\n')
 
   // split title into date suffix (e.g. "Morning Digest — Mon, Jun 22" → date). The
   // brand wordmark is the fixed "Siftly"; the brief name lives in the eyebrow.
@@ -463,9 +509,11 @@ async function main() {
 <body><div class="wrap">
 <div class="top"><div class="brand"><span class="dot"></span><span class="nm">Siftly</span></div>${date ? `<span class="dt">${esc(date)}</span>` : ''}</div>
 <div class="hero"><div class="eyebrow">${esc(eyebrow)}</div><h1>${heroLine}</h1></div>
+${deltaHtml}
 ${overview ? `<div class="overview">${ovHtml(overview)}</div>` : ''}
 ${topHtml ? `<div class="sec">Top Stories</div>${topHtml}` : ''}
 ${alsoHtml ? `<div class="sec">Also Noted</div>${alsoHtml}` : ''}
+${resolvedHtml ? `<div class="sec">Resolved Since Yesterday</div>${resolvedHtml}` : ''}
 ${videosHtml ? `<div class="sec">Video Ideas</div>${videosHtml}` : ''}
 ${footer ? `<p class="foot">${footer.split('\n').map((l) => esc(l)).join('<br>')}</p>` : ''}
 </div></body></html>`
@@ -484,4 +532,4 @@ if (_isMain) {
 }
 
 // Exported for unit tests (pure, side-effect-free render helpers).
-export { quotedCard, primaryLink, renderTweetText, tweetCard, linkCard, videoIdeasHtml }
+export { quotedCard, primaryLink, renderTweetText, tweetCard, linkCard, videoIdeasHtml, deltaLabel, deltaSummaryHtml }
