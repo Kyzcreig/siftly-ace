@@ -1,0 +1,56 @@
+{
+  "date_label": "Tuesday, August 18",
+  "ts": "2026-08-18T04:36:00-07:00",
+  "provenance": {
+    "source": "~/.hermes/state/cron/morning-digest/ai-news-seen.json",
+    "extracted": "2026-08-20",
+    "note": "Actual posted membership and order. gbrain event_key restored across the two consecutive briefs from their persisted headlines."
+  },
+  "selected": [
+    {
+      "url": "https://x.com/garrytan/status/2089424170761564636",
+      "tweet_text": "GBrain now supports personalized agent generation/onboarding for Codex and Claude Code\n\nIt'll generate an agent AI-styl",
+      "date": "2026-08-18",
+      "source": "X",
+      "event_key": "gbrain-agent-onboarding"
+    },
+    {
+      "url": "https://x.com/emollick/status/2089185499197911391",
+      "tweet_text": "Less than two years later, this is the quality of the video of an otter using a laptop on an airplane that I get (with s",
+      "date": "2026-08-18",
+      "source": "X"
+    },
+    {
+      "url": "https://x.com/EMostaque/status/2089431551444471855",
+      "tweet_text": "Hit the @grok @bot limit after solid use testing things\n\nUsing it as a coordinator (gave it my gpt/claude/cursor clis) i",
+      "date": "2026-08-18",
+      "source": "X"
+    },
+    {
+      "url": "https://blog.roboflow.com/openai-gpt-5-6/",
+      "title": "GPT 5.6 Sol is the best \"vision\" model OpenAI ever released",
+      "date": "2026-08-18",
+      "source": "HN"
+    },
+    {
+      "url": "https://github.com/mukul975/Anthropic-Cybersecurity-Skills",
+      "title": "mukul975/Anthropic-Cybersecurity-Skills",
+      "date": "2026-08-18",
+      "source": "github"
+    }
+  ],
+  "also": [
+    {
+      "url": "https://x.com/Austen/status/2089470719532871765",
+      "tweet_text": "The Grok Bot models aren’t as smart as Fable yet, but the agent just does stuff and doesn’t bitch at you constantly so i",
+      "date": "2026-08-18",
+      "source": "X"
+    },
+    {
+      "url": "https://www.librarian.net/notoai/",
+      "title": "How to disable or avoid intrusive AI",
+      "date": "2026-08-18",
+      "source": "HN"
+    }
+  ]
+}

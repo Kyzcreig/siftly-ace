@@ -1,0 +1,61 @@
+{
+  "date_label": "Wednesday, August 19",
+  "ts": "2026-08-19T04:36:00-07:00",
+  "provenance": {
+    "source": "~/.hermes/state/cron/morning-digest/ai-news-seen.json",
+    "extracted": "2026-08-20",
+    "note": "Actual posted membership and order. gbrain event_key restored across the two consecutive briefs from their persisted titles."
+  },
+  "selected": [
+    {
+      "date": "2026-08-19",
+      "source": "X",
+      "tweet_text": "GBrain actually works with any AI Harness (Grok Bot, Claude Code, Codex, Hermes Agent, OpenClaw, OpenCode, all work) and any Postgres with pgvector hosted service\n\nThis is what it ",
+      "url": "https://x.com/garrytan/status/2089733961492930659",
+      "tweet_id": "2089733961492930659",
+      "event_key": "gbrain-agent-onboarding"
+    },
+    {
+      "date": "2026-08-19",
+      "source": "X",
+      "tweet_text": "Hetzner now gives you FREE access to Qwen 3.8 27B\nThis model is currently on same level as GPT-5.6 Luna\n\nIn my testing it performs even better than GPT-5.6 Luna.\n\nJust go to: https",
+      "url": "https://x.com/JustinGorya/status/2089729450032124038",
+      "tweet_id": "2089729450032124038"
+    },
+    {
+      "date": "2026-08-19",
+      "source": "X",
+      "tweet_text": "Now you can have a quake style console in your operating system. Except with an infinitely patient agent to help you customize it instead of esoteric variable names and slash comma",
+      "url": "https://x.com/tobi/status/2089812224869044678",
+      "tweet_id": "2089812224869044678"
+    },
+    {
+      "date": "2026-08-19",
+      "source": "X",
+      "tweet_text": "Grok 4.6 is smart, super fast & affordable",
+      "url": "https://x.com/elonmusk/status/2089416747720061154",
+      "tweet_id": "2089416747720061154"
+    },
+    {
+      "date": "2026-08-19",
+      "source": "X",
+      "tweet_text": "we've been doing a lot of a/b testing of @aiDotEngineer youtube thumbnails. i always hated that it is such an opaque process.\n\nopen sourcing/crowdsourcing our learnings today!\nhtt",
+      "url": "https://x.com/swyx/status/2089798658225266806",
+      "tweet_id": "2089798658225266806"
+    }
+  ],
+  "also": [
+    {
+      "date": "2026-08-19",
+      "source": "reddit",
+      "title": "We open-sourced a way to replay production agent traces against a different model or prompt",
+      "url": "https://www.reddit.com/r/LLMDevs/comments/1vrr59d/we_opensourced_a_way_to_replay_production_agent/"
+    },
+    {
+      "date": "2026-08-19",
+      "source": "reddit",
+      "title": "I built a deterministic linter for ML training runs because I got tired of wasting GPU hours on models that looked healthy but learned nothing",
+      "url": "https://www.reddit.com/r/LLMDevs/comments/1vse8ao/i_built_a_deterministic_linter_for_ml_training/"
+    }
+  ]
+}

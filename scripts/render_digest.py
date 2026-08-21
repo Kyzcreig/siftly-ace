@@ -487,6 +487,39 @@ def _tweet_text(item):
 def _story_title(item):
     return item.get("title") or item.get("headline") or item.get("line") or ""
 
+
+_DELTA_STATUSES = {"new", "moved", "resolved"}
+
+
+def _delta_lead(item):
+    delta = item.get("_delta")
+    status = delta.get("status") if isinstance(delta, dict) else None
+    return f"**{status}** · " if status in _DELTA_STATUSES else ""
+
+
+def _delta_summary(delta):
+    if not isinstance(delta, dict) or not isinstance(delta.get("counts"), dict):
+        return ""
+    counts = delta["counts"]
+    try:
+        new = int(counts.get("new", 0))
+        moved = int(counts.get("moved", 0))
+        resolved = int(counts.get("resolved", 0))
+        unchanged = int(counts.get("unchanged", 0))
+    except (TypeError, ValueError):
+        return ""
+    if delta.get("previous_date"):
+        lead = "Δ **Since yesterday:**"
+    elif delta.get("gap"):
+        lead = "Δ **No consecutive baseline:**"
+    else:
+        lead = "Δ **Baseline started:**"
+    noun = "item" if unchanged == 1 else "items"
+    return (
+        f"{lead} {new} new · {moved} moved · {resolved} resolved"
+        f" · {unchanged} unchanged {noun} collapsed"
+    )
+
 # ── Per-item block renderers ─────────────────────────────────────────────────
 def render_top_block(item, index):
     """Return (lines, dropped_echo) for ONE Top Stories entry."""
@@ -503,7 +536,7 @@ def render_top_block(item, index):
             if c is not None:
                 meta.append(f"{c} {label}")
         meta.append(f"{emoji} {letter} ({s})")
-        lines = [f"**{index}.** " + " · ".join(meta), ""]
+        lines = [f"{_delta_lead(item)}**{index}.** " + " · ".join(meta), ""]
         body, _ = natural_truncate(str(_tweet_text(item)))
         lines.append(esc(body))
         tweet_url = _safe_url(raw_url) or (f"{_BRAND_X}/{re.sub(r'[^A-Za-z0-9_]','',handle)}" if handle else "")
@@ -514,7 +547,7 @@ def render_top_block(item, index):
     # story: the HEADLINE itself becomes the link (no bare URL line)
     title = strip_md_emphasis(str(_story_title(item)).strip())
     linked_title = anchor(title, raw_url) if _safe_url(raw_url) else esc(title)
-    head = f"**{index}.** {linked_title} {source_suffix(item)} {emoji} {letter} ({s})"
+    head = f"{_delta_lead(item)}**{index}.** {linked_title} {source_suffix(item)} {emoji} {letter} ({s})"
     head = re.sub(r"[ \t]+", " ", head).strip()
     lines = [head]
     summary = item.get("summary")
@@ -538,12 +571,12 @@ def render_also_line(item):
         body = anchor(snippet, tweet_url) if tweet_url else esc(snippet)
         display = prefix + body
         suffix = f"{emoji} {letter} ({s})"
-        line = f"• {display} {suffix}"
+        line = f"• {_delta_lead(item)}{display} {suffix}"
     else:
         title = strip_md_emphasis(str(_story_title(item)).strip())
         display = anchor(title, raw_url) if _safe_url(raw_url) else esc(title)
         suffix = f"{source_suffix(item)} {emoji} {letter} ({s})"
-        line = f"• {display} {suffix}"
+        line = f"• {_delta_lead(item)}{display} {suffix}"
     return re.sub(r"[ \t]+", " ", line).strip()
 
 # ── Body assembly ────────────────────────────────────────────────────────────
@@ -569,6 +602,15 @@ def render_body(data, apply_dedup=True):
 
     selected = data.get("selected") or []
     also = data.get("also") or []
+    selected_positions = {id(item): index for index, item in enumerate(selected, 1)}
+    delta = data.get("delta") if isinstance(data.get("delta"), dict) else None
+    resolved = delta.get("resolved", []) if delta else []
+    if not isinstance(resolved, list):
+        resolved = []
+    # Selection stays intact in the contract. Collapse happens only here, from
+    # additive presentation metadata written after deterministic selection.
+    selected = [item for item in selected if item.get("_delta", {}).get("status") != "unchanged"]
+    also = [item for item in also if item.get("_delta", {}).get("status") != "unchanged"]
     empty_note = data.get("empty_note")
 
     # Event-dedup + engagement tiebreak runs FIRST (before the empty-result check)
@@ -579,16 +621,21 @@ def render_body(data, apply_dedup=True):
 
     lines = [header, ""]
 
+    delta_line = _delta_summary(delta)
+    if delta_line:
+        lines.append(delta_line)
+        lines.append("")
+
     # Overview synthesis (additive, optional): a half-page "what's going on" block
-    # the brief's Overview step writes into data["overview"]. Placed under the header,
-    # above Top Stories. Pure passthrough — the LLM already composed + escaped-safe
-    # prose; we only gate that it's a non-empty string. Never blocks the digest.
+    # the brief's Overview step writes into data["overview"]. Pure passthrough —
+    # the LLM already composed + escaped-safe prose. Never blocks the digest.
     overview = data.get("overview")
     if isinstance(overview, str) and overview.strip():
         lines.append(overview.strip())
         lines.append("")
 
-    if empty_note or (not selected and not also):
+    collapsed_only = bool(delta_line and not selected and not also and not resolved)
+    if (empty_note and not resolved) or (not selected and not also and not resolved and not collapsed_only):
         note = empty_note or "🤷 Nothing cleared the bar today — slow news day."
         lines.append(note if str(note).startswith(("🤷", "⚠️")) else esc(note))
         if footer:
@@ -599,8 +646,12 @@ def render_body(data, apply_dedup=True):
     if selected:
         lines.append("🔥 **Top Stories**")
         lines.append("")
-        for i, item in enumerate(selected, 1):
-            block, dropped = render_top_block(item, i)
+        for display_index, item in enumerate(selected, 1):
+            # The deterministic selector already assigned these ranks. When its
+            # dedup is trusted, collapsing an unchanged card must not renumber
+            # the changed cards below it.
+            rank = display_index if apply_dedup else selected_positions.get(id(item), display_index)
+            block, dropped = render_top_block(item, rank)
             if dropped:
                 dropped_summaries += 1
             lines.extend(block)
@@ -611,6 +662,14 @@ def render_body(data, apply_dedup=True):
             lines.append("")
         lines.append("📊 **Also Noted**")
         for item in also:
+            lines.append(render_also_line(item))
+        lines.append("")
+
+    if resolved:
+        if lines and lines[-1] != "":
+            lines.append("")
+        lines.append("✅ **Resolved Since Yesterday**")
+        for item in resolved:
             lines.append(render_also_line(item))
         lines.append("")
 
