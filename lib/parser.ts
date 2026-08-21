@@ -272,7 +272,7 @@ function convertSiftlyExportRow(row: SiftlyExportItem): RawTweet {
     .map((m) => {
       const type = m.type === 'video' ? 'video' : m.type === 'gif' ? 'animated_gif' : 'photo'
       if (type === 'video' || type === 'animated_gif') {
-        return { type, media_url_https: m.url, video_info: { variants: [{ content_type: 'video/mp4', bitrate: 0, url: m.url! }] } }
+        return { type, media_url_https: m.thumbnailUrl ?? m.url, video_info: { variants: [{ content_type: 'video/mp4', bitrate: 0, url: m.url! }] } }
       }
       return { type, media_url_https: m.url }
     })
@@ -290,6 +290,9 @@ function convertSiftlyExportRow(row: SiftlyExportItem): RawTweet {
 function normalizeTweetArray(parsed: unknown): RawTweet[] {
   // Console script export format: { exportDate, totalBookmarks, bookmarks: [...] }
   if (isConsoleExportFormat(parsed)) {
+    if (parsed.bookmarks.length > 0 && isSiftlyExportFormat(parsed.bookmarks[0])) {
+      return parsed.bookmarks.map((row) => convertSiftlyExportRow(row as SiftlyExportItem))
+    }
     return parsed.bookmarks.map(convertConsoleExportRow)
   }
 
