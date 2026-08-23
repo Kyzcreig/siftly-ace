@@ -21,15 +21,60 @@ export XURL_BEARER_TOKEN=$(op item get "X.com — API Keys (@angalexg)" --vault 
 TOKEN_LINES
 
 ```bash
-# ── Reverse-chron timeline: 24h SWEEP via READ-THROUGH CACHE ──────────────
-# The first run of the day does the full ~13-page sweep (~$6.50). Reruns within
-# the TTL (default 90m, X_FEED_CACHE_TTL_MIN) cost ZERO X API reads (cache HIT);
-# a stale rerun does a cheap incremental top-up (only pages newer than the cached
-# newest tweet). 20-page cost ceiling + 402 CreditsDepleted handling are built in.
-# Escape hatches: --force (or X_FEED_FRESH=1) forces a fresh pull; --no-cache bypasses.
+# ── Reverse-chron timeline: 24h SWEEP via grok x_search ($0, subscription) ──
+# MIGRATED 2026-07-27 off the paid api.twitter.com timeline sweep (~$6.50/run,
+# ~$285/mo). The paid path is PRESERVED, commented, at the bottom of this block —
+# rollback is uncommenting it and commenting this out.
+#
+# The gatherer issues ONE x_search call PER HANDLE, ~16 in parallel. That call
+# shape is load-bearing and MEASURED — do not "optimize" it into batches:
+#   10 handles/call @min_faves:15000 -> 56% recall
+#   10 handles/call @min_faves:5000  -> 22% recall (WORSE — the ~10-row cap fills
+#                                       with recent posts and EVICTS the headliners)
+#   1 handle/call, parallel          -> 100% head recall
+# It also escalates a capped handle's FLOOR (100->1000->5000->20000) and day-splits,
+# then UNIONs everything. Full doctrine: skill `xsearch-percall-row-ceiling`.
 cd /Users/alexgierczyk/Projects/siftly-ace
-FEED_JSON=$(npx tsx scripts/x-feed-fetch.ts 2>/tmp/x-feed-fetch.log)
-cat /tmp/x-feed-fetch.log   # logs cache HIT/MISS/INCREMENTAL + reads + cost
+SINCE=$(date -u -v-24H +'%Y-%m-%dT%H:%M:%SZ'); UNTIL=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+# Pass the TRUE 24h window: the gatherer widens to calendar-day bounds internally
+# (x_search's until: is day-granular AND exclusive, so a naive 24h query silently
+# loses the newest day) and filters back to this exact window locally.
+python3 scripts/xfeed_xsearch_gather.py \
+  --since "$SINCE" --until "$UNTIL" \
+  --handles-file ~/.hermes/digest/xfeed-follows.txt \
+  --min-faves 150 --max-workers 16 \
+  --out /tmp/xfeed-gather.json --report /tmp/xfeed-gather-report.json 2>/tmp/xfeed-gather.log
+cat /tmp/xfeed-gather.log   # calls / ok / failed / emitted / wall / credential_sources
+FEED_JSON=$(python3 -c "
+import json;d=json.load(open('/tmp/xfeed-gather.json'));r=d['report']
+print(json.dumps({'status':'xsearch','pagesFetched':r['x_search_calls'],
+ 'newCount':len(d['candidates']),'tweetCount':len(d['candidates']),
+ 'since':'$SINCE','candidates':d['candidates']}))")
+# HARD GATES — a brief that posts on a broken gather is worse than no brief:
+python3 - <<'GATE'
+import json,sys
+r=json.load(open('/tmp/xfeed-gather-report.json'))
+n=r['candidates_emitted']
+if n==0:
+    sys.exit("FATAL: x_search returned 0 candidates. Do NOT post, do NOT touch the "
+             "PT-day lock — retry must stay possible.")
+if r['credential_sources'] and r['credential_sources']!=['xai-oauth']:
+    sys.exit(f"FATAL: credential fallback {r['credential_sources']} — that is METERED "
+             "billing, not the subscription. Abort.")
+for a in r.get('alerts',[]): print("ALERT:",a)
+print(f"gather OK: {n} candidates from {r['x_search_calls']} calls "
+      f"({r['handles_ok']} handles, {r['chunks_failed']} failed, {r['wall_seconds']}s)")
+GATE
+
+# ── ROLLBACK: the PAID api.twitter.com timeline sweep (retired 2026-07-27) ──
+# ~$6.50/run, ~$285/mo. To roll back: comment out the x_search block above and
+# uncomment these two lines. Kept verbatim and dated — do not delete.
+#   FEED_JSON=$(npx tsx scripts/x-feed-fetch.ts 2>/tmp/x-feed-fetch.log)
+#   cat /tmp/x-feed-fetch.log   # cache HIT/MISS/INCREMENTAL + reads + cost
+# Read-through cache, ~13-page first sweep, 90m TTL (X_FEED_CACHE_TTL_MIN),
+# incremental top-up on stale rerun, 20-page ceiling, 402 CreditsDepleted handling.
+# Escape hatches: --force / X_FEED_FRESH=1 forces fresh; --no-cache bypasses.
+
 echo "$FEED_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('=== TIMELINE '+d['status']+' pages='+str(d['pagesFetched'])+' tweets='+str(d['tweetCount'])+' new='+str(d['newCount'])+' since='+d['since']+' ===')"
 # The script returns JSON {status,pagesFetched,newCount,tweetCount,since,candidates:[...]}
 # where each candidate is already {id, source:"x", text, authorHandle, authorName, url,
@@ -40,15 +85,18 @@ echo "$FEED_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('
 # First run of the PT day pays; same-day reruns within the TTL cost ZERO reads.
 # Editing the query set invalidates the cache automatically (key = hash of the queries).
 # Escape hatches: --force (or X_FEED_FRESH=1) forces fresh; --no-cache bypasses.
-SEARCH_JSON=$(npx tsx scripts/x-search-fetch.ts 2>/tmp/x-search-fetch.log)
-cat /tmp/x-search-fetch.log   # logs cache HIT/MISS + queries fetched + ~reads
+# MIGRATED 2026-08-22 to grok x_search ($0, subscription) — the LAST paid-API
+# consumer in this brief. Rollback: swap back to `npx tsx scripts/x-search-fetch.ts`
+# (TS path + RC2 cache preserved untouched). readsApprox is now always 0.
+SEARCH_JSON=$(python3 scripts/xsearch_interest_fetch.py --since "$SINCE" --until "$UNTIL" 2>/tmp/x-search-fetch.log)
+cat /tmp/x-search-fetch.log   # logs per-query post counts (x_search lane)
 # SEARCH_JSON = {status, queriesFetched, readsApprox, cacheFile, day, results:[{query,data,users}]}
 # where each result's `data` (raw tweets) + `users` (includes.users[]) are the SAME raw
 # X API shapes as before — match author_id -> users[].id, preserve verbatim text (Step 3).
 echo "$SEARCH_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('=== INTEREST '+d['status']+' queries='+str(d['queriesFetched'])+' ~reads='+str(d['readsApprox'])+' ===')"
 ```
 Note: X API doesn't expose the algorithmic "For You" feed. We supplement with interest-based searches.
-**24h window:** After fetching, keep ONLY timeline tweets with `created_at >= SINCE` (last 24h). Discard older ones that slipped in on the boundary page. Interest searches use `search/recent` (already recent).
+**24h window:** After fetching, keep ONLY timeline tweets with `created_at >= SINCE` (last 24h). Discard older ones that slipped in on the boundary page. Interest searches use grok x_search (day-granular window, filtered in the fetcher).
 **Trial mode:** This is the **full-24h sweep** variant (A/B test through ~2026-06-10). Pagination ceiling = 20 pages (~2,000 tweets) to bound cost.
 
 ## Step 1.5 — Hardened X API failure handling
@@ -68,7 +116,7 @@ Read `~/.hermes/state/cron/x-feed-brief/x-brief-seen.json`. If missing, treat as
 **ALSO load the morning-digest seen list to dedupe against THIS morning's digest** (morning-digest runs ~10 min before this brief at 03:45 and posts X items too; without this, the same tweet appears in both — the 2026-06-21 @emollick dup). Read `~/.hermes/state/cron/morning-digest/ai-news-seen.json`; if missing, treat as `[]`. It is a list of objects; X entries carry a `tweet_id` field (and `id`), plus a `url` like `https://x.com/<h>/status/<id>`. Collect every `tweet_id`/`id` (fallback: the trailing `/status/<id>` digits of `url`) into your dedupe set for Step 4. Do NOT modify `ai-news-seen.json` — it is owned by the morning-digest cron; this brief only READS it.
 
 ## Step 3 — Match tweet text to tweet ID
-**Timeline candidates from `x-feed-fetch.ts` are ALREADY matched** (each has `id`, `text`, `authorHandle`, `authorName`, `url`). The steps below apply to the **interest-search** results from `x-search-fetch.ts` (`SEARCH_JSON.results[]`, each with raw `data[]` tweets + `users[]` authors), which still need manual matching:
+**Timeline candidates from `x-feed-fetch.ts` are ALREADY matched** (each has `id`, `text`, `authorHandle`, `authorName`, `url`). The steps below apply to the **interest-search** results from `xsearch_interest_fetch.py` (`SEARCH_JSON.results[]`, each with raw `data[]` tweets + `users[]` authors), which still need manual matching:
 The X API returns `data[]` (tweets) and `includes.users[]` (authors) as separate arrays. You MUST:
 1. Match each tweet's `author_id` field to the correct user in `includes.users[]` by `id`
 2. Preserve the tweet's FULL `text` field verbatim — do NOT truncate, summarize, or paraphrase
@@ -217,20 +265,14 @@ Immediately AFTER composing the final message body and BEFORE calling notify.py,
    - If `mismatch` has any non-empty array, the posted message must reflect the REPAIRED set (all selected rendered, deduped ideas), not the broken one.
 
 ## Step 6.9 — Overview synthesis (additive, fail-safe — "Your Timeline")
-Write a **half-page "Your Timeline" synthesis** of what's happening across Ace's WHOLE feed today (not just the posted tweets). First get the deterministic aggregate over the full scored pool:
+The "Your Timeline" overview is now generated by a DEDICATED SCRIPT with a deterministic quality lint — you do NOT write the prose yourself (2026-07-02: the freehand path produced the banned "@handle highlighted <fragment>" roll-call in the sibling brief; the writer script calls the model with a hardened prompt and REJECTS drafts that fail the lint, retrying up to 3x). Run, in order:
 ```bash
 python3 ~/Projects/siftly-ace/scripts/overview_digest.py --in ~/.hermes/state/cron/x-feed-brief/_last_run_scored.json --brief x-feed-brief > /tmp/x-feed-overview-input.json
+python3 ~/Projects/siftly-ace/scripts/overview_writer.py --agg /tmp/x-feed-overview-input.json --brief x-feed-brief --out /tmp/x-feed-overview.txt
 ```
-It emits `{themes:[{topic,count,salience,examples}], top_stories:[{ref,label,title,handle,content_type,final_score,url}], loud_authors:[{handle,count,engagement}], content_mix, pool_size, on_topic_size, off_topic_count}`. **Use the `label` field (a clean `@handle: gist`) when you name a story — NEVER paste the raw `title`/tweet text, and the theme `examples` are RAW SOURCE you summarize from, never copy verbatim.** From THAT aggregate, compose a synthesis to place under the header (Step 7 template). This is a **tight ~300-word read (≤1900 chars HARD), not a wall** — Ace skims it in 20 seconds:
-- Header line: `📡 **Your Timeline**`
-- **Junk is pre-filtered:** the aggregate now RE-SCORES every item through the same deterministic engine the brief uses (Backstop-4 junk demotion + off-topic guard) and EXCLUDES crypto-ticker/scam-grant/foreign-clickbait from `themes`/`top_stories` before you see them — trust it, but still skip anything that NAMES as a bare `$TICKER` or thin fragment.
-- **A lead paragraph (2–4 sentences)** on what Ace's feed is actually about today — the recurring THEMES (top `themes`), who's LOUD (`loud_authors` by count/engagement), and any notable shift or mood. This is HIS curated graph, so name the specific accounts and topics dominating it ("Heavy on harness-building — Pocock, Berman, gdb all shipping agent-loop tooling; Teknium loud on open-weights; a side of @levelsio."). Note the feed's shape from `content_mix`/`off_topic_count`.
-- **CITE stories with `[N]` markers** — when you name a specific tweet/story, append its `ref` number from `top_stories` in square brackets, e.g. "Berman's loop-meta thread [1]". Use ONLY integer `ref` values that exist in the aggregate; cite each at most once; do NOT write URLs yourself. Cite 3–6 across the overview.
-- **Then 2–4 ONE-LINE theme bullets** — `• **Theme** — <one line of real content>`. Each bullet is a single sentence of actual substance (who's saying what, the number), NOT a paragraph. Collapse near-duplicate keyword topics into human themes ("Models", "Agent tooling", "Coding") and Title-Case them. **If a theme has nothing concrete to say, DROP it — never pad to reach a count.**
-- Optionally **ONE closing line** on the feed's mood/shape.
-- **🚫 NO SCAFFOLDING / FILLER — this is the hard rule.** NEVER write meta-sentences that describe the selection instead of the news: banned phrases include "shows the same lane from a different angle", "rounds out the theme", "carried this tag with N salience", "the cleanest example in the cluster", "giving the selection guard enough variety", "repeated coverage usually means", "gives the theme a concrete link". Do NOT mention salience numbers, tag counts, "the cluster", or "the selection guard" at all. Do NOT restate the same idea across themes to fill space. Every sentence carries a proper noun or a number and tells Ace something NEW. If you can't fill 300 words with real signal, write 150 — a short honest overview beats a padded one.
+`overview_writer.py` prints `overview_writer: PASS on attempt N` and exits 0 on success. **If it exits NON-ZERO (all attempts failed lint), OMIT the `📡 Your Timeline` block entirely** — do NOT hand-write a replacement. Do NOT edit `/tmp/x-feed-overview.txt` after the writer produces it.
 
-Write the prose to `/tmp/x-feed-overview.txt`, then resolve the `[N]` citations to inline links (a script replaces each cited `[N]` with a tappable Discord masked link `[[N]](url)` IN PLACE from the aggregate — links never come from you; no footer line):
+Then resolve the `[N]` citations to inline links (a script replaces each cited `[N]` with a tappable Discord masked link `[[N]](url)` IN PLACE from the aggregate — links never come from you; no footer line):
 ```bash
 python3 ~/Projects/siftly-ace/scripts/resolve_overview_refs.py --prose /tmp/x-feed-overview.txt --agg /tmp/x-feed-overview-input.json --out /tmp/x-feed-overview-linked.txt
 # attach the overview to the deterministic render input (/tmp/x-feed-select.json from Step 6) for the HTML report:
@@ -238,7 +280,7 @@ python3 ~/Projects/siftly-ace/scripts/inject_overview.py --render-input /tmp/x-f
 ```
 Then paste the contents of `/tmp/x-feed-overview-linked.txt` into the `📡 Your Timeline` block of the Step 7 inline-fallback template (used only if the HTML report fails).
 
-This is **fully fail-safe and additive**: if `overview_digest.py` errors or you can't write a good synthesis, OMIT the `📡 Your Timeline` block — the brief posts exactly as before. The overview must NEVER alter the Top/Quick-Hits selection or block the post; it is prose above the tweets.
+This is **fully fail-safe and additive**: if `overview_digest.py` errors or `overview_writer.py` fails all attempts, OMIT the `📡 Your Timeline` block — the brief posts exactly as before. The overview must NEVER alter the Top/Quick-Hits selection or block the post; it is prose above the tweets.
 
 ## Step 7 — Post
 Post to Discord #daily using notify.py (bot posts directly via Bot API; zero token cost):
@@ -281,7 +323,7 @@ print('footer:', foot.replace(chr(10), ' | '))
 ```
 This is fail-safe: any error leaves the existing footer untouched. Then post the report link (with the footer appended) and the inline body as fallback:
 ```bash
-REPORT_URL=$(bash ~/Projects/siftly-ace/scripts/build-report.sh /tmp/x-feed-select.json "X Feed Brief — $(date '+%A, %B %-d')" /tmp/x-feed-report.html 2>/tmp/x-feed-report.err)
+REPORT_URL=$(DOCS_PUBLISHER=ace bash ~/Projects/siftly-ace/scripts/build-report.sh /tmp/x-feed-select.json "X Feed Brief — $(date '+%A, %B %-d')" /tmp/x-feed-report.html 2>/tmp/x-feed-report.err)
 if [ -n "$REPORT_URL" ]; then
   python3 ~/.hermes/scripts/notify.py --send "🐦 **X Feed Brief** — $(date '+%A, %B %-d') → $REPORT_URL"$'\n'"$(jq -r '.footer // empty' /tmp/x-feed-select.json 2>/dev/null)" --channel discord --target 1480539453117305023
 else
