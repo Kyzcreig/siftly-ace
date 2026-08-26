@@ -13,7 +13,7 @@
  *    untouched. Translation must NEVER break the report build (it's on the post path).
  *  - Toggle: SIFTLY_TRANSLATE=0 disables entirely (returns original).
  */
-import { resolveAIClientForProvider } from './ai-client'
+import { resolveAIClientForProvider, type AIClient } from './ai-client'
 import { getActiveModelFor } from './settings'
 
 export interface Translated {
@@ -139,12 +139,30 @@ export async function translateToEnglish(text: string): Promise<Translated> {
   const hit = cache.get(key)
   if (hit) return hit
   try {
-    // Prefer OpenAI when its key is in env (the report build path provisions
-    // OPENAI_API_KEY via with-secrets.sh); otherwise fall back to the configured
-    // provider. Avoids a DB provider lookup the build context may not satisfy.
-    const provider = process.env.OPENAI_API_KEY ? 'openai' as const : await getProviderSafe()
-    const client = await resolveAIClientForProvider(provider)
-    const model = await getModelSafe(provider)
+    // Route translation through the SUBSCRIPTION lane (cliproxyapi :18812), never
+    // the metered OpenAI API. 2026-08-26: the metered-API leak sentinel caught this
+    // exact path — with-secrets.sh provisions OPENAI_API_KEY (legitimately, for
+    // embeddings), translateToEnglish preferred provider 'openai' whenever that key
+    // was in env, and the model fell back to settings.ts's 'gpt-4.1-mini' default →
+    // 1 billed chat request per foreign post in the brief. Chat completions on the
+    // metered key violate the subscription doctrine (embeddings/TTS/STT only).
+    // SIFTLY_TRANSLATE_BASE_URL + SIFTLY_TRANSLATE_API_KEY (set in with-secrets.sh)
+    // pin the translation client to the proxy; without them we now prefer the
+    // configured provider (anthropic default) instead of metered OpenAI.
+    const proxyBase = process.env.SIFTLY_TRANSLATE_BASE_URL
+    const proxyKey = process.env.SIFTLY_TRANSLATE_API_KEY
+    let client: AIClient
+    let model: string
+    if (proxyBase && proxyKey) {
+      const { OpenAIAIClient } = await import('./ai-client')
+      const OpenAI = (await import('openai')).default
+      client = new OpenAIAIClient(new OpenAI({ apiKey: proxyKey, baseURL: proxyBase }))
+      model = process.env.SIFTLY_TRANSLATE_MODEL || 'gpt-5.6-terra'
+    } else {
+      const provider = await getProviderSafe()
+      client = await resolveAIClientForProvider(provider)
+      model = await getModelSafe(provider)
+    }
     const res = await client.createMessage({
       model,
       max_tokens: 1024,

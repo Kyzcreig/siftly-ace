@@ -58,6 +58,15 @@ if ! OPENAI_API_KEY="$(op read "$OPENAI_ITEM_REF" 2>/dev/null)"; then
 fi
 export OPENAI_API_KEY
 
+# Translation lane: pin LLM translation (lib/translate.ts) to the SUBSCRIPTION
+# proxy (cliproxyapi :18812) so foreign-post translation never bills the metered
+# OpenAI key (2026-08-26 leak: gpt-4.1-mini chat calls on the API key — doctrine
+# allows embeddings/TTS/STT only on metered). The key is cliproxyapi's own local
+# api-key (not a vendor secret); model rides the same lane as the Frigate genai.
+export SIFTLY_TRANSLATE_BASE_URL="${SIFTLY_TRANSLATE_BASE_URL:-http://127.0.0.1:18812/v1}"
+export SIFTLY_TRANSLATE_API_KEY="${SIFTLY_TRANSLATE_API_KEY:-cxpx-974e3ff1c6c9e43bb62d9dd687d7849fbdd234ff358dd770}"
+export SIFTLY_TRANSLATE_MODEL="${SIFTLY_TRANSLATE_MODEL:-gpt-5.6-terra}"
+
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   echo "with-secrets.sh: resolved OPENAI_API_KEY is empty" >&2
   exit 1
