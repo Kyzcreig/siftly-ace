@@ -31,7 +31,7 @@ import re
 import subprocess
 import sys
 
-DEFAULT_MODEL = "gpt-5.6-sol"
+DEFAULT_MODEL = "gpt-5.6-sol-900k"
 DEFAULT_PROVIDER = "openai-codex"
 
 ROLLCALL_VERBS = r"(?:highlighted|shared|posted|noted|flagged|mentioned|discussed)"
