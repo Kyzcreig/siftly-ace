@@ -220,7 +220,14 @@ function quotedCard(q: any): string {
   return `<div class="quoted">${head}${bodyHtml}${mediaPart}${linkRow}</div>`
 }
 
-function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: string }, delta?: DeltaMeta): string {
+function renderCanonicalTweetText(text: string): string {
+  // The authenticated gather is the brief's source of truth. Preserve its body
+  // byte-for-byte at the text-content layer: hydration may prepend reply context,
+  // append whitespace, or replace a source URL with display_url text.
+  return esc(text).replace(/\r\n?/g, '\n').replace(/\n/g, '<br>')
+}
+
+function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: string }, delta?: DeltaMeta, canonicalText?: string): string {
   const u = t.user
   const handle = esc(u?.screen_name || '')
   const name = esc(u?.name || handle)
@@ -236,7 +243,12 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
   const quoted = quotedCard((t as any).quoted_tweet)
   // Render the body once so we can tell whether the primary link already appears
   // inline (a non-media t.co that renderTweetText resolved to an anchor).
-  const bodyHtml = renderTweetText(t, tr?.text)
+  const bodyHtml = tr?.srcLang
+    ? renderTweetText(t, tr.text)
+    : canonicalText != null
+      ? renderCanonicalTweetText(canonicalText)
+      : renderTweetText(t, tr?.text)
+  const canonicalAttr = canonicalText != null ? ` data-canonical-tweet-id="${esc(t.id_str)}"` : ''
   // Parent's own outbound link (not its media/quoted t.co) — surfaced only when
   // there's no quoted card already carrying a link, AND only when that link is
   // NOT already rendered inline in the body. Otherwise the CTA row duplicates the
@@ -255,7 +267,7 @@ function tweetCard(t: Tweet, scoreBadge: string, tr?: { text: string; srcLang: s
     </div>
     <a class="bird" href="${url}" target="_blank" rel="noopener" title="Open on X">𝕏</a>
   </header>
-  <div class="tw-text">${bodyHtml}</div>${trTag}
+  <div class="tw-text"${canonicalAttr}>${bodyHtml}</div>${trTag}
   ${mediaHtml(t)}${parentLinkRow}${quoted}
   <footer class="tw-foot"><span class="eng">${meta}</span>${scoreBadge}<a class="readon" href="${url}" target="_blank" rel="noopener">View on X →</a></footer>
 </article>`
@@ -327,19 +339,18 @@ async function renderItem(item: Item): Promise<string> {
     try {
       const t = await getTweet(id)
       if (t && t.user) {
-        // react-tweet's syndication API truncates LONG ("note") tweets to ~280 chars
-        // (note_tweet body isn't exposed there). Our authenticated gather DID capture
-        // the full text into item.tweet_text — prefer it when it's genuinely longer so
-        // long tweets render in full. Strip trailing media t.co the renderer drops anyway.
+        // react-tweet hydration supplies profile/media metadata, but the authenticated
+        // gather is authoritative for the body. Hydration can truncate notes, prepend
+        // reply context, append whitespace, or replace source URLs with display text.
         const hydrated = decodeXEntities(t.text || '')
-        const stored = decodeXEntities(String(item.tweet_text || ''))
-        const fuller = stored.replace(/\s+https?:\/\/t\.co\/\w+\s*$/g, '').trim()
-        const base = fuller.length > hydrated.length ? fuller : hydrated
+        const storedVerbatim = String(item.tweet_text || '')
+        const stored = decodeXEntities(storedVerbatim)
+        const base = stored || hydrated
         // Translate foreign tweet body to English (option B: replace + tag). Fail-safe.
         const tr = await translateToEnglish(base)
         const override = tr.translated ? { text: tr.text, srcLang: tr.srcLang }
           : (base !== hydrated ? { text: base, srcLang: '' } : undefined)
-        return tweetCard(t, b, override, item._delta)
+        return tweetCard(t, b, override, item._delta, storedVerbatim || undefined)
       }
     } catch { /* fall through to link card */ }
   }
@@ -532,4 +543,4 @@ if (_isMain) {
 }
 
 // Exported for unit tests (pure, side-effect-free render helpers).
-export { quotedCard, primaryLink, renderTweetText, tweetCard, linkCard, videoIdeasHtml, deltaLabel, deltaSummaryHtml }
+export { quotedCard, primaryLink, renderTweetText, renderCanonicalTweetText, tweetCard, linkCard, videoIdeasHtml, deltaLabel, deltaSummaryHtml }
