@@ -31,7 +31,7 @@ import re
 import subprocess
 import sys
 
-DEFAULT_MODEL = "gpt-6-sol-900k"  # Sol slot (2026-09-22); the -900k picker variant per Ace 09-07
+DEFAULT_MODEL = "gpt-6.1-sol"  # Sol slot (gpt-6.1-sol since 2026-09-30, t_85c82d06; bare slug = big window)
 DEFAULT_PROVIDER = "openai-codex"
 
 ROLLCALL_VERBS = r"(?:highlighted|shared|posted|noted|flagged|mentioned|discussed)"
