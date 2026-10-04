@@ -56,6 +56,8 @@ export interface ObsidianExportOptions {
   outputDir: string
   bookmarks: ObsidianSavedTweet[]
   overwrite?: boolean
+  /** Rebuild README + _index/* from `bookmarks`; false for a partial (subset) export. Default true. */
+  writeIndexes?: boolean
 }
 
 type JsonRecord = Record<string, unknown>
@@ -532,6 +534,8 @@ export async function exportSavedTweetsToObsidian(options: ObsidianExportOptions
       result.errors.push({ tweetId: bookmark.tweetId, error: error instanceof Error ? error.message : String(error) })
     }
   }
+
+  if (options.writeIndexes === false) return result
 
   const indexes = [
     ['README.md', buildReadme(bookmarks)],
