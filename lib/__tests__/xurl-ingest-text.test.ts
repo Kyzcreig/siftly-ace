@@ -14,6 +14,11 @@ describe('tweetBodyText', () => {
     }
     expect(tweetBodyText(t)).toContain('Compressed images')
   })
+  it("keeps a reply's leading @mentions, which note_tweet.text omits", () => {
+    const t = { text: '@handre &gt; Mises obliterated…', note_tweet: { text: '&gt; Mises obliterated the whole thing' } }
+    expect(tweetBodyText(t)).toBe('@handre > Mises obliterated the whole thing')
+    expect(tweetBodyText({ text: '@a @b hi', note_tweet: { text: '@a @b hi there' } })).toBe('@a @b hi there')
+  })
   it('falls back to text when note_tweet is absent or empty', () => {
     expect(tweetBodyText({ text: 'short' })).toBe('short')
     expect(tweetBodyText({ text: 'short', note_tweet: { text: '  ' } })).toBe('short')

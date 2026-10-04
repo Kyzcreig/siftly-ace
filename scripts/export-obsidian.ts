@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import prisma from '../lib/db'
 import {
   DEFAULT_OBSIDIAN_EXPORT_DIR,
@@ -9,11 +10,13 @@ interface CliOptions {
   overwrite: boolean
   limit?: number
   category?: string
+  tweetIdsFile?: string
 }
 
 function usage(): string {
   return [
-    'Usage: npx tsx scripts/export-obsidian.ts [--overwrite] [--limit N] [--category slug]',
+    'Usage: npx tsx scripts/export-obsidian.ts [--overwrite] [--limit N] [--category slug] [--tweet-ids file]',
+    '  --tweet-ids FILE  export only these tweetIds (one per line); index files are left as-is',
     '',
     `Writes saved X bookmark/like notes only under ${DEFAULT_OBSIDIAN_EXPORT_DIR}`,
     'Use tests for temp-dir exports; the production script intentionally has no arbitrary --output flag.',
@@ -46,6 +49,10 @@ function parseArgs(argv: string[]): CliOptions {
         options.category = argv[++i]
         if (!options.category) throw new Error('--category requires a value')
         break
+      case '--tweet-ids':
+        options.tweetIdsFile = argv[++i]
+        if (!options.tweetIdsFile) throw new Error('--tweet-ids requires a file')
+        break
       default:
         throw new Error(`Unknown argument: ${arg}\n${usage()}`)
     }
@@ -56,9 +63,13 @@ function parseArgs(argv: string[]): CliOptions {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
-  const where = options.category
-    ? { categories: { some: { category: { slug: options.category } } } }
-    : {}
+  const tweetIds = options.tweetIdsFile
+    ? fs.readFileSync(options.tweetIdsFile, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean)
+    : undefined
+  const where = {
+    ...(options.category ? { categories: { some: { category: { slug: options.category } } } } : {}),
+    ...(tweetIds ? { tweetId: { in: tweetIds } } : {}),
+  }
 
   const bookmarks = await prisma.bookmark.findMany({
     where,
@@ -74,6 +85,7 @@ async function main(): Promise<void> {
     outputDir: DEFAULT_OBSIDIAN_EXPORT_DIR,
     bookmarks,
     overwrite: options.overwrite,
+    writeIndexes: !tweetIds,
   })
 
   console.log([

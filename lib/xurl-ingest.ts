@@ -22,8 +22,13 @@ export function decodeXmlEntities(text: string): string {
 }
 
 export function tweetBodyText(tweet: Pick<XurlTweet, 'text' | 'note_tweet'>): string {
-  const raw = tweet.note_tweet?.text?.trim() ? tweet.note_tweet.text : (tweet.text ?? '')
-  return decodeXmlEntities(raw)
+  const text = decodeXmlEntities(tweet.text ?? '')
+  const note = tweet.note_tweet?.text
+  if (!note?.trim()) return text
+  // A reply's note_tweet.text omits the leading "@handle " mentions that `text` carries; keep them.
+  const replyPrefix = text.match(/^(?:@\w+\s+)+/)?.[0] ?? ''
+  const body = decodeXmlEntities(note)
+  return replyPrefix && !body.startsWith(replyPrefix.trim()) ? replyPrefix + body : body
 }
 
 export type XurlSource = 'bookmark' | 'like'
