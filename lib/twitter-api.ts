@@ -1,3 +1,4 @@
+import { decodeXmlEntities } from './xurl-ingest'
 import prisma from '@/lib/db'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -191,14 +192,8 @@ export function extractMedia(tweet: TweetResult) {
   return results
 }
 
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-}
+// One normalizer for X's HTML-escaped text; lives in xurl-ingest.ts (see duplicated-normalizer-drift).
+const decodeHtmlEntities = decodeXmlEntities
 
 function articleBlocksText(article: ArticleResult): string {
   const blocks = article.content_state?.blocks ?? []
