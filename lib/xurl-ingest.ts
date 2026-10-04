@@ -4,11 +4,35 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
+/**
+ * The display body of a v2 tweet: the long-form `note_tweet.text` when present (X truncates
+ * `text` to 280 chars for long posts), else `text`; with X's HTML-escaped `&amp; &lt; &gt;
+ * &quot; &#39;` decoded. The v2 API escapes these in `text` (and `note_tweet.text`), so a
+ * post that reads `> step one` on x.com arrives as `&gt; step one`. Decode ONCE here at the
+ * ingest boundary so the DB, exports, briefs and UI all read the same clean string.
+ * (Bit 2026-10-04: 183 stored rows carried raw entities; a @Manixh02 20-item list stored 8.)
+ */
+export function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+}
+
+export function tweetBodyText(tweet: Pick<XurlTweet, 'text' | 'note_tweet'>): string {
+  const raw = tweet.note_tweet?.text?.trim() ? tweet.note_tweet.text : (tweet.text ?? '')
+  return decodeXmlEntities(raw)
+}
+
 export type XurlSource = 'bookmark' | 'like'
 
 export interface XurlTweet {
   id: string
   text?: string
+  /** Long-form (>280 char) body; `text` is the truncated preview when this is present. */
+  note_tweet?: { text?: string }
   author_id?: string
   created_at?: string
   lang?: string
@@ -209,6 +233,7 @@ const TWEET_FIELDS = [
   'possibly_sensitive',
   'conversation_id',
   'referenced_tweets',
+  'note_tweet',
 ].join(',')
 const EXPANSIONS = ['author_id', 'attachments.media_keys'].join(',')
 const MEDIA_FIELDS = ['type', 'url', 'preview_image_url', 'duration_ms', 'alt_text'].join(',')
@@ -451,7 +476,7 @@ function parsePageTweets(sourcePage: XurlSourcePage): ParsedXurlTweet[] {
       const media = parseMedia(tweet, mediaByKey)
       return {
         tweetId: tweet.id,
-        text: tweet.text ?? '',
+        text: tweetBodyText(tweet),
         authorHandle: user?.username ?? 'unknown',
         authorName: user?.name ?? 'Unknown',
         tweetCreatedAt: parseDate(tweet.created_at),
