@@ -15,7 +15,7 @@
 #   - an interactive `op signin` session (for a human shell).
 #
 # Secrets injected (1Password Engineering vault, referenced by stable item id):
-#   OPENAI_API_KEY  <- item 77x7lxny2xabgkuupkhkthttsy field `credential`
+#   OPENAI_API_KEY  <- item zizaufjihwcwxk6am5rga5xpgm (`OpenAI API Key - fleet-embed-audio-nochat`, chat-walled project) field `credential`
 #
 # vec0 extension path: defaults to ./.local/vec0.dylib if present and not already set,
 # so the real sqlite-vec path is exercised rather than silently demoting to brute-force.
@@ -46,11 +46,21 @@ if ! command -v op >/dev/null 2>&1; then
   exit 69
 fi
 
+# Read through the fleet's op-cached-read when present. Agent sessions (the morning-digest
+# cron runs build-report.sh from an agent turn) put an `op` shim first on PATH that REFUSES
+# raw API reads (exit 77, 2026-10-05) to protect the shared service-account bucket; that made
+# every read below fail and the HTML report fall back to inline (2026-10-06 04:20, t_0d5b3a97).
+# op-cached-read calls the real binary by absolute path and serves repeats from disk.
+OP_CACHED_READ="${OP_CACHED_READ:-$HOME/.hermes/scripts/op-cached-read}"
+op_read() {
+  if [[ -x "$OP_CACHED_READ" ]]; then "$OP_CACHED_READ" "$1"; else op read "$1"; fi
+}
+
 # Stable 1Password item reference. op resolves this whether driven by a service-account
 # token (cron) or an interactive session (human shell). No secret value is ever printed.
-OPENAI_ITEM_REF="op://Engineering/77x7lxny2xabgkuupkhkthttsy/credential"
+OPENAI_ITEM_REF="op://Engineering/zizaufjihwcwxk6am5rga5xpgm/credential"
 
-if ! OPENAI_API_KEY="$(op read "$OPENAI_ITEM_REF" 2>/dev/null)"; then
+if ! OPENAI_API_KEY="$(op_read "$OPENAI_ITEM_REF" 2>/dev/null)"; then
   echo "with-secrets.sh: failed to read OPENAI_API_KEY from 1Password ($OPENAI_ITEM_REF)" >&2
   echo "  - cron: ensure OP_SERVICE_ACCOUNT_TOKEN is set for this process" >&2
   echo "  - shell: run 'op signin' first" >&2
@@ -79,8 +89,8 @@ fi
 # prefer these env vars and fall back to DB only if unset.
 X_OAUTH_ID_REF="op://Engineering/n32tdp5kpvb7i4pga2thzatqwy/oauth2_client_id"
 X_OAUTH_SECRET_REF="op://Engineering/n32tdp5kpvb7i4pga2thzatqwy/oauth2_client_secret"
-if X_OAUTH_CLIENT_ID="$(op read "$X_OAUTH_ID_REF" 2>/dev/null)" \
-   && X_OAUTH_CLIENT_SECRET="$(op read "$X_OAUTH_SECRET_REF" 2>/dev/null)" \
+if X_OAUTH_CLIENT_ID="$(op_read "$X_OAUTH_ID_REF" 2>/dev/null)" \
+   && X_OAUTH_CLIENT_SECRET="$(op_read "$X_OAUTH_SECRET_REF" 2>/dev/null)" \
    && [[ -n "$X_OAUTH_CLIENT_ID" && -n "$X_OAUTH_CLIENT_SECRET" ]]; then
   export X_OAUTH_CLIENT_ID X_OAUTH_CLIENT_SECRET
   echo "with-secrets.sh: X_OAUTH_CLIENT_ID loaded (len=${#X_OAUTH_CLIENT_ID}); X_OAUTH_CLIENT_SECRET loaded (len=${#X_OAUTH_CLIENT_SECRET})" >&2
