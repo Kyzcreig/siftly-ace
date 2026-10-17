@@ -29,59 +29,6 @@ How it works:
 
 To verify it's working, hit: `GET /api/settings/cli-status`
 
-## Key Commands
-
-```bash
-npx next dev          # Start dev server (port 3000)
-npx tsc --noEmit      # Type check
-npx prisma studio     # Database GUI
-npx prisma db push    # Apply schema changes to DB
-npm run build         # Production build
-```
-
-## Project Structure
-
-```
-app/
-  api/
-    categorize/       # 4-stage AI pipeline (start/stop/status via SSE)
-    import/           # Bookmark JSON import + dedup
-    search/ai/        # FTS5 + Claude semantic search
-    settings/
-      cli-status/     # GET — returns Claude CLI auth status
-      test/           # POST — validates API key or CLI auth
-    analyze/images/   # Vision analysis progress + trigger
-    bookmarks/        # CRUD + filtering
-    categories/       # Category management
-    mindmap/          # Graph data
-    stats/            # Dashboard counts
-  import/             # 3-step import UI
-  mindmap/            # Interactive force graph
-  settings/           # API keys, model selection
-  ai-search/          # Natural language search UI
-  bookmarks/          # Browse + filter UI
-  categorize/         # Pipeline monitor
-
-lib/
-  claude-cli-auth.ts  # Claude CLI OAuth session (macOS keychain)
-  categorizer.ts      # AI categorization + default categories
-  vision-analyzer.ts  # Image vision + semantic tagging
-  fts.ts              # SQLite FTS5 full-text search
-  rawjson-extractor.ts # Entity extraction from tweet JSON
-  parser.ts           # Multi-format bookmark JSON parser
-  exporter.ts         # CSV / JSON / ZIP export
-
-prisma/schema.prisma  # SQLite schema (Bookmark, Category, MediaItem, Setting, ImportJob)
-```
-
-## Tech Stack
-
-- **Next.js 16** (App Router, TypeScript)
-- **Prisma 7** + **SQLite** (local, zero setup, FTS5 built in)
-- **Anthropic SDK** — vision, tagging, categorization, search
-- **@xyflow/react** — mindmap graph
-- **Tailwind CSS v4**
-
 ## Environment Variables
 
 See `.env.example` for the full list. Only `DATABASE_URL` is required (defaults to `file:./prisma/dev.db`).
