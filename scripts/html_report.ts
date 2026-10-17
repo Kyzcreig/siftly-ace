@@ -377,7 +377,7 @@ const STYLE = `
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--fg);font-family:"Inter Tight",system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(201,162,94,.07),transparent 60%)}
 .wrap{max-width:720px;margin:0 auto;padding:54px 30px 100px}
-a{color:var(--gold);text-decoration:none}
+a,a:visited{color:var(--gold);text-decoration:none}
 /* header */
 .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:46px}
 .brand{display:flex;align-items:center;gap:11px}
