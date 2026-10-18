@@ -1,0 +1,23 @@
+# BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile.
+# Keep secrets, data and host build output out of the build context.
+.git
+**/node_modules
+.next
+.env
+.env.*
+**/*.pem
+prisma/*.db
+prisma/*.db.*
+prisma/*.db-*
+*.db
+.local
+.worktrees
+coverage
+docs
+sketches
+e2e
+deploy
+docker
+**/__tests__
+**/*.bak*
+tsconfig.tsbuildinfo
