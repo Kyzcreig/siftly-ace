@@ -17,6 +17,7 @@ docs
 sketches
 e2e
 deploy
+!deploy/docker/package-lock.live.json
 docker
 **/__tests__
 **/*.bak*

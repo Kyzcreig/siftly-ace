@@ -13,7 +13,12 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
+# The repo-root package-lock.json has drifted from package.json (react-tweet/swr/vitest missing,
+# better-sqlite3/prisma older) and `npm ci` refuses it. package-lock.live.json pins the exact
+# tree the live launchd server runs (from its node_modules) plus the linux-arm64/x64 native
+# binaries. Regenerate: see README "Upgrade".
+COPY package.json ./
+COPY deploy/docker/package-lock.live.json ./package-lock.json
 # postinstall runs scripts/ensure-native-abi.sh (host self-heal); not needed in a fresh image.
 RUN npm ci --ignore-scripts && npm rebuild better-sqlite3
 
