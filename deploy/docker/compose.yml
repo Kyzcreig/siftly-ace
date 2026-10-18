@@ -20,12 +20,16 @@ services:
       # rendered from 1Password OUTSIDE the repo. Never commit it, never bake it in.
       - path: "${SIFTLY_ENV_FILE:-/dev/null}"
         required: false
+    environment:
+      # The index greeting ("Good afternoon") is server-rendered from local time; match the host.
+      TZ: ${TZ:-America/Los_Angeles}
     volumes:
       # Directory holding dev.db. The web process WRITES to it (settings, categories,
       # imports, categorize), so side-by-side mounts a SNAPSHOT copy; only cutover mounts the live dir.
       - "${SIFTLY_PRISMA_DIR:?set SIFTLY_PRISMA_DIR to the directory holding dev.db}:/data/prisma"
-      # tweet syndication cache (lib/tweet-cache.ts), container-owned
-      - tweet_cache:/data/local
+      # tweet syndication cache (lib/tweet-cache.ts, read+write). Default: container-owned named
+      # volume; set SIFTLY_LOCAL_DIR to a directory holding tweet-cache.db to reuse one.
+      - "${SIFTLY_LOCAL_DIR:-tweet_cache}:/data/local"
     mem_limit: 1g
     memswap_limit: 1g
     cpus: 2

@@ -22,3 +22,5 @@ docker
 **/__tests__
 **/*.bak*
 tsconfig.tsbuildinfo
+# stale repo-root lock; the build copies package-lock.live.json in its place
+/package-lock.json

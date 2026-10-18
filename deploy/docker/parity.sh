@@ -8,7 +8,8 @@
 # categories, a category, mindmap, stats, settings, and the brief-facing tweet route.
 # Per path: compares HTTP status and sha256 of the NORMALIZED body. Normalization strips
 # per-build/per-request values only:
-#   - Next build id: the 21-char BUILD_ID string (read from each server's HTML) -> BUILDID
+#   - Next build id: the 21-char BUILD_ID string (read from each server's HTML), and its
+#     '-'->'_' form in the <!--...--> head comment -> BUILDID
 #   - hashed asset names under /_next/static/ (chunks/*.js|css, media/*) -> /_next/static/ASSET
 #   - nonce="..." attributes -> nonce=""
 # Everything else (data, markup, text) must be byte-identical. Exit 0 only if all 15 match.
@@ -54,7 +55,8 @@ BO="$(buildid "$OLD")"; BN="$(buildid "$NEW")"
 
 norm() { # $1 file, $2 build id
   local f="$1" b="$2"
-  if [[ -n "$b" ]]; then perl -pi -e "s/\Q$b\E/BUILDID/g" "$f"; fi
+  # the HTML head comment carries the build id with '-' rewritten to '_'
+  if [[ -n "$b" ]]; then local b2="${b//-/_}"; perl -pi -e "s/\Q$b\E/BUILDID/g; s/\Q$b2\E/BUILDID/g" "$f"; fi
   perl -pi -e 's#/_next/static/(chunks|media|css)/[A-Za-z0-9._~-]+#/_next/static/ASSET#g; s/nonce="[^"]*"/nonce=""/g' "$f"
 }
 

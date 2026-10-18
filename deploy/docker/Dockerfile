@@ -23,9 +23,17 @@ COPY deploy/docker/package-lock.live.json ./package-lock.json
 RUN npm ci --ignore-scripts && npm rebuild better-sqlite3
 
 COPY . .
+# Kept through the dev prune because the server needs them at runtime although package.json
+# lists them as devDependencies (the live launchd server has the full tree):
+#   typescript                  next start transpiles next.config.ts (else it npm-installs at boot)
+#   @prisma/client(+runtime-utils) runtime of the generated client in app/generated/prisma
+ARG KEEP="typescript @prisma/client @prisma/client-runtime-utils"
 RUN node_modules/.bin/prisma generate \
  && npm run build \
- && npm prune --omit=dev
+ && mkdir -p /keep/@prisma \
+ && for p in $KEEP; do mv "node_modules/$p" "/keep/$p"; done \
+ && npm prune --omit=dev --ignore-scripts \
+ && for p in $KEEP; do mv "/keep/$p" "node_modules/$p"; done
 
 # ── runtime ───────────────────────────────────────────────────────────────────
 FROM ${NODE_IMAGE}
