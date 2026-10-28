@@ -159,9 +159,16 @@ MIN_BAND_MINUTES = 45
 MAX_BAND_DEPTH = 2
 
 
+# Per-call x_search timeout, and the floor a budget-shortened tail call still gets.
+CALL_TIMEOUT_S = 300
+BUDGET_TAIL_S = 60
+BUDGET_SKIP_ERROR = "skipped: gather budget exhausted"
+
+
 def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                     max_workers=DEFAULT_WORKERS, progress=None, retries=3,
-                    split_truncated=True, split_days=True, max_splits=4):
+                    split_truncated=True, split_days=True, max_splits=4,
+                    budget_s=None):
     """One x_search call per handle, fanned out max_workers at a time.
 
     Returns (candidates, report). Never raises for a single handle's failure — a
@@ -170,6 +177,12 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
 
     Rate-limited handles are retried with backoff (see _is_rate_limited); only a
     handle that exhausts its retries is recorded as failed.
+
+    ``budget_s`` (2026-10-27, t_0c429a9d): wall-clock budget for the whole gather.
+    On 10-27 per-call latency rose to ~100 s and the sweep ran 2730 s, past the
+    1800 s cron cap, so the brief died with nothing. Past the budget no new call
+    starts, recovery passes are skipped, and the report says ``partial`` with
+    ``handles_complete`` so the brief can post what it has.
     """
     handles = [str(h).strip().lstrip("@") for h in handles if str(h).strip()]
     # QUERY wide (calendar-day bounds — the API is day-granular), FILTER narrow
@@ -177,20 +190,55 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     # caller can always pass the precise window it actually wants.
     q_since, q_until = widen_to_day_bounds(since, until)
     lock = threading.Lock()
-    state = {"done": 0}
+    state = {"done": 0, "lat_sum": 0.0, "lat_max": 0.0, "block_sum": 0.0, "block_n": 0,
+             "skipped": 0}
     results = {}
     throttled_total = 0
     split_passes = 0
+    t0 = time.time()
+    deadline = (t0 + budget_s) if budget_s else None
+
+    def over_budget():
+        return deadline is not None and time.time() >= deadline
+
+    def timed_call(q, handle, w_since, w_until):
+        """One x_search call with latency accounting, a progress line per block, and
+        the budget: no call starts past the deadline, and a call started near it gets
+        a shorter timeout whose expiry counts as budget-skipped, not as a failure."""
+        timeout = CALL_TIMEOUT_S
+        if deadline is not None:
+            left = deadline - time.time()
+            if left <= 0:
+                with lock:
+                    state["skipped"] += 1
+                return {"success": False, "budget_skipped": True, "error": BUDGET_SKIP_ERROR}
+            timeout = min(CALL_TIMEOUT_S, int(left) + BUDGET_TAIL_S)
+        c0 = time.time()
+        resp = call_x_search(q, [handle], w_since, w_until, timeout=timeout)
+        lat = time.time() - c0
+        if (timeout < CALL_TIMEOUT_S and not resp.get("success")
+                and "timed out" in str(resp.get("error") or "")):
+            resp = dict(resp, budget_skipped=True, error=BUDGET_SKIP_ERROR + " (in flight)")
+        with lock:
+            state["done"] += 1
+            state["lat_sum"] += lat
+            state["lat_max"] = max(state["lat_max"], lat)
+            state["block_sum"] += lat
+            state["block_n"] += 1
+            if resp.get("budget_skipped"):
+                state["skipped"] += 1
+            if progress and state["done"] % progress == 0:
+                print(f"  … {state['done']} calls  elapsed {time.time() - t0:.0f}s  "
+                      f"mean {state['lat_sum'] / state['done']:.1f}s/call  "
+                      f"(last {state['block_n']}: {state['block_sum'] / state['block_n']:.1f}s, "
+                      f"max so far {state['lat_max']:.0f}s)", file=sys.stderr)
+                state["block_sum"], state["block_n"] = 0.0, 0
+        return resp
 
     def work(job):
         handle, w_since, w_until, floor = job
         q = build_query([handle], w_since, w_until, floor)
-        resp = call_x_search(q, [handle], w_since, w_until, timeout=300)
-        with lock:
-            state["done"] += 1
-            if progress and state["done"] % progress == 0:
-                print(f"  … {state['done']} calls", file=sys.stderr)
-        return job, resp
+        return job, timed_call(q, handle, w_since, w_until)
 
     def run_wave(jobs, width):
         """Issue `jobs` at `width` concurrency, retrying throttled ones narrower."""
@@ -200,12 +248,15 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
             if not pending:
                 break
             if attempt:
+                if over_budget():
+                    break     # the leftovers are recorded as budget-skipped below
                 # Back off AND narrow the fan-out: retrying a throttle at the same
                 # width just reproduces it. Halve workers each round, floor of 4.
                 wait = 5 * attempt
                 w = max(4, width // (2 ** attempt))
                 print(f"  retry {attempt}: {len(pending)} throttled, "
-                      f"waiting {wait}s then {w} at a time", file=sys.stderr)
+                      f"waiting {wait}s then {w} at a time "
+                      f"(backoff sleep, elapsed {time.time() - t0:.0f}s)", file=sys.stderr)
                 time.sleep(wait)
             else:
                 w = width
@@ -220,10 +271,23 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
             throttled_total += len(nxt)
             pending = nxt
         for job in pending:   # exhausted retries — record as a real failure
+            if over_budget():
+                with lock:
+                    state["skipped"] += 1
+                out.append((job, {"success": False, "budget_skipped": True,
+                                  "error": BUDGET_SKIP_ERROR}))
+                continue
             out.append((job, {"success": False, "error": "rate-limited after retries"}))
         return out
 
-    t0 = time.time()
+    def skip_pass(label):
+        """True (and say so in the log) when the budget is spent before a recovery pass."""
+        if over_budget():
+            print(f"  budget: {budget_s}s spent at {time.time() - t0:.0f}s — "
+                  f"skipping {label}", file=sys.stderr)
+            return True
+        return False
+
     responses = run_wave([(h, q_since, q_until, min_faves) for h in handles], max_workers)
 
     # ESCALATION LADDER — the fix for dense handles, replacing time-slicing.
@@ -234,10 +298,12 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     # and #2 (9,355); floor 1000 -> both recovered. Window-splitting could NOT fix
     # him because grok ignores intra-day times (see _split_window).
     # Union + id-dedupe keeps every pass strictly additive.
-    if split_truncated:
+    if split_truncated and not skip_pass("all recovery passes"):
         for floor in FLOOR_LADDER:
             if floor <= min_faves:
                 continue
+            if skip_pass(f"escalate min_faves:{floor}"):
+                break
             hot = sorted({job[0] for job, r in responses
                           if r.get("success") and len(_rows_from(r)) >= ROW_CAP})
             if not hot:
@@ -255,7 +321,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         #     BOTH (union)    -> 30/30, and head-15 goes 14/15 -> 15/15
         # The last ladder-only miss was an @elonmusk post that only a per-day
         # query surfaces. Day granularity ONLY — grok ignores intra-day times.
-        if split_days:
+        if split_days and not skip_pass("day-split and later passes"):
             import datetime as _dt
             s = _dt.datetime.fromisoformat(q_since.replace("Z", "+00:00"))
             u = _dt.datetime.fromisoformat(q_until.replace("Z", "+00:00"))
@@ -288,6 +354,8 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
             for floor in FLOOR_LADDER:
                 if floor <= min_faves:
                     continue
+                if skip_pass(f"per-day escalate min_faves:{floor}"):
+                    break
                 # A (handle, day) is still hot only if its HIGHEST floor tried so far
                 # came back capped. Keying on (handle, day) alone would be wrong: the
                 # original base-floor response stays in `responses` forever and stays
@@ -330,6 +398,8 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                     exhausted[key] = (j[3], len(_rows_from(r)) >= ROW_CAP)
             still_hot = sorted(k for k, (f, capped) in exhausted.items()
                                if capped and f >= FLOOR_LADDER[-1])
+            if still_hot and skip_pass("oldest-first sweep"):
+                still_hot = []
             if still_hot:
                 jobs = [(h, a, b, min_faves) for h, a, b in still_hot]
                 print(f"  oldest-first sweep: {len(jobs)} ladder-exhausted "
@@ -337,7 +407,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                 def work_oldest(job):
                     handle, w_since, w_until, floor = job
                     q = build_query([handle], w_since, w_until, floor, order="oldest")
-                    return job, call_x_search(q, [handle], w_since, w_until, timeout=300)
+                    return job, timed_call(q, handle, w_since, w_until)
                 from concurrent.futures import ThreadPoolExecutor as _TPE
                 with _TPE(max_workers=min(max_workers, len(jobs))) as ex:
                     responses = responses + list(ex.map(work_oldest, jobs))
@@ -388,11 +458,12 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
                     handle, w_since, w_until, floor, lo, hi, depth = job
                     q = build_query([handle], w_since, w_until, floor,
                                     order=("band", lo, hi))
-                    return (job, call_x_search(q, [handle], w_since, w_until,
-                                               timeout=300))
+                    return (job, timed_call(q, handle, w_since, w_until))
 
                 depth_round = 0
                 while band_queue and depth_round <= MAX_BAND_DEPTH:
+                    if skip_pass("band sweep"):
+                        break
                     label = ("middle-band sweep" if depth_round == 0
                              else f"recursive band split (depth {depth_round})")
                     print(f"  {label}: {len(band_queue)} band(s)", file=sys.stderr)
@@ -420,14 +491,18 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
     results = responses
 
     candidates, per_handle, truncated, failed, degraded, creds = [], {}, [], [], [], set()
-    all_stats, seen_ids = [], set()
+    all_stats, seen_ids, skipped, answered = [], set(), [], set()
     # `responses` is a LIST of (job, resp) — a handle can appear MORE THAN ONCE
     # after window-splitting, so accumulate per handle rather than assigning.
     for (handle, w_since, w_until, _floor), resp in responses:
         per_handle.setdefault(handle, 0)
+        if resp.get("budget_skipped"):
+            skipped.append(handle)   # not an error: the budget stopped it (see report.partial)
+            continue
         if not resp.get("success"):
             failed.append(f"{handle}[{w_since[:13]}]: {(resp.get('error') or 'unknown')[:70]}")
             continue
+        answered.add(handle)
         src = resp.get("credential_source")
         if src:
             creds.add(src)
@@ -477,7 +552,7 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         alerts.append("EVERY handle reported degraded — treat the sweep as suspect.")
 
     report = {
-        "x_search_calls": len(responses),
+        "x_search_calls": len(responses) - len(skipped),
         "handles_swept": len(handles),
         "split_passes": split_passes,
         "handles_ok": len([h for h,n in per_handle.items() if n>=0]) - 0,
@@ -486,6 +561,14 @@ def gather_parallel(handles, since, until, min_faves=DEFAULT_MIN_FAVES,
         "wall_seconds": round(wall, 1),
         "max_workers": max_workers,
         "throttled_retries": throttled_total,
+        # Budget accounting (t_0c429a9d). partial=True means the budget stopped the
+        # sweep: handles_complete of handles_swept answered at least one call.
+        "budget_s": budget_s,
+        "partial": bool(skipped),
+        "budget_skipped_calls": len(skipped),
+        "handles_complete": len(answered),
+        "mean_call_s": round(state["lat_sum"] / state["done"], 1) if state["done"] else None,
+        "max_call_s": round(state["lat_max"], 1),
         "min_faves": min_faves,
         "credential_sources": sorted(creds),
         "truncated_handles": sorted(set(truncated)),
@@ -512,6 +595,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--report")
     ap.add_argument("--progress", type=int, default=25)
+    ap.add_argument("--budget-s", type=int, default=None,
+                    help="wall-clock budget; past it the sweep stops and the report says partial")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
 
@@ -531,7 +616,7 @@ def main():
           f"min_faves:{a.min_faves}", file=sys.stderr)
     cands, rep = gather_parallel(handles, a.since, a.until,
                                  min_faves=a.min_faves, max_workers=a.max_workers,
-                                 progress=a.progress)
+                                 progress=a.progress, budget_s=a.budget_s)
 
     payload = {"candidates": cands, "report": rep}
     text = json.dumps(payload, ensure_ascii=False)
@@ -546,7 +631,12 @@ def main():
 
     print(f"calls={rep['x_search_calls']} ok={rep['handles_ok']} "
           f"failed={rep['chunks_failed']} emitted={rep['candidates_emitted']} "
-          f"wall={rep['wall_seconds']}s cred={rep['credential_sources']}", file=sys.stderr)
+          f"wall={rep['wall_seconds']}s cred={rep['credential_sources']} "
+          f"mean_call={rep['mean_call_s']}s max_call={rep['max_call_s']}s", file=sys.stderr)
+    if rep["partial"]:
+        print(f"PARTIAL: {rep['handles_complete']}/{rep['handles_swept']} handles "
+              f"(gather budget {rep['budget_s']}s hit; {rep['budget_skipped_calls']} "
+              f"call(s) not made)", file=sys.stderr)
     if rep["truncated_handles"]:
         print(f"TRUNCATED (hit the {ROW_CAP}-row cap, may have more): "
               f"{rep['truncated_handles']}", file=sys.stderr)
