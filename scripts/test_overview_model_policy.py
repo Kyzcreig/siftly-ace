@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.parametrize("extra,model,provider", [
-    ([], "gpt-5.6-sol-900k", "openai-codex"),
+    ([], "gpt-6.2-sol", "openai-codex"),
     (["--model", "fixture-model", "--provider", "fixture-provider"], "fixture-model", "fixture-provider"),
 ])
 def test_cli_model_reaches_hermes(monkeypatch, tmp_path, extra, model, provider):
