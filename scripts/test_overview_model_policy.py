@@ -1,4 +1,4 @@
-"""CLI default and explicit override reach the nested Hermes invocation."""
+"""CLI default, env override and explicit flags reach the nested Hermes invocation."""
 import importlib.util
 import json
 from pathlib import Path
@@ -7,11 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 
-@pytest.mark.parametrize("extra,model,provider", [
-    ([], "gpt-6.2-sol", "openai-codex"),
-    (["--model", "fixture-model", "--provider", "fixture-provider"], "fixture-model", "fixture-provider"),
+@pytest.mark.parametrize("env,extra,model,provider", [
+    ({}, [], "sol", "cpa"),
+    ({"SIFTLY_OVERVIEW_MODEL": "env-model", "SIFTLY_OVERVIEW_PROVIDER": "env-provider"}, [], "env-model", "env-provider"),
+    ({}, ["--model", "fixture-model", "--provider", "fixture-provider"], "fixture-model", "fixture-provider"),
 ])
-def test_cli_model_reaches_hermes(monkeypatch, tmp_path, extra, model, provider):
+def test_cli_model_reaches_hermes(monkeypatch, tmp_path, env, extra, model, provider):
+    for k in ("SIFTLY_OVERVIEW_MODEL", "SIFTLY_OVERVIEW_PROVIDER"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
     spec = importlib.util.spec_from_file_location("overview_writer", Path(__file__).with_name("overview_writer.py"))
     assert spec and spec.loader
     writer = importlib.util.module_from_spec(spec)
